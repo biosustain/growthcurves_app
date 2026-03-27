@@ -49,11 +49,13 @@ def _read_table(
     df = df.drop(columns=["Time"])
 
     if time_unit == "HH:MM:SS":
+
         def _hhmmss_to_hours(val):
             parts = str(val).strip().split(":")
             if len(parts) == 3:
                 return int(parts[0]) + int(parts[1]) / 60.0 + float(parts[2]) / 3600.0
             return float("nan")
+
         t_hours = t_raw.map(_hhmmss_to_hours)
     else:
         t = pd.to_numeric(t_raw, errors="coerce")

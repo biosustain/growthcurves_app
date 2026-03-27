@@ -10,7 +10,6 @@ from growthcurves.inference import bad_fit_stats
 
 from src.functions.fitting_pipeline import fit_growth_series
 
-
 # ---------------- Selection + stats helpers ----------------
 
 
