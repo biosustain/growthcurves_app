@@ -25,7 +25,7 @@
     }
 
     h1 {
-      font-size: 2.4rem;
+      font-size: 3.4rem;
       font-weight: 700;
       color: #FFFFFF;
       margin: 0 0 8px;
@@ -33,95 +33,114 @@
     }
 
     .subtitle {
-      font-size: 1.1rem;
+      font-size: 1.5rem;
       color: rgba(255,255,255,0.9);
       margin: 0 0 48px;
     }
 
     .content {
-      max-width: 680px;
+      max-width: 900px;
       margin: 0 auto;
       padding: 0 20px 60px;
       text-align: center;
     }
 
     p {
-      font-size: 1.05rem;
+      font-size: 1.4rem;
       line-height: 1.65;
       color: #262730;
       margin-bottom: 36px;
     }
 
-    .buttons {
+    .cards {
       display: flex;
-      gap: 20px;
+      gap: 24px;
       justify-content: center;
       flex-wrap: wrap;
     }
 
-    a.button {
-      display: inline-block;
-      padding: 14px 28px;
-      text-decoration: none;
-      border-radius: 8px;
-      font-size: 1rem;
-      font-weight: 600;
-      transition: background-color 0.2s, box-shadow 0.2s;
+    .card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 380px;
+      min-height: 320px;
+      padding: 32px 24px;
+      background-color: #F5F7FA;
+      border: 1px solid #d0d4db;
+      border-radius: 12px;
+      text-align: center;
     }
 
-    a.button.primary {
+    .card-icon {
+      font-size: 3rem;
+      margin-bottom: 12px;
+    }
+
+    .card h2 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #262730;
+      margin: 0 0 10px;
+    }
+
+    .card p {
+      font-size: 1.2rem;
+      color: #4a4f5a;
+      line-height: 1.5;
+      margin: 0 0 auto;
+      padding-bottom: 24px;
+    }
+
+    a.button {
+      display: inline-block;
+      padding: 12px 28px;
+      text-decoration: none;
+      border-radius: 8px;
+      font-size: 1.2rem;
+      font-weight: 600;
       background-color: #66BB6A;
       color: #FFFFFF;
       border: none;
       box-shadow: 0 2px 6px rgba(102,187,106,0.4);
+      transition: background-color 0.2s, box-shadow 0.2s;
     }
 
-    a.button.primary:hover {
+    a.button:hover {
       background-color: #57a85b;
       box-shadow: 0 4px 12px rgba(102,187,106,0.5);
     }
 
-    a.button.secondary {
-      background-color: #F5F7FA;
-      color: #262730;
-      border: 1px solid #d0d4db;
-    }
-
-    a.button.secondary:hover {
-      background-color: #e8ecf0;
-    }
-
-    .button-label {
-      display: block;
-      font-size: 0.8rem;
-      font-weight: 400;
-      opacity: 0.85;
-      margin-top: 4px;
+    a.button.disabled {
+      background-color: #b0c4b1;
+      box-shadow: none;
+      cursor: default;
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
   <div class="hero">
-    <h1>Growth Curves App</h1>
-    <p class="subtitle">Automated growth curve analysis for microbiology experiments</p>
+    <h1>GrowthCurves Apps</h1>
+    <p class="subtitle">Human-in-the-loop growth curve analysis for microbiology experiments</p>
   </div>
 
   <div class="content">
-    <p>
-      Choose the app that matches your experimental setup. Use <strong>MicroGrowth</strong> if your
-      data comes from a microtiter plate reader. Use <strong>PioGrowth</strong> if your data comes
-      from a Pioreactor.
-    </p>
+    <p>Choose the app that matches your experimental setup.</p>
 
-    <div class="buttons">
-      <a class="button primary" href="https://thegrowthanalysisapp.streamlit.app/" target="_blank" rel="noopener noreferrer">
-        MicroGrowth
-        <span class="button-label">Microtiter plate reader data</span>
-      </a>
-      <a class="button secondary" href="#" target="_blank" rel="noopener noreferrer">
-        PioGrowth
-        <span class="button-label">Pioreactor data</span>
-      </a>
+    <div class="cards">
+      <div class="card">
+        <div class="card-icon">🔬</div>
+        <h2>MicroGrowth</h2>
+        <p>Analyse growth curves from <strong>microtiter plate reader</strong> experiments. Supports multi-condition layouts with interactive quality control.</p>
+        <a class="button" href="https://thegrowthanalysisapp.streamlit.app/" target="_blank" rel="noopener noreferrer">Open MicroGrowth</a>
+      </div>
+      <div class="card">
+        <div class="card-icon">⚗️</div>
+        <h2>PioGrowth</h2>
+        <p>Analyse growth curves from <strong>Pioreactor</strong> bioreactor experiments. Built for continuous culture and real-time monitoring data.</p>
+        <a class="button disabled" href="#" aria-disabled="true">Coming soon</a>
+      </div>
     </div>
   </div>
 </body>
