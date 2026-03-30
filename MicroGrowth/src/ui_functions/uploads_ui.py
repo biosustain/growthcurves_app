@@ -79,8 +79,7 @@ The table at the bottom shows exactly how each growth parameter will be calculat
 
 **Step 6 — Analyse**
 Click the button to run the analysis. Once complete, navigate to the other pages using the top navigation bar to review and download your results.
-"""
-            )
+""")
 
     st.divider()
 

@@ -166,7 +166,6 @@ B    | Sample2_Cond1  | Sample2_Cond2  |       | ... |
 - **Navigate between wells** using arrow buttons or keyboard shortcuts (Left/Right arrows)
 
 The page displays three plots:
-
 - Main growth curve with annotations (OD vs Time)
 - 1st derivative (dOD/dt vs Time)
 - Specific growth rate (μ vs Time)
@@ -174,12 +173,10 @@ The page displays three plots:
 ### 4. Visualize Results (Plate Overviews & Create Visualizations Pages)
 
 **Plate Overviews**
-
 - View all wells in a 96-well plate layout
 - Color-coded by growth metrics or sample groups
 
 **Create Visualizations**
-
 - Generate publication-ready plots
 - Compare replicates and conditions
 - Customize plot appearance
@@ -189,26 +186,22 @@ The page displays three plots:
 Export options include:
 
 **Tabulated Data**
-
 - Baseline-corrected time series (CSV)
 - Growth statistics per well (CSV)
 - Growth statistics averaged per sample (CSV)
 - Analysis parameters used (CSV)
 
 **Global Plots**
-
 - Baseline plot (blank well measurements)
 - Plate view (96-well overview)
 - Replicates plot (grouped by sample name)
 
 **Well Level Plots**
-
 - OD growth curves with annotations
 - 1st Derivative (dOD/dt)
 - Specific growth rate (μ)
 
 **Annotation Options**
-
 - Phase boundaries
 - Time at μ_max
 - OD at μ_max
@@ -223,13 +216,11 @@ All exports are packaged in a single ZIP file for easy download.
 ### Non-Parametric Methods
 
 **Sliding Window**
-
 - Slides a fixed-size window across the growth curve
 - Fits a linear regression to log-transformed OD at each position
 - Maximum slope = μ_max
 
 **Spline**
-
 - Fits a smoothing spline to log-transformed OD
 - Derivative of spline gives growth rate at each time point
 - More flexible and smoother than sliding window
@@ -237,29 +228,24 @@ All exports are packaged in a single ZIP file for easy download.
 ### Parametric Models
 
 **Logistic**
-
 - Classic S-shaped curve with symmetric inflection point
 - Most commonly used for microbial growth
 
 **Gompertz**
-
 - Asymmetric S-curve
 - Often fits bacterial growth better than logistic
 
 **Richards**
-
 - Generalized logistic with shape parameter
 - Most flexible, use when other models don't fit well
 
 **Baranyi-Roberts**
-
 - Mechanistic model with physiological lag parameter
 - Accounts for cell adaptation during lag phase
 
 ### Phase Boundary Detection
 
 All methods use the same approach:
-
 1. **Lag phase end**: First time point where μ exceeds the threshold (default: 50% of μ_max)
 2. **Exponential phase end**: First time point after μ_max where μ drops below threshold (default: 50% of μ_max)
 
