@@ -3,11 +3,14 @@ import streamlit as st
 from src.styling import green_gradient, green_navbar, red_buttons
 
 st.set_page_config(
-    page_title="TheGrowthAnalysisApp", layout="wide", page_icon="logo.svg"
+    page_title="MicroGrowth", layout="wide", page_icon="MicroGrowth/logo.svg"
 )
 
 # Display logo (will stay visible even when sidebar is collapsed)
-st.logo("logo.svg", link="https://github.com/sambra95/TheGrowthAnalysisApp")
+st.logo(
+    "MicroGrowth/logo.svg",
+    link="https://github.com/biosustain/growthcurves_app/tree/main/MicroGrowth",
+)
 
 nav = st.navigation(
     [

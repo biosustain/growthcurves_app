@@ -1,16 +1,18 @@
 ## Live App
 
-**[thegrowthanalysisapp.streamlit.app](https://thegrowthanalysisapp.streamlit.app/)**
+**[MicroGrowth.streamlit.app](https://MicroGrowth.streamlit.app/)**
 
 ## Abstract
 
-TheGrowthAnalysisApp is a Streamlit-based application for analyzing microbial growth curves from plate reader time-series data. Users upload raw optical density measurements and a plate map, configure analysis parameters, and the app computes baseline-corrected growth statistics including maximum OD, maximum specific growth rate (μ_max), lag time, and exponential phase boundaries across all wells.
+MicroGrowth is a Streamlit-based application for analyzing microbial growth curves from plate reader time-series data. Users upload raw optical density measurements and a plate map, configure analysis parameters, and the app computes baseline-corrected growth statistics including maximum OD, maximum specific growth rate (μ_max), lag time, and exponential phase boundaries across all wells.
 
 The app supports multiple analysis methods:
+
 - **Non-parametric methods**: Sliding Window and Spline fitting for data-driven analysis
 - **Parametric models**: Logistic, Gompertz, Richards, and Baranyi-Roberts models for theory-driven fitting
 
 Key features include:
+
 - Configurable phase boundary detection with adjustable μ_max thresholds (default 50%)
 - Interactive quality control with lasso selection for manual data point selection
 - Automatic replicate detection and averaging
@@ -32,8 +34,8 @@ Key features include:
 1. **Clone or download the repository**
 
    ```bash
-   git clone https://github.com/yourusername/TheGrowthAnalysisApp.git
-   cd TheGrowthAnalysisApp
+   git clone https://github.com/yourusername/MicroGrowth.git
+   cd MicroGrowth
    ```
 
 2. **Create the conda environment**
@@ -55,8 +57,8 @@ Key features include:
 1. **Clone or download the repository**
 
    ```bash
-   git clone https://github.com/yourusername/TheGrowthAnalysisApp.git
-   cd TheGrowthAnalysisApp
+   git clone https://github.com/yourusername/MicroGrowth.git
+   cd MicroGrowth
    ```
 
 2. **Create a virtual environment (optional but recommended)**
@@ -92,6 +94,7 @@ The app will automatically open in your default web browser at `http://localhost
 - **Plate map**: A table that maps wells to sample metadata (strain, condition, replicate, etc.)
 
 Sample files are included in the repo:
+
 - `example_data.xlsx`
 - `example_plate_map.xls`
 
@@ -116,7 +119,7 @@ B    | Sample2_Cond1  | Sample2_Cond2  |       | ... |
 - Samples with the same name will be treated as replicates
 - Use 'BLANK' for blank wells (used for baseline correction)
 - Leave cells empty for wells to ignore
-- The first '_' is used to split strain and condition labels for visualization
+- The first '\_' is used to split strain and condition labels for visualization
 
 ### 2. Upload and Configure (Upload & Analyse Page)
 

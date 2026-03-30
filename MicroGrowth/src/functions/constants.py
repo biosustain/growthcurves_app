@@ -1,4 +1,4 @@
-"""Shared constants for TheGrowthAnalysisApp."""
+"""Shared constants for MicroGrowth."""
 
 # Plate layout
 ROWS = list("ABCDEFGH")

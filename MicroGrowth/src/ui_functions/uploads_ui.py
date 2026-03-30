@@ -42,7 +42,8 @@ def ui_upload_and_analyse_header():
     with popover_col:
         st.write("")
         with st.popover("Help", width="stretch"):
-            st.markdown("""
+            st.markdown(
+                """
 **Workflow Overview — Upload & Analyse**
 
 This is your starting point. Follow the 6 steps in order to upload your data and run the growth analysis.
@@ -265,7 +266,7 @@ def ui_upload_files(ss):
                         "sample names to wells. If you upload a plate map, column "
                         "names in the data file must be well IDs (e.g. A1, B3)."
                     )
-                    st.image("info_plots/data_upload.png", width="stretch")
+                    st.image("MicroGrowth/info_plots/data_upload.png", width="stretch")
 
                     st.caption(
                         "The Time column format can be either a float (e.g. 0, 0.5, 1.0) or HH:MM:SS "
@@ -273,7 +274,7 @@ def ui_upload_files(ss):
                     )
 
                     st.markdown("")
-                    with open("example_data/example_data.xlsx", "rb") as f:
+                    with open("MicroGrowth/example_data/example_data.xlsx", "rb") as f:
                         st.download_button(
                             "Download example data file",
                             data=f.read(),
@@ -303,7 +304,9 @@ def ui_upload_files(ss):
                         "name are treated as replicates in the app. Use BLANK (or any name "
                         "starting with BLANK) for blank wells."
                     )
-                    st.image("info_plots/naming_upload.png", width="stretch")
+                    st.image(
+                        "MicroGrowth/info_plots/naming_upload.png", width="stretch"
+                    )
 
                     st.divider()
                     st.caption(
@@ -312,12 +315,16 @@ def ui_upload_files(ss):
                         "The Create Visualizations page uses this to group and color samples "
                         "by strain or condition."
                     )
-                    st.image("info_plots/naming_convention.png", width="stretch")
+                    st.image(
+                        "MicroGrowth/info_plots/naming_convention.png", width="stretch"
+                    )
 
                     st.markdown("")
                     dl_wide_col, dl_long_col = st.columns(2)
                     with dl_wide_col:
-                        with open("example_data/example_plate_map.xls", "rb") as f:
+                        with open(
+                            "MicroGrowth/example_data/example_plate_map.xls", "rb"
+                        ) as f:
                             st.download_button(
                                 "Download example plate map (wide)",
                                 data=f.read(),
@@ -329,7 +336,8 @@ def ui_upload_files(ss):
                             )
                     with dl_long_col:
                         with open(
-                            "example_data/example_long_form_plate_map.xls", "rb"
+                            "MicroGrowth/example_data/example_long_form_plate_map.xls",
+                            "rb",
                         ) as f:
                             st.download_button(
                                 "Download example plate map (long)",

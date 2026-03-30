@@ -341,7 +341,7 @@ def ui_blank_group_assigner(
         if show_caption:
             with st.popover("How blank groups work", width="stretch"):
                 st.markdown(help_caption)
-                st.image("info_plots/blank_group.png")
+                st.image("MicroGrowth/info_plots/blank_group.png")
                 st.caption(
                     "This example shows a plate with four different blank wells (darker wells) "
                     'identified in the plate map where the well names start with "BLANK_". '
