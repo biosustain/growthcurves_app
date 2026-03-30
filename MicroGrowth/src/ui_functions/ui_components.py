@@ -31,7 +31,7 @@ def ui_method_visualization(growth_method: str, model_type: str = None):
         st.caption(
             "Local linear regression in moving windows. Calculates growth rate from nearby data points without assuming global curve shape."
         )
-        return "info_plots/sliding_window.png"
+        return "MicroGrowth/info_plots/sliding_window.png"
 
     elif growth_method == "Spline":
         st.markdown("**Spline Method** (Currently Selected)")
@@ -39,7 +39,7 @@ def ui_method_visualization(growth_method: str, model_type: str = None):
         st.caption(
             "Fitted smoothed curve without underlying shape assumptions. Flexible non-parametric approach."
         )
-        return "info_plots/spline.png"
+        return "MicroGrowth/info_plots/spline.png"
 
     elif growth_method == "Model Fitting" and model_type:
         if "logistic" in str(model_type):
@@ -96,7 +96,7 @@ def ui_method_visualization(growth_method: str, model_type: str = None):
                 "Baranyi-Roberts model with physiological lag parameter λ. Mechanistic model accounting for cell adaptation during lag phase."
             )
 
-        return f"info_plots/{model_type}.png"
+        return f"MicroGrowth/info_plots/{model_type}.png"
 
     return None
 
@@ -117,7 +117,7 @@ def ui_phase_boundary_visualization(phase_boundary_method: str):
         st.caption(
             "Uses threshold fractions of μ_max to identify phase transitions. Adjustable sensitivity via cutoff parameters."
         )
-        return "info_plots/threshold_demo.png"
+        return "MicroGrowth/info_plots/threshold_demo.png"
     else:  # tangent
         st.markdown("**Tangent Method** (Currently Selected)")
         st.latex(
@@ -126,4 +126,4 @@ def ui_phase_boundary_visualization(phase_boundary_method: str):
         st.caption(
             "Geometric definition based on tangent line at maximum growth rate. No arbitrary thresholds required."
         )
-        return "info_plots/tangent_demo.png"
+        return "MicroGrowth/info_plots/tangent_demo.png"

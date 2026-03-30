@@ -66,7 +66,9 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
                     st.caption("Choose which annotations to include on well plots:")
                     plot_col, checkbox_col = st.columns([2, 1])
                     with plot_col:
-                        st.image("info_plots/annotations.png", width="stretch")
+                        st.image(
+                            "MicroGrowth/info_plots/annotations.png", width="stretch"
+                        )
                     with checkbox_col:
                         annot_phase = st.checkbox(
                             "Phase boundaries",

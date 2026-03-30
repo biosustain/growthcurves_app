@@ -91,7 +91,7 @@ def ui_window_fits_plate_overview(plates: dict):
                     "Baseline OD line", value=True, key="po_n0_line"
                 )
                 show_tangent = st.checkbox("Tangent line", value=True, key="po_tangent")
-            st.image("info_plots/annotations.png", width="stretch")
+            st.image("MicroGrowth/info_plots/annotations.png", width="stretch")
 
     st.caption(
         "Growth curve model fits for all wells in the selected plate. "

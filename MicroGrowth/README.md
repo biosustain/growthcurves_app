@@ -1,16 +1,18 @@
 ## Live App
 
-**[thegrowthanalysisapp.streamlit.app](https://thegrowthanalysisapp.streamlit.app/)**
+**[MicroGrowth.streamlit.app](https://MicroGrowth.streamlit.app/)**
 
 ## Abstract
 
-TheGrowthAnalysisApp is a Streamlit-based application for analyzing microbial growth curves from plate reader time-series data. Users upload raw optical density measurements and a plate map, configure analysis parameters, and the app computes baseline-corrected growth statistics including maximum OD, maximum specific growth rate (μ_max), lag time, and exponential phase boundaries across all wells.
+MicroGrowth is a Streamlit-based application for analyzing microbial growth curves from plate reader time-series data. Users upload raw optical density measurements and a plate map, configure analysis parameters, and the app computes baseline-corrected growth statistics including maximum OD, maximum specific growth rate (μ_max), lag time, and exponential phase boundaries across all wells.
 
 The app supports multiple analysis methods:
+
 - **Non-parametric methods**: Sliding Window and Spline fitting for data-driven analysis
 - **Parametric models**: Logistic, Gompertz, Richards, and Baranyi-Roberts models for theory-driven fitting
 
 Key features include:
+
 - Configurable phase boundary detection with adjustable μ_max thresholds (default 50%)
 - Interactive quality control with lasso selection for manual data point selection
 - Automatic replicate detection and averaging
@@ -32,8 +34,8 @@ Key features include:
 1. **Clone or download the repository**
 
    ```bash
-   git clone https://github.com/yourusername/TheGrowthAnalysisApp.git
-   cd TheGrowthAnalysisApp
+   git clone https://github.com/yourusername/MicroGrowth.git
+   cd MicroGrowth
    ```
 
 2. **Create the conda environment**
@@ -55,8 +57,8 @@ Key features include:
 1. **Clone or download the repository**
 
    ```bash
-   git clone https://github.com/yourusername/TheGrowthAnalysisApp.git
-   cd TheGrowthAnalysisApp
+   git clone https://github.com/yourusername/MicroGrowth.git
+   cd MicroGrowth
    ```
 
 2. **Create a virtual environment (optional but recommended)**
@@ -92,6 +94,7 @@ The app will automatically open in your default web browser at `http://localhost
 - **Plate map**: A table that maps wells to sample metadata (strain, condition, replicate, etc.)
 
 Sample files are included in the repo:
+
 - `example_data.xlsx`
 - `example_plate_map.xls`
 
@@ -116,7 +119,7 @@ B    | Sample2_Cond1  | Sample2_Cond2  |       | ... |
 - Samples with the same name will be treated as replicates
 - Use 'BLANK' for blank wells (used for baseline correction)
 - Leave cells empty for wells to ignore
-- The first '_' is used to split strain and condition labels for visualization
+- The first '\_' is used to split strain and condition labels for visualization
 
 ### 2. Upload and Configure (Upload & Analyse Page)
 
@@ -163,6 +166,7 @@ B    | Sample2_Cond1  | Sample2_Cond2  |       | ... |
 - **Navigate between wells** using arrow buttons or keyboard shortcuts (Left/Right arrows)
 
 The page displays three plots:
+
 - Main growth curve with annotations (OD vs Time)
 - 1st derivative (dOD/dt vs Time)
 - Specific growth rate (μ vs Time)
@@ -170,10 +174,12 @@ The page displays three plots:
 ### 4. Visualize Results (Plate Overviews & Create Visualizations Pages)
 
 **Plate Overviews**
+
 - View all wells in a 96-well plate layout
 - Color-coded by growth metrics or sample groups
 
 **Create Visualizations**
+
 - Generate publication-ready plots
 - Compare replicates and conditions
 - Customize plot appearance
@@ -183,22 +189,26 @@ The page displays three plots:
 Export options include:
 
 **Tabulated Data**
+
 - Baseline-corrected time series (CSV)
 - Growth statistics per well (CSV)
 - Growth statistics averaged per sample (CSV)
 - Analysis parameters used (CSV)
 
 **Global Plots**
+
 - Baseline plot (blank well measurements)
 - Plate view (96-well overview)
 - Replicates plot (grouped by sample name)
 
 **Well Level Plots**
+
 - OD growth curves with annotations
 - 1st Derivative (dOD/dt)
 - Specific growth rate (μ)
 
 **Annotation Options**
+
 - Phase boundaries
 - Time at μ_max
 - OD at μ_max
@@ -213,11 +223,13 @@ All exports are packaged in a single ZIP file for easy download.
 ### Non-Parametric Methods
 
 **Sliding Window**
+
 - Slides a fixed-size window across the growth curve
 - Fits a linear regression to log-transformed OD at each position
 - Maximum slope = μ_max
 
 **Spline**
+
 - Fits a smoothing spline to log-transformed OD
 - Derivative of spline gives growth rate at each time point
 - More flexible and smoother than sliding window
@@ -225,24 +237,29 @@ All exports are packaged in a single ZIP file for easy download.
 ### Parametric Models
 
 **Logistic**
+
 - Classic S-shaped curve with symmetric inflection point
 - Most commonly used for microbial growth
 
 **Gompertz**
+
 - Asymmetric S-curve
 - Often fits bacterial growth better than logistic
 
 **Richards**
+
 - Generalized logistic with shape parameter
 - Most flexible, use when other models don't fit well
 
 **Baranyi-Roberts**
+
 - Mechanistic model with physiological lag parameter
 - Accounts for cell adaptation during lag phase
 
 ### Phase Boundary Detection
 
 All methods use the same approach:
+
 1. **Lag phase end**: First time point where μ exceeds the threshold (default: 50% of μ_max)
 2. **Exponential phase end**: First time point after μ_max where μ drops below threshold (default: 50% of μ_max)
 
