@@ -65,11 +65,7 @@ from growthcurves_options import (
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
 import piogrowth.analyze
-
-# from piogrowth.durations import find_max_range
-from piogrowth.fit_spline import (  # fit_spline_and_derivatives_one_batch,
-    get_smoothing_range,
-)
+from piogrowth.fit_spline import get_smoothing_range
 
 logger = logging.getLogger(__name__)
 if st.session_state.get("debug_mode", False):
