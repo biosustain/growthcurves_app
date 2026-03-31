@@ -5,7 +5,7 @@ from importlib import metadata
 
 import pandas as pd
 
-from . import filter, load
+from . import load
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ __version__ = metadata.version("piogrowth")
 
 # The __all__ variable is a list of variables which are imported
 # when a user does "from example import *"
-__all__ = ["load", "filter"]
+__all__ = ["reindex_w_relative_time", "convert_to_elapsed_hours", "load"]
 
 
 def reindex_w_relative_time(
