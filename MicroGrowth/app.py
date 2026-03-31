@@ -1,5 +1,4 @@
 import streamlit as st
-
 from src.styling import green_gradient, green_navbar, red_buttons
 
 st.set_page_config(

@@ -1,7 +1,6 @@
 """Download processed data tables and plot exports."""
 
 import streamlit as st
-
 from src.functions.common import require_plates
 from src.ui_functions.download_analyzed_data_ui import (
     _render_global_plots_container,

@@ -1,7 +1,6 @@
 """UI helpers for the Plate Overviews page."""
 
 import streamlit as st
-
 from src.functions.plotting_functions import (
     plot_baseline_by_group,
     plot_replicates_by_sample,

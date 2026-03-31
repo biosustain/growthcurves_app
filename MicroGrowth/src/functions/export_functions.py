@@ -7,7 +7,6 @@ import growthcurves.plot as gc_plot
 import pandas as pd
 from growthcurves.inference import is_no_growth
 from growthcurves.plot import plot_derivative_metric
-
 from src.functions.check_growth_fits import _add_lasso_selected_points
 from src.functions.plotting_functions import (
     _finite_sorted_xy,
