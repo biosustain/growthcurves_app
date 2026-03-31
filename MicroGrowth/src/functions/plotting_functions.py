@@ -27,7 +27,6 @@ from growthcurves.models import (
     spline_from_params,
 )
 from plotly.subplots import make_subplots
-
 from src.functions.common import _iter_wells
 from src.functions.constants import ALL_WELLS
 

@@ -1,7 +1,6 @@
 """Plate overview page: replicates and plate-level fits."""
 
 import streamlit as st
-
 from src.functions.common import require_plates
 from src.ui_functions.plate_overviews_ui import (
     ui_replicates,

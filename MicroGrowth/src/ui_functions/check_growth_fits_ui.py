@@ -6,7 +6,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from growthcurves.inference import bad_fit_stats, is_no_growth
-
 from src.functions.check_growth_fits import (
     _add_lasso_selected_points,
     _analyse_series_with_plate_params,

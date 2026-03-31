@@ -7,7 +7,6 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 from growthcurves.models import MODEL_REGISTRY
-
 from src.functions.constants import COLS, DEFAULT_PARAMS, ROWS
 from src.functions.data_processing import analyse_plate, load_plate
 from src.functions.upload_functions import (
@@ -42,8 +41,7 @@ def ui_upload_and_analyse_header():
     with popover_col:
         st.write("")
         with st.popover("Help", width="stretch"):
-            st.markdown(
-                """
+            st.markdown("""
 **Workflow Overview — Upload & Analyse**
 
 This is your starting point. Follow the 6 steps in order to upload your data and run the growth analysis.

@@ -1,7 +1,6 @@
 """Create interactive visualizations of growth data."""
 
 import streamlit as st
-
 from src.functions.common import require_plates
 from src.functions.plotting_functions import (
     plot_mean_growth,

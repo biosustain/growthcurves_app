@@ -7,7 +7,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from growthcurves.inference import bad_fit_stats
-
 from src.functions.fitting_pipeline import fit_growth_series
 
 # ---------------- Selection + stats helpers ----------------

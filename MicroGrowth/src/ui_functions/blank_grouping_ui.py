@@ -7,7 +7,6 @@ from typing import Any
 
 import pandas as pd
 import streamlit as st
-
 from src.functions.constants import COLS, ROWS
 
 try:
