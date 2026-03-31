@@ -108,7 +108,7 @@ with st.container(border=True):
             st.markdown("\n > Export from PioReactor WebApp or CLI.")
             st.divider()
             st.markdown("**Example file:**")
-            example_data = pd.read_csv("data/example_batch_data_od_readings.csv")
+            example_data = pd.read_csv("data/batch_example/example_batch_data_od_readings.csv")
             st.dataframe(example_data.head(10), hide_index=True, width="stretch")
             st.download_button(
                 label="Download example CSV for App testing",
@@ -169,7 +169,7 @@ with st.container(border=True):
             )
             st.divider()
             st.markdown("**Example:**")
-            fname = "data/example_batch_data_od_readings_calibration.csv"
+            fname = "data/batch_example/example_batch_data_od_readings_calibration.csv"
             example_data = pd.read_csv(fname)
             st.dataframe(example_data, hide_index=True, width="stretch")
             st.download_button(
@@ -209,7 +209,7 @@ with st.container(border=True):
             st.markdown("\n > Export from PioReactor WebApp or CLI.")
             st.divider()
             st.markdown("**Example:**")
-            fname = "data/example_2-Pio_Experiment_dilution_events.csv"
+            fname = "data/turbidostat_example/example_2-Pio_Experiment_dilution_events.csv"
             example_data = pd.read_csv(fname)
             st.dataframe(example_data, hide_index=True, width="stretch")
             st.download_button(
