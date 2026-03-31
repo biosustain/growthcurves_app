@@ -6,9 +6,9 @@ In order to build the docs you need to
 2. build the package reference files
 3. run sphinx to create a local html version
 
-The documentation is build using readthedocs automatically.
+The documentation is built using readthedocs automatically.
 
-Install the docs dependencies of the package (as speciefied in toml):
+Install the docs dependencies of the package (as specified in toml):
 
 ```bash
 # in main folder
