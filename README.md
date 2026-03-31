@@ -64,7 +64,7 @@ It was created on the basis of three individual apps
 - [milnus/OD_calibration_bioreactor](https://github.com/milnus/OD_calibration_bioreactor)
 
 Then it was moved from [biosustain/PioGrowth](https://github.com/biosustain/PioGrowth) 
-to this repository, to start sharing functionality with similary designed MicroGrowth 
+to this repository, to start sharing functionality with similarly designed MicroGrowth 
 app.
 
 The original code for the MicroGrowth app was developed in the repository
