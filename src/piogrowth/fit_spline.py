@@ -12,4 +12,3 @@ def get_smoothing_range(m: int):
     s_min, s, s_max = int(m - np.sqrt(2 * m)), m, int(m + np.sqrt(2 * m))
     s = SmoothingRange(s_min, s, s_max)
     return s
-
