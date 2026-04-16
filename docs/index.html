@@ -117,12 +117,45 @@
       cursor: default;
       pointer-events: none;
     }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      justify-content: center;
+      margin-top: 20px;
+    }
+
+    .badge {
+      background: #FFFFFF;
+      border: 1.5px solid #b7dfb9;
+      border-radius: 999px;
+      padding: 0.35rem 0.9rem;
+      font-size: 0.83rem;
+      font-weight: 600;
+      color: #3a8c3e;
+      box-shadow: 0 2px 8px rgba(0,0,0,.07);
+      text-decoration: none;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .badge:hover {
+      background: #d6f0d7;
+      border-color: #66BB6A;
+    }
   </style>
 </head>
 <body>
   <div class="hero">
     <h1>GrowthCurves Apps</h1>
     <p class="subtitle">Human-in-the-loop growth curve analysis for microbiology experiments</p>
+    <div class="badge-row">
+      <a href="https://github.com/biosustain/growthcurves" target="_blank" rel="noopener noreferrer" class="badge">&#128196; growthcurves Github</a>
+      <a href="https://github.com/biosustain/growthcurves_app" target="_blank" rel="noopener noreferrer" class="badge">&#128196; App Github and Local Installation</a>
+      <a href="https://pypi.org/project/growthcurves/" target="_blank" rel="noopener noreferrer" class="badge">&#128230; growthcurves PyPi</a>
+      <a href="https://growthcurves.readthedocs.io/en/latest/" target="_blank" rel="noopener noreferrer" class="badge">&#128230; ReadtheDocs Tutorial notebooks</a>
+    
+    </div>
   </div>
 
   <div class="content">
@@ -142,7 +175,6 @@
         <a class="button" href="https://piogrowth.streamlit.app/" target="_blank" rel="noopener noreferrer">Open PioGrowth</a>
       </div>
     </div>
-    <p style="margin-top: 36px; font-size: 1.1rem;">To install the apps locally, follow the installation instructions on the <a href="https://github.com/biosustain/growthcurves_app.git" target="_blank" rel="noopener noreferrer">Github homepage</a>.</p>
   </div>
 </body>
 </html>
