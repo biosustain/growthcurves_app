@@ -186,9 +186,7 @@ if df_wide_raw_od_data is not None and masked is not None:
         if _stored_max not in all_timepoints:
             _stored_max = all_timepoints.max()
 
-        time_window_cols = st.columns(
-            [7, 1], gap="large", vertical_alignment="bottom"
-        )
+        time_window_cols = st.columns([7, 1], gap="large", vertical_alignment="bottom")
         with time_window_cols[0]:
             min_t, max_t = st.select_slider(
                 "Select overall time window (inferred).",
