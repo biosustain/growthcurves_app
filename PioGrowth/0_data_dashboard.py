@@ -148,6 +148,7 @@ if df_wide_raw_od_data is not None and masked is not None:
 
         if not use_same_yaxis_scale:
             st.warning("Using different y-axis scale for each reactor.")
+
         df_plot = df_wide_raw_od_data
         mask_plot = masked
         if use_elapsed_time:
@@ -159,6 +160,84 @@ if df_wide_raw_od_data is not None and masked is not None:
                 df=mask_plot,
                 start_time=start_time,
             )
+
+        # Time window filtering
+        st.divider()
+        st.write("#### Time window filtering:")
+        st.caption(
+            "Select time windows to display. Data outside the selected windows "
+            "will not appear in plots. Use the Upload Data page to re-process "
+            "with different options."
+        )
+
+        # Reset stored ranges when elapsed-time mode changes to avoid type mismatch
+        _prev_use_elapsed = st.session_state.get("_dashboard_prev_use_elapsed")
+        if _prev_use_elapsed != use_elapsed_time:
+            st.session_state.pop("dashboard_min_t", None)
+            st.session_state.pop("dashboard_max_t", None)
+            st.session_state.pop("dashboard_time_ranges", None)
+        st.session_state["_dashboard_prev_use_elapsed"] = use_elapsed_time
+
+        all_timepoints = df_plot.index
+        _stored_min = st.session_state.get("dashboard_min_t", all_timepoints.min())
+        _stored_max = st.session_state.get("dashboard_max_t", all_timepoints.max())
+        if _stored_min not in all_timepoints:
+            _stored_min = all_timepoints.min()
+        if _stored_max not in all_timepoints:
+            _stored_max = all_timepoints.max()
+
+        time_window_cols = st.columns([7, 1], gap="large", vertical_alignment="bottom")
+        with time_window_cols[0]:
+            min_t, max_t = st.select_slider(
+                "Select overall time window (inferred).",
+                options=all_timepoints,
+                value=(_stored_min, _stored_max),
+            )
+        with time_window_cols[1]:
+            update_zero_timepoint = st.checkbox(
+                "Reset T0",
+                value=st.session_state.get("update_zero_timepoint", False),
+                help=(
+                    "If checked, a new zero time is set to the minimum "
+                    "timestamp of the overall time window."
+                ),
+            )
+
+        st.session_state["dashboard_min_t"] = min_t
+        st.session_state["dashboard_max_t"] = max_t
+        st.session_state["update_zero_timepoint"] = update_zero_timepoint
+
+        df_plot = df_plot.loc[min_t:max_t]
+        mask_plot = mask_plot.loc[min_t:max_t]
+
+        with st.expander("Select time window per reactor"):
+            st.info("Note: Minimum and maximum for slider are reactor specific!")
+            dashboard_time_ranges = st.session_state.get("dashboard_time_ranges", {})
+            for reactor in list(df_plot.columns):
+                reactor_data = df_plot[reactor].dropna()
+                if reactor_data.empty:
+                    continue
+                _options = reactor_data.index
+                _stored_r = dashboard_time_ranges.get(reactor)
+                if (
+                    _stored_r is not None
+                    and _stored_r[0] in _options
+                    and _stored_r[1] in _options
+                ):
+                    _r_min, _r_max = _stored_r
+                else:
+                    _r_min, _r_max = _options.min(), _options.max()
+                r_min_t, r_max_t = st.select_slider(
+                    f"Select time window (inferred) for {reactor}."
+                    " Bounded by overall time window.",
+                    options=_options,
+                    value=(_r_min, _r_max),
+                )
+                dashboard_time_ranges[reactor] = (r_min_t, r_max_t)
+                reactor_in_window = df_plot.index.to_series().between(r_min_t, r_max_t)
+                df_plot.loc[:, reactor] = df_plot[reactor].where(reactor_in_window)
+            st.session_state["dashboard_time_ranges"] = dashboard_time_ranges
+
         # Figure showing the raw and masked growth data for each reactor
         fig = plot_growth_data_w_mask(
             df_plot,

@@ -34,7 +34,7 @@ st.session_state["DEFAULT_XLABEL_REL"] = "Elapsed time (hours)"
 
 # function creating the about page from a markdown file
 def render_about():
-    render_markdown("app/markdowns/about.md")
+    render_markdown("PioGrowth/markdowns/about.md")
 
 
 # Navigation

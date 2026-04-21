@@ -403,16 +403,9 @@ with st.container(border=True):
             #### Time and aggregation options:\n
 
             - round timepoints and handle duplicates due to rounding
-            - select overall and per-reactor time windows for data to be included \
-              in analysis
-            
-            Select time windows for data to be processed. Dates are inferred from 
-            uploaded data. This won't be plotted in red as filtered data, but just 
-            cap the datapoints for reactors outside of the selected windows.
-            The overall time window bounds the selected time windows for the
-            individual reactors.
+
+            Time window selection has moved to the **Data Dashboard** page.
             """)
-        min_date, max_date = None, None
         rounding_columns = st.columns(
             [4, 2, 2], gap="large", vertical_alignment="bottom"
         )
@@ -465,60 +458,6 @@ with st.container(border=True):
                     "outliers and therefore the default."
                 ),
             )
-        # ! move this to data_dashboard page.
-        update_zero_timepoint = None
-        time_ranges = {}
-        time_window_cols = st.columns([7, 1], gap="large", vertical_alignment="bottom")
-        if df_wide_raw_od_data is not None:
-            with time_window_cols[0]:
-                if df_raw_od_data is not None:
-                    min_date, max_date = st.select_slider(
-                        "Select overall time window (inferred).",
-                        options=df_raw_od_data["timestamp_rounded"],
-                        value=(
-                            st.session_state.get(
-                                "min_date", df_raw_od_data["timestamp_rounded"].min()
-                            ),
-                            st.session_state.get(
-                                "max_date", df_raw_od_data["timestamp_rounded"].max()
-                            ),
-                        ),
-                    )
-                else:
-                    st.empty()
-            with time_window_cols[1]:
-                update_zero_timepoint = st.checkbox(
-                    "Reset T0",
-                    value=st.session_state.get("update_zero_timepoint", False),
-                    help=(
-                        "If checked, a new zero time is set to the minimum timestamp of"
-                        " the overall time window."
-                    ),
-                )
-            with st.expander("Select time window per reactor"):
-                st.info("Note: Minimum and maximum for slider are reactor specific!")
-                # per reactor, get min and max timestamps
-                for reactor in df_wide_raw_od_data.columns:
-                    if st.session_state.get("time_ranges", {}).get(reactor) is not None:
-                        _min_tp, _max_tp = st.session_state["time_ranges"][reactor]
-                    else:
-                        _options_timepoints = (
-                            df_wide_raw_od_data[reactor].dropna().index
-                        )
-                        _min_tp, _max_tp = (
-                            _options_timepoints.min(),
-                            _options_timepoints.max(),
-                        )
-                    time_ranges[reactor] = st.select_slider(
-                        f"Select time window (inferred) for {reactor}."
-                        " Bounded by overall time window.",
-                        options=df_wide_raw_od_data[reactor].dropna().index,
-                        value=(
-                            _min_tp,
-                            _max_tp,
-                        ),
-                    )
-
         st.divider()
         button_pressed = st.form_submit_button(
             "Apply options to uploaded data", type="primary", width="stretch"
@@ -539,8 +478,6 @@ st.session_state["quantile_max"] = quantile_max
 st.session_state["iqr_range_value"] = iqr_range_value
 st.session_state["rolling_window"] = rolling_window
 st.session_state["ecod_factor"] = ecod_factor
-st.session_state["update_zero_timepoint"] = update_zero_timepoint
-st.session_state["time_ranges"] = time_ranges
 st.session_state["round_time"] = round_time
 st.session_state["aggregate_duplicated_rounded_timepoint"] = (
     aggregate_duplicated_rounded_timepoint
@@ -549,10 +486,6 @@ st.session_state["aggregate_duplicated_rounded_timepoint_method"] = (
     aggregate_duplicated_rounded_timepoint_method
 )
 
-if min_date is not None and max_date is not None:
-    # update data specific options in session state
-    st.session_state["min_date"] = min_date
-    st.session_state["max_date"] = max_date
 ########################################################################################
 # Process data
 
@@ -690,34 +623,6 @@ if button_pressed:
     df_raw_od_data = df_raw_od_data.loc[
         df_raw_od_data["pioreactor_unit"].astype(str).isin(reactors_selected)
     ]
-
-    # skip first or last measurements based on user input (after first loading the data)
-    # ! won't be plotted in red as filtered data, but just not appear in the plots
-    # ! applied to wide raw data
-    if min_date:
-        df_wide_raw_od_data = df_wide_raw_od_data.loc[min_date:max_date]
-        st.info(f"Time range: {min_date} to {max_date}")
-
-    if update_zero_timepoint:
-        print(f"Updating zero timepoint to {min_date} based on user selection.")
-        start_time = min_date
-
-    for reactor, time_range in time_ranges.items():
-        if reactor not in df_wide_raw_od_data.columns:
-            continue
-        _min_date, _max_date = time_range
-        _min_date = max(_min_date, min_date)
-        _max_date = min(_max_date, max_date)
-        reactor_in_window = df_wide_raw_od_data.index.to_series().between(
-            _min_date, _max_date
-        )
-        df_wide_raw_od_data.loc[:, reactor] = df_wide_raw_od_data[reactor].where(
-            reactor_in_window
-        )
-
-        if update_zero_timepoint and start_time < _min_date:
-            # update start time if new zero time is after current start time
-            start_time = _min_date
 
     # initalize masked here
     masked = pd.DataFrame(
