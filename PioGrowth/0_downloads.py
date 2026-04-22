@@ -1,5 +1,4 @@
 import io
-import json
 import pickle
 from io import BytesIO
 
@@ -16,80 +15,42 @@ Currently available:
 - Session state ZIP for restoring the full app state later
 """
 
+# Keys that should never be included in the snapshot.
+# Streamlit internal keys (start with "_" or "FormSubmitter:") are excluded
+# automatically; these are additional transient or widget-bound keys.
+_SNAPSHOT_EXCLUDE_KEYS = frozenset({
+    "df_qurve_format",           # regenerable BytesIO output
+    "session_state_zip",         # the snapshot itself
+    "session_state_zip_upload",  # file-uploader widget on upload page
+    "upload_page_od_adjustment_table",  # file-uploader widget state
+    "upload_page_turbidostat_meta",     # file-uploader widget state
+})
 
-_SESSION_STATE_SCALAR_KEYS = [
-    "custom_id",
-    "keep_core_data",
-    "reactors_selected",
-    "remove_negative",
-    "negative_handling",
-    "fill_na",
-    "remove_downward_trending",
-    "remove_max",
-    "outlier_method",
-    "quantile_max",
-    "iqr_range_value",
-    "rolling_window",
-    "ecod_factor",
-    "round_time",
-    "aggregate_duplicated_rounded_timepoint",
-    "aggregate_duplicated_rounded_timepoint_method",
-    "USE_ELAPSED_TIME_FOR_PLOTS",
-    "is_df_rolling_adjusted",
-    "turbidostat_timestamp_col",
-    "turbidostat_reactor_col",
-    "turbidostat_message_col",
-    "upload_processing_summary_msg",
-    "file_od_upload_name",
-    "od_adjustment_upload_name",
-    "turbidostat_meta_upload_name",
-]
-
-_SESSION_STATE_DATAFRAME_KEYS = [
-    "df_raw_od_data",
-    "df_wide_raw_od_data",
-    "df_wide_raw_od_data_filtered",
-    "df_rolling",
-    "df_time_map",
-    "masked",
-    "df_od_adjustment",
-]
-
-_SESSION_STATE_FILE_BYTES_KEYS = [
-    "od_adjustment_upload_bytes",
-    "turbidostat_meta_upload_bytes",
-]
+_SNAPSHOT_EXCLUDE_PREFIXES = ("_", "FormSubmitter:")
 
 
 def build_session_state_zip() -> bytes:
-    """Serialize the current session state to a ZIP file and return as bytes."""
+    """Pickle all serializable session state into a ZIP and return as bytes."""
     import zipfile
+
+    state_to_save = {}
+    for key, val in st.session_state.items():
+        if key in _SNAPSHOT_EXCLUDE_KEYS:
+            continue
+        if any(key.startswith(p) for p in _SNAPSHOT_EXCLUDE_PREFIXES):
+            continue
+        if isinstance(val, io.RawIOBase | io.BufferedIOBase):
+            val.seek(0)
+            val = io.BytesIO(val.read())
+        try:
+            pickle.dumps(val)
+            state_to_save[key] = val
+        except Exception:
+            continue
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        # Scalar metadata
-        metadata = {}
-        for key in _SESSION_STATE_SCALAR_KEYS:
-            val = st.session_state.get(key)
-            if val is not None:
-                metadata[key] = val
-        start_time = st.session_state.get("start_time")
-        if start_time is not None:
-            metadata["start_time"] = str(start_time)
-        zf.writestr("metadata.json", json.dumps(metadata))
-
-        # DataFrames serialized with pickle
-        for key in _SESSION_STATE_DATAFRAME_KEYS:
-            df = st.session_state.get(key)
-            if df is not None:
-                zf.writestr(f"dataframes/{key}.pkl", pickle.dumps(df))
-
-        # Raw file bytes
-        for key in _SESSION_STATE_FILE_BYTES_KEYS:
-            data = st.session_state.get(key)
-            if data is not None:
-                zf.writestr(f"files/{key}.bin", data)
-
+        zf.writestr("session_state.pkl", pickle.dumps(state_to_save))
     buf.seek(0)
     return buf.getvalue()
 
