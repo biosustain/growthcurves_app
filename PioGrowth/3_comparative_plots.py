@@ -193,7 +193,7 @@ st.session_state[group_state_key] = edited_groups
 
 # Merge group assignments into the flat stats_df
 group_map: dict[str, str] = dict(
-    zip(edited_groups["Reactor"].tolist(), edited_groups["Group"].tolist())
+    zip(edited_groups["Reactor"].tolist(), edited_groups["Group"].tolist(), strict=True)
 )
 stats_df["Group"] = stats_df[reactor_col].map(group_map).fillna("")
 
@@ -246,7 +246,7 @@ with st.container(border=True):
                 y="mean",
                 color="Group",
                 error_y="ci95",
-                labels={"Group": "Group", "mean": metric_label},
+                labels={"Group": "Group mean", "mean": metric_label},
                 title=metric_label,
             )
             # Overlay individual data points as a strip
@@ -257,9 +257,6 @@ with st.container(border=True):
                 color="Group",
                 hover_data=hover_data,
             )
-            for trace in strip_fig.data:
-                trace.showlegend = False
-                fig.add_trace(trace)
 
         elif plot_type == "box":
             fig = px.box(
@@ -272,6 +269,7 @@ with st.container(border=True):
                 labels={"Group": "Group", metric: metric_label},
                 title=metric_label,
             )
+            fig.update_traces(pointpos=0)
 
         elif plot_type == "violin":
             fig = px.violin(
@@ -285,6 +283,7 @@ with st.container(border=True):
                 labels={"Group": "Group", metric: metric_label},
                 title=metric_label,
             )
+            fig.update_traces(pointpos=0)
 
         else:  # strip
             fig = px.strip(
