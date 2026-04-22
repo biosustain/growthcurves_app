@@ -239,6 +239,16 @@ with st.container(border=True):
 
         hover_data = {reactor_col: True, "Group": True, metric: True}
 
+        px_args = {
+            "data_frame": plot_df,
+            "x": "Group",
+            "y": metric,
+            "color": "Group",
+            "hover_data": hover_data,
+            "title": metric_label,
+            "labels": {"Group": "Group", metric: metric_label},
+        }
+
         if plot_type == "bar":
             # Bar chart: mean ± 95 % CI with individual data points overlaid
             agg = (
@@ -259,11 +269,7 @@ with st.container(border=True):
             )
             # Overlay individual data points as a strip
             strip_fig = px.strip(
-                plot_df,
-                x="Group",
-                y=metric,
-                color="Group",
-                hover_data=hover_data,
+                **px_args,
             )
             for trace in strip_fig.data:
                 trace.update(
@@ -277,41 +283,21 @@ with st.container(border=True):
 
         elif plot_type == "box":
             fig = px.box(
-                plot_df,
-                x="Group",
-                y=metric,
-                color="Group",
+                **px_args,
                 points="all",
-                hover_data=hover_data,
-                labels={"Group": "Group", metric: metric_label},
-                title=metric_label,
             )
             fig.update_traces(pointpos=0)
 
         elif plot_type == "violin":
             fig = px.violin(
-                plot_df,
-                x="Group",
-                y=metric,
-                color="Group",
+                **px_args,
                 box=True,
                 points="all",
-                hover_data=hover_data,
-                labels={"Group": "Group", metric: metric_label},
-                title=metric_label,
             )
             fig.update_traces(pointpos=0)
 
         else:  # strip
-            fig = px.strip(
-                plot_df,
-                x="Group",
-                y=metric,
-                color="Group",
-                hover_data=hover_data,
-                labels={"Group": "Group", metric: metric_label},
-                title=metric_label,
-            )
+            fig = px.strip(**px_args)
 
         fig.update_layout(
             showlegend=(plot_type == "bar"),
