@@ -246,6 +246,7 @@ with st.container(border=True):
                 y="mean",
                 color="Group",
                 error_y="ci95",
+                opacity=0.7,
                 labels={"Group": "Group mean", "mean": metric_label},
                 title=metric_label,
             )
@@ -257,6 +258,15 @@ with st.container(border=True):
                 color="Group",
                 hover_data=hover_data,
             )
+            for trace in strip_fig.data:
+                trace.update(
+                    marker=dict(
+                        size=8,
+                        opacity=0.95,
+                    ),
+                    showlegend=False,
+                )
+            fig.add_traces(strip_fig.data)
 
         elif plot_type == "box":
             fig = px.box(
