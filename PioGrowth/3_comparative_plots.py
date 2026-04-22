@@ -91,7 +91,9 @@ else:
     unique_reactors = stats_df[reactor_col].unique().tolist()
     mode_label = "batch"
 
-st.caption(f"Analysis mode detected: **{mode_label}**  |  {len(unique_reactors)} reactor(s) found.")
+st.caption(
+    f"Analysis mode detected: **{mode_label}**  |  {len(unique_reactors)} reactor(s) found."
+)
 
 # ── Step 1: Assign groups ────────────────────────────────────────────────────
 with st.container(border=True):
@@ -113,6 +115,8 @@ with st.container(border=True):
         st.session_state[group_state_key] = default_groups
 
     # Refresh if the set of reactors has changed (e.g. new analysis run)
+    # ? could be made smarter matching based on reactor IDs rather than resetting
+    # ? all groups. good for now
     stored: pd.DataFrame = st.session_state[group_state_key]
     if set(stored["Reactor"].tolist()) != set(unique_reactors):
         st.session_state[group_state_key] = pd.DataFrame(
@@ -137,7 +141,6 @@ with st.container(border=True):
             ),
         },
     )
-    st.session_state[group_state_key] = edited_groups
 
     # Download the group table
     st.download_button(
@@ -162,7 +165,11 @@ with st.container(border=True):
         selected_metrics = st.multiselect(
             "Select metrics to plot",
             options=available_metrics,
-            default=available_metrics[:3] if len(available_metrics) >= 3 else available_metrics,
+            default=(
+                available_metrics[:3]
+                if len(available_metrics) >= 3
+                else available_metrics
+            ),
             format_func=lambda m: METRIC_LABELS.get(m, m),
         )
     with col_right:
@@ -210,7 +217,9 @@ with st.container(border=True):
         metric_label = METRIC_LABELS.get(metric, metric)
 
         # Drop rows where the metric is NaN (no growth / bad fit)
-        plot_df = stats_df[[reactor_col, "Group", metric]].dropna(subset=[metric]).copy()
+        plot_df = (
+            stats_df[[reactor_col, "Group", metric]].dropna(subset=[metric]).copy()
+        )
         try:
             plot_df[metric] = pd.to_numeric(plot_df[metric], errors="coerce")
         except Exception:
