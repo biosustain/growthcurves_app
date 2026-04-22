@@ -122,10 +122,10 @@ with st.container(border=True):
             }
         )
 
-    edited_groups: pd.DataFrame = st.data_editor(
+    edited_groups = st.data_editor(
         st.session_state[group_state_key],
         key="comparative_group_editor",
-        use_container_width=True,
+        width="content",
         num_rows="fixed",
         column_config={
             "Reactor": st.column_config.TextColumn("Reactor", disabled=True),
@@ -181,6 +181,8 @@ if not generate:
 if not selected_metrics:
     st.warning("Please select at least one metric to plot.")
     st.stop()
+
+st.session_state[group_state_key] = edited_groups
 
 # Merge group assignments into the flat stats_df
 group_map: dict[str, str] = dict(
