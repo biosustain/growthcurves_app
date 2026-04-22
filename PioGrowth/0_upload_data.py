@@ -110,7 +110,7 @@ def apply_linear_adjustments(
 
 ########################################################################################
 # Session State Restore
-with st.container(border=True):
+with st.expander("Restore Previous Session (Optional)", icon="📁"):
     st.header("Restore Previous Session (Optional)")
     st.caption(
         "Upload a session state ZIP downloaded from the **Downloads** page "
