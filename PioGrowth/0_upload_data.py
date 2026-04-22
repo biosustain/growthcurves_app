@@ -1,3 +1,7 @@
+import io
+import json
+import pickle
+
 import growthcurves as gc
 import pandas as pd
 import streamlit as st
@@ -39,6 +43,87 @@ def callback_clear_raw_data():
         del st.session_state["min_date"]
     if "max_date" in st.session_state:
         del st.session_state["max_date"]
+
+
+_SESSION_STATE_SCALAR_KEYS = [
+    "custom_id",
+    "keep_core_data",
+    "reactors_selected",
+    "remove_negative",
+    "negative_handling",
+    "fill_na",
+    "remove_downward_trending",
+    "remove_max",
+    "outlier_method",
+    "quantile_max",
+    "iqr_range_value",
+    "rolling_window",
+    "ecod_factor",
+    "round_time",
+    "aggregate_duplicated_rounded_timepoint",
+    "aggregate_duplicated_rounded_timepoint_method",
+    "USE_ELAPSED_TIME_FOR_PLOTS",
+    "is_df_rolling_adjusted",
+    "turbidostat_timestamp_col",
+    "turbidostat_reactor_col",
+    "turbidostat_message_col",
+    "upload_processing_summary_msg",
+    "file_od_upload_name",
+    "od_adjustment_upload_name",
+    "turbidostat_meta_upload_name",
+]
+
+_SESSION_STATE_DATAFRAME_KEYS = [
+    "df_raw_od_data",
+    "df_wide_raw_od_data",
+    "df_wide_raw_od_data_filtered",
+    "df_rolling",
+    "df_time_map",
+    "masked",
+    "df_od_adjustment",
+]
+
+_SESSION_STATE_FILE_BYTES_KEYS = [
+    "od_adjustment_upload_bytes",
+    "turbidostat_meta_upload_bytes",
+]
+
+
+def restore_session_state_from_zip(zip_bytes: bytes) -> list[str]:
+    """Restore session state from a session state ZIP. Returns a list of warning strings."""
+    import zipfile
+
+    warnings = []
+    with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
+        names = zf.namelist()
+
+        # Restore scalar metadata
+        if "metadata.json" not in names:
+            warnings.append("metadata.json not found in ZIP — no settings restored.")
+        else:
+            with zf.open("metadata.json") as f:
+                metadata = json.loads(f.read())
+            for key in _SESSION_STATE_SCALAR_KEYS:
+                if key in metadata:
+                    st.session_state[key] = metadata[key]
+            if "start_time" in metadata:
+                st.session_state["start_time"] = pd.Timestamp(metadata["start_time"])
+
+        # Restore DataFrames
+        for key in _SESSION_STATE_DATAFRAME_KEYS:
+            fname = f"dataframes/{key}.pkl"
+            if fname in names:
+                with zf.open(fname) as f:
+                    st.session_state[key] = pickle.loads(f.read())  # noqa: S301
+
+        # Restore raw file bytes
+        for key in _SESSION_STATE_FILE_BYTES_KEYS:
+            fname = f"files/{key}.bin"
+            if fname in names:
+                with zf.open(fname) as f:
+                    st.session_state[key] = f.read()
+
+    return warnings
 
 
 def apply_linear_adjustments(
@@ -88,6 +173,36 @@ def apply_linear_adjustments(
 
     return adjusted, warnings
 
+
+########################################################################################
+# Session State Restore
+with st.container(border=True):
+    st.header("Restore Previous Session (Optional)")
+    st.caption(
+        "Upload a session state ZIP downloaded from the **Downloads** page "
+        "to restore the app exactly as it was — including all data, "
+        "preprocessing settings, and analysis results."
+    )
+    session_zip_upload = st.file_uploader(
+        "Upload session state ZIP",
+        type=["zip"],
+        key="session_state_zip_upload",
+    )
+    if session_zip_upload is not None:
+        restore_btn = st.button(
+            "Restore session from ZIP",
+            key="restore_session_state_btn",
+            type="primary",
+        )
+        if restore_btn:
+            with st.spinner("Restoring session state...", show_time=True):
+                restore_warnings = restore_session_state_from_zip(
+                    session_zip_upload.getvalue()
+                )
+            for w in restore_warnings:
+                st.warning(w)
+            st.success("Session state restored successfully.")
+            st.rerun()
 
 ########################################################################################
 # Step 1: Upload File with OD/bioscatter data
