@@ -155,6 +155,13 @@ with st.container(border=True):
 with st.container(border=True):
     st.subheader("Step 2. Configure Plots")
 
+    st.dataframe(
+        stats_df.set_index(row_label_col).rename(columns=METRIC_LABELS)[
+            list(METRIC_LABELS.values())
+        ],
+        use_container_width=True,
+    )
+
     available_metrics = [m for m in METRIC_LABELS if m in stats_df.columns]
     if not available_metrics:
         st.warning("No recognised growth metrics found in the analysis results.")
