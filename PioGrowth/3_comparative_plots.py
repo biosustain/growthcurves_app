@@ -159,7 +159,7 @@ with st.container(border=True):
         stats_df.set_index(row_label_col).rename(columns=METRIC_LABELS)[
             list(METRIC_LABELS.values())
         ],
-        use_container_width=True,
+        width='content',
     )
 
     available_metrics = [m for m in METRIC_LABELS if m in stats_df.columns]
