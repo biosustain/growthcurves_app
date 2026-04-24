@@ -15,18 +15,16 @@ Currently available:
 - Session state ZIP for restoring the full app state later
 """
 
-# Keys that should never be included in the snapshot.
-# Streamlit internal keys (start with "_" or "FormSubmitter:") are excluded
-# automatically; these are additional transient or widget-bound keys.
-_SNAPSHOT_EXCLUDE_KEYS = frozenset({
-    "df_qurve_format",           # regenerable BytesIO output
-    "session_state_zip",         # the snapshot itself
-    "session_state_zip_upload",  # file-uploader widget on upload page
-    "upload_page_od_adjustment_table",  # file-uploader widget state
-    "upload_page_turbidostat_meta",     # file-uploader widget state
-})
-
-_SNAPSHOT_EXCLUDE_PREFIXES = ("_", "FormSubmitter:")
+# Keys that should never be included in the snapshot
+_SNAPSHOT_EXCLUDE_KEYS = frozenset(
+    {
+        "df_qurve_format",  # regenerable BytesIO output
+        "session_state_zip",  # the snapshot itself
+        "session_state_zip_upload",  # file-uploader widget on upload page
+        "upload_page_od_adjustment_table",  # file-uploader widget state
+        "upload_page_turbidostat_meta",  # file-uploader widget state
+    }
+)
 
 
 def build_session_state_zip() -> bytes:
@@ -37,15 +35,14 @@ def build_session_state_zip() -> bytes:
     for key, val in st.session_state.items():
         if key in _SNAPSHOT_EXCLUDE_KEYS:
             continue
-        if any(key.startswith(p) for p in _SNAPSHOT_EXCLUDE_PREFIXES):
-            continue
-        if isinstance(val, io.RawIOBase | io.BufferedIOBase):
-            val.seek(0)
-            val = io.BytesIO(val.read())
         try:
             pickle.dumps(val)
             state_to_save[key] = val
-        except Exception:
+        except pickle.PickleError as e:
+            print(
+                f"Skipping non-serializable session state key: {key} (type {type(val)})"
+            )
+            print(f"Error: {e}")
             continue
 
     buf = io.BytesIO()
@@ -53,6 +50,7 @@ def build_session_state_zip() -> bytes:
         zf.writestr("session_state.pkl", pickle.dumps(state_to_save))
     buf.seek(0)
     return buf.getvalue()
+
 
 page_header_with_help("Downloads", DOWNLOADS_HELP)
 
@@ -97,9 +95,12 @@ with st.container(border=True):
     st.header("Export Session State")
     st.caption(
         "Download a ZIP snapshot of the full app state. "
-        "Re-upload it on the **Upload Data** page to restore the session exactly as it was."
+        "Re-upload it on the **Upload Data** page to restore "
+        "the session exactly as it was."
     )
-    prepare = st.button("Prepare session state download", key="prepare_session_state_zip")
+    prepare = st.button(
+        "Prepare session state download", key="prepare_session_state_zip"
+    )
 
 if prepare:
     with st.spinner("Building session state ZIP...", show_time=True):
