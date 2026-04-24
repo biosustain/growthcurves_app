@@ -114,3 +114,7 @@ if st.session_state.get("session_state_zip") is not None:
         mime="application/zip",
         key="download_session_state_zip",
     )
+
+if st.session_state.get("debug_mode", False):
+    st.subheader("Debug: Session State Contents")
+    st.write({k: type(v) for k, v in st.session_state.items()})
