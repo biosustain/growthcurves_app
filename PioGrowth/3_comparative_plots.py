@@ -100,7 +100,8 @@ with st.container(border=True):
     st.subheader("Step 1. Assign Groups to Reactors")
     st.markdown(
         "Edit the **Group** column to label each reactor. "
-        "Reactors sharing the same label will be compared together in the plots."
+        "Reactors sharing the same label will be compared together in the plots. "
+        "Please only use letters or only numbers."
     )
 
     # Build a default group assignment table (one row per unique reactor)
@@ -125,6 +126,9 @@ with st.container(border=True):
                 "Group": [""] * len(unique_reactors),
             }
         )
+        if is_turbidostat:
+            st.session_state[group_state_key]["Group"] = unique_reactors
+            
 
     edited_groups = st.data_editor(
         st.session_state[group_state_key],
@@ -135,8 +139,9 @@ with st.container(border=True):
             "Reactor": st.column_config.TextColumn("Reactor", disabled=True),
             "Group": st.column_config.TextColumn(
                 "Group",
-                help="Enter a group label (e.g. 'Control', 'Treatment A', '1', '2'). "
-                "Reactors with the same label will be plotted together.",
+                help="Enter a group label (e.g. 'Control', 'Treatment A', 'a', 'b'). "
+                "Reactors with the same label will be plotted together."
+                " Do not mix letters and numbers.",
                 width="medium",
             ),
         },
@@ -225,12 +230,8 @@ with st.container(border=True):
 
         # Drop rows where the metric is NaN (no growth / bad fit)
         plot_df = (
-            stats_df[[reactor_col, "Group", metric]].dropna(subset=[metric]).copy()
+            stats_df[[row_label_col, reactor_col, "Group", metric]].dropna(subset=[metric]).copy()
         )
-        try:
-            plot_df[metric] = pd.to_numeric(plot_df[metric], errors="coerce")
-        except Exception:
-            pass
         plot_df = plot_df.dropna(subset=[metric])
 
         if plot_df.empty:
