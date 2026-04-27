@@ -230,7 +230,7 @@ with st.container(border=True):
 
         # Drop rows where the metric is NaN (no growth / bad fit)
         plot_df = (
-            stats_df[[row_label_col, reactor_col, "Group", metric]].dropna(subset=[metric]).copy()
+            stats_df[[reactor_col, "Group", metric]].dropna(subset=[metric]).copy()
         )
         plot_df = plot_df.dropna(subset=[metric])
 
