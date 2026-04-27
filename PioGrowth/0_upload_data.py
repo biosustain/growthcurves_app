@@ -669,9 +669,7 @@ if button_pressed:
         msg += f"- Filling {mask_na.sum().sum():,d} missing OD readings.\n"
         msg += f"   - in detail: {mask_na.sum().to_dict()}\n"
         # ! should I visualize the values differently?
-        df_wide_raw_od_data_filtered = df_wide_raw_od_data_filtered.fillna(
-            method="ffill"
-        ).fillna(method="bfill")
+        df_wide_raw_od_data_filtered = df_wide_raw_od_data_filtered.ffill().bfill()
 
     # remove quantiles
     if remove_max:

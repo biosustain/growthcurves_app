@@ -43,6 +43,7 @@ data_dashboard = st.Page("0_data_dashboard.py", title="Data Dashboard")
 select_data = st.Page("0_select_data.py", title="Select / Exclude Data")
 batch_analysis = st.Page("1_batch_analysis.py", title="Batch Growth Analysis")
 turbistat_modus = st.Page("2_turbiostat.py", title="Turbidostat Growth Analysis")
+comparative_plots = st.Page("3_comparative_plots.py", title="Comparative Plots")
 downloads_page = st.Page("0_downloads.py", title="Downloads")
 about_page = st.Page(render_about, title="About")
 
@@ -55,7 +56,8 @@ with st.sidebar:
             "1. Upload and preprocess data\n"
             "2. Review data dashboard\n"
             "3. Run batch or turbidostat analysis\n"
-            "4. Export downloads"
+            "4. Compare metrics across groups\n"
+            "5. Export downloads"
         )
     st.caption(f"PioGrowth v{piogrowth.__version__}")
 
@@ -78,6 +80,7 @@ pg = st.navigation(
         select_data,
         batch_analysis,
         turbistat_modus,
+        comparative_plots,
         downloads_page,
         about_page,
     ],
