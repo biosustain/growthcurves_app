@@ -4,6 +4,7 @@ import streamlit as st
 from ui_components import page_header_with_help
 
 import piogrowth
+from piogrowth.session_state import render_restore_session_state_ui
 
 custom_id = st.session_state["custom_id"]
 df_raw_od_data = st.session_state["df_raw_od_data"]
@@ -88,6 +89,10 @@ def apply_linear_adjustments(
 
     return adjusted, warnings
 
+
+########################################################################################
+# Session State Restore
+render_restore_session_state_ui()
 
 ########################################################################################
 # Step 1: Upload File with OD/bioscatter data
