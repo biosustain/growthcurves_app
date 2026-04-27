@@ -128,7 +128,6 @@ with st.container(border=True):
         )
         if is_turbidostat:
             st.session_state[group_state_key]["Group"] = unique_reactors
-            
 
     edited_groups = st.data_editor(
         st.session_state[group_state_key],
@@ -164,7 +163,7 @@ with st.container(border=True):
         stats_df.set_index(row_label_col).rename(columns=METRIC_LABELS)[
             list(METRIC_LABELS.values())
         ],
-        width='content',
+        width="content",
     )
 
     available_metrics = [m for m in METRIC_LABELS if m in stats_df.columns]
