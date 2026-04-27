@@ -1,11 +1,10 @@
-import io
-import pickle
 from io import BytesIO
 
 import streamlit as st
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
 import piogrowth.convert_qurve
+from piogrowth.session_state import render_export_session_state_ui
 
 DOWNLOADS_HELP = """
 Download processed exports.
@@ -16,7 +15,7 @@ Currently available:
 """
 
 # Keys that should never be included in the snapshot
-_SNAPSHOT_EXCLUDE_KEYS = frozenset(
+SNAPSHOT_EXCLUDE_KEYS = frozenset(
     {
         "df_qurve_format",  # regenerable BytesIO output
         "session_state_zip",  # the snapshot itself
@@ -25,32 +24,6 @@ _SNAPSHOT_EXCLUDE_KEYS = frozenset(
         "upload_page_turbidostat_meta",  # file-uploader widget state
     }
 )
-
-
-def build_session_state_zip() -> bytes:
-    """Pickle all serializable session state into a ZIP and return as bytes."""
-    import zipfile
-
-    state_to_save = {}
-    for key, val in st.session_state.items():
-        if key in _SNAPSHOT_EXCLUDE_KEYS:
-            continue
-        try:
-            pickle.dumps(val)
-            state_to_save[key] = val
-        except pickle.PickleError as e:
-            print(
-                f"Skipping non-serializable session state key: {key} (type {type(val)})"
-            )
-            print(f"Error: {e}")
-            continue
-
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("session_state.pkl", pickle.dumps(state_to_save))
-    buf.seek(0)
-    return buf.getvalue()
-
 
 page_header_with_help("Downloads", DOWNLOADS_HELP)
 
@@ -91,29 +64,9 @@ if st.session_state.get("df_qurve_format") is not None:
         key="download_qurve_format",
     )
 
-with st.container(border=True):
-    st.header("Export Session State")
-    st.caption(
-        "Download a ZIP snapshot of the full app state. "
-        "Re-upload it on the **Upload Data** page to restore "
-        "the session exactly as it was."
-    )
-    prepare = st.button(
-        "Prepare session state download", key="prepare_session_state_zip"
-    )
-
-if prepare:
-    with st.spinner("Building session state ZIP...", show_time=True):
-        st.session_state["session_state_zip"] = build_session_state_zip()
-
-if st.session_state.get("session_state_zip") is not None:
-    st.download_button(
-        label="Download session state ZIP",
-        data=st.session_state["session_state_zip"],
-        file_name=f"{custom_id}_session_state.zip",
-        mime="application/zip",
-        key="download_session_state_zip",
-    )
+render_export_session_state_ui(
+    custom_id=custom_id, exclude_keys=SNAPSHOT_EXCLUDE_KEYS
+)
 
 if st.session_state.get("debug_mode", False):
     st.subheader("Debug: Session State Contents")

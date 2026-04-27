@@ -1,12 +1,10 @@
-import io
-import pickle
-
 import growthcurves as gc
 import pandas as pd
 import streamlit as st
 from ui_components import page_header_with_help
 
 import piogrowth
+from piogrowth.session_state import render_restore_session_state_ui
 
 custom_id = st.session_state["custom_id"]
 df_raw_od_data = st.session_state["df_raw_od_data"]
@@ -42,22 +40,6 @@ def callback_clear_raw_data():
         del st.session_state["min_date"]
     if "max_date" in st.session_state:
         del st.session_state["max_date"]
-
-
-def restore_session_state_from_zip(zip_bytes: bytes) -> list[str]:
-    """Restore session state from a session state ZIP. Returns a list of warning strings."""
-    import zipfile
-
-    warnings = []
-    with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
-        if "session_state.pkl" not in zf.namelist():
-            warnings.append("session_state.pkl not found in ZIP — nothing restored.")
-            return warnings
-        with zf.open("session_state.pkl") as f:
-            state_dict = pickle.loads(f.read())  # noqa: S301
-    for key, val in state_dict.items():
-        st.session_state[key] = val
-    return warnings
 
 
 def apply_linear_adjustments(
@@ -110,33 +92,7 @@ def apply_linear_adjustments(
 
 ########################################################################################
 # Session State Restore
-with st.expander("Restore Previous Session (Optional)", icon="📁"):
-    st.header("Restore Previous Session (Optional)")
-    st.caption(
-        "Upload a session state ZIP downloaded from the **Downloads** page "
-        "to restore the app exactly as it was — including all data, "
-        "preprocessing settings, and analysis results."
-    )
-    session_zip_upload = st.file_uploader(
-        "Upload session state ZIP",
-        type=["zip"],
-        key="session_state_zip_upload",
-    )
-    if session_zip_upload is not None:
-        restore_btn = st.button(
-            "Restore session from ZIP",
-            key="restore_session_state_btn",
-            type="primary",
-        )
-        if restore_btn:
-            with st.spinner("Restoring session state...", show_time=True):
-                restore_warnings = restore_session_state_from_zip(
-                    session_zip_upload.getvalue()
-                )
-            for w in restore_warnings:
-                st.warning(w)
-            st.success("Session state restored successfully.")
-            st.rerun()
+render_restore_session_state_ui()
 
 ########################################################################################
 # Step 1: Upload File with OD/bioscatter data
