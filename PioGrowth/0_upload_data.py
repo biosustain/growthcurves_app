@@ -4,6 +4,7 @@ import streamlit as st
 from ui_components import page_header_with_help
 
 import piogrowth
+from piogrowth.session_state import render_restore_session_state_ui
 
 custom_id = st.session_state["custom_id"]
 df_raw_od_data = st.session_state["df_raw_od_data"]
@@ -88,6 +89,10 @@ def apply_linear_adjustments(
 
     return adjusted, warnings
 
+
+########################################################################################
+# Session State Restore
+render_restore_session_state_ui()
 
 ########################################################################################
 # Step 1: Upload File with OD/bioscatter data
@@ -258,12 +263,12 @@ with st.container(border=True):
             )
     # Save bytes and file name to session state for later processing
     if od_adjustment_upload is not None:
-        st.session_state["od_adjustment_upload_bytes"] = od_adjustment_upload.getvalue()
+        # st.session_state["od_adjustment_upload_bytes"] = od_adjustment_upload.getvalue()
         st.session_state["od_adjustment_upload_name"] = od_adjustment_upload.name
     if turbidostat_meta_upload is not None:
-        st.session_state["turbidostat_meta_upload_bytes"] = (
-            turbidostat_meta_upload.getvalue()
-        )
+        # st.session_state["turbidostat_meta_upload_bytes"] = (
+        #     turbidostat_meta_upload.getvalue()
+        # )
         st.session_state["turbidostat_meta_upload_name"] = turbidostat_meta_upload.name
 
 # Step 3: Configure preprocessing options
