@@ -13,10 +13,14 @@ import zipfile
 from collections.abc import MutableMapping
 from typing import Any
 
+import pandas as pd
 import streamlit as st
 
 logger = logging.getLogger(__name__)
 
+MAX_LIST_REPR = 5  # max items shown inline for lists
+
+# region: Session state snapshot export/import logic
 def build_session_state_zip(
     session_state: MutableMapping[str, Any],
     exclude_keys: frozenset[str] | None = None,
@@ -91,8 +95,9 @@ def render_restore_session_state_ui() -> None:
                 st.warning(warning)
             st.success("Session state restored successfully.")
             st.rerun()
+# endregion
 
-
+# region: Session state snapshot export/import UI components
 def render_export_session_state_ui(
     custom_id: str,
     exclude_keys: frozenset[str] | None = None,
@@ -124,3 +129,78 @@ def render_export_session_state_ui(
             mime="application/zip",
             key="download_session_state_zip",
         )
+# endregion
+
+# region: Session state inspection for debugging
+def summarize_value(val, max_list_repr=MAX_LIST_REPR):
+    """Return a short, human-readable summary of a session state value."""
+    if isinstance(val, pd.DataFrame):
+        return f"<DataFrame shape={val.shape} columns={list(val.columns)}>"
+    if isinstance(val, list):
+        if len(val) <= max_list_repr:
+            return repr(val)
+        preview = repr(val[:max_list_repr])[:-1] + f", ... +{len(val) - max_list_repr} more]"
+        return preview
+    return val
+
+
+def ui_overview_table(max_list_repr=MAX_LIST_REPR):
+    """Displays an overview table of all session state keys, their types, and summaries."""
+    st.subheader("Overview")
+
+    # st.write(st.session_state)
+
+    rows = []
+    for key, val in st.session_state.items():
+        rows.append(
+            {
+                "key": str(key),
+                "type": type(val).__name__,
+                "summary": summarize_value(val, max_list_repr=max_list_repr),
+            }
+        )
+
+    if rows:
+        st.dataframe(
+            pd.DataFrame(rows).set_index("key"),
+            use_container_width=True,
+            height=min(40 + 35 * len(rows), 500),
+        )
+    else:
+        st.info("Session state is empty.")
+
+
+def ui_key_inspector(max_list_repr=MAX_LIST_REPR):
+    """Displays a UI for inspecting the value of a selected session state key in detail."""
+    st.subheader("Inspect key")
+
+    keys = list(st.session_state.keys())
+    if keys:
+        selected = st.selectbox("Select a key", options=keys, format_func=str)
+
+        val = st.session_state[selected]
+
+        if isinstance(val, pd.DataFrame):
+            st.write(f"**DataFrame** — shape `{val.shape}`, columns: `{list(val.columns)}`")
+            st.dataframe(val, use_container_width=True)
+        elif isinstance(val, list):
+            st.write(f"**list** — {len(val)} items")
+            for i, item in enumerate(val):
+                with st.expander(f"[{i}]  {repr(item)[:120]}", expanded=False):
+                    if isinstance(item, pd.DataFrame):
+                        st.dataframe(item, use_container_width=True)
+                    else:
+                        st.write(item)
+        elif isinstance(val, dict):
+            st.write(f"**dict** — {len(val)} keys")
+            st.json(
+                {
+                    k: summarize_value(v, max_list_repr=max_list_repr) if isinstance(v, (pd.DataFrame, list)) else v
+                    for k, v in val.items()
+                }
+            )
+        else:
+            st.write(val)
+    else:
+        st.info("No keys to inspect.")
+# endregion

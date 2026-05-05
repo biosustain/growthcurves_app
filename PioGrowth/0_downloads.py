@@ -4,8 +4,13 @@ import streamlit as st
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
 import piogrowth.convert_qurve
-from piogrowth.session_state import render_export_session_state_ui
+from piogrowth.session_state import (
+    render_export_session_state_ui,
+    ui_key_inspector,
+    ui_overview_table,
+)
 
+MAX_LIST_REPR = 5  # max items shown inline for lists
 DOWNLOADS_HELP = """
 Download processed exports.
 
@@ -69,5 +74,11 @@ render_export_session_state_ui(
 )
 
 if st.session_state.get("debug_mode", False):
+    """Debug session state page for development purposes."""
     st.subheader("Debug: Session State Contents")
-    st.write({k: type(v) for k, v in st.session_state.items()})
+
+    # ── Overview table ────────────────────────────────────────────────────────────────
+    ui_overview_table(max_list_repr=MAX_LIST_REPR)
+
+    # ── Per-key inspector ─────────────────────────────────────────────────────────────
+    ui_key_inspector(max_list_repr=MAX_LIST_REPR)
