@@ -29,7 +29,7 @@ MAX_LIST_REPR = 5  # max items shown inline for lists
 
 # region: JSON serialization helpers
 def _to_json_serializable(val: Any) -> Any:
-    """Convert *val* to a JSON-serialisable form, raising ``TypeError`` if
+    """Convert *val* to a JSON-serializable form, raising ``TypeError`` if
     the value cannot be represented.
     """
     if val is None or isinstance(val, (bool, int, float, str)):
@@ -66,7 +66,7 @@ def build_session_state_zip(
 
     DataFrames are stored as CSV files under ``dataframes/``, raw ``bytes``
     values under ``files/``, and all other JSON-serialisable values are
-    collected into ``metadata.json``.  Non-serialisable values are silently
+    collected into ``metadata.json``.  Non-serializable values are silently
     skipped with a debug log entry.
     """
     _exclude_keys = exclude_keys or frozenset()
@@ -80,7 +80,7 @@ def build_session_state_zip(
             if isinstance(val, pd.DataFrame):
                 zf.writestr(
                     f"dataframes/{key}.csv",
-                    val.to_csv().encode("utf-8"),
+                    val.to_csv(index=True).encode("utf-8"),
                 )
             elif isinstance(val, bytes):
                 zf.writestr(f"files/{key}.bin", val)
