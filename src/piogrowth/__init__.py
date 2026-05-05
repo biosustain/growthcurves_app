@@ -5,7 +5,7 @@ from importlib import metadata
 
 import pandas as pd
 
-from . import load, session_state
+from . import load
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,6 @@ __all__ = [
     "reindex_w_relative_time",
     "convert_to_elapsed_hours",
     "load",
-    "session_state",
 ]
 
 

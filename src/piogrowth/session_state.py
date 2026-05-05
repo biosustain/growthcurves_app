@@ -2,13 +2,19 @@
 
 This module centralizes both logic and reusable UI blocks for
 exporting/restoring `st.session_state` snapshots.
+
+ZIP structure
+-------------
+- ``metadata.json``: JSON-serializable scalar/list/dict values.
+- ``dataframes/{key}.csv``: one CSV per ``pd.DataFrame`` value.
+- ``files/{key}.bin``: raw ``bytes`` values (e.g. uploaded file content).
 """
 
 from __future__ import annotations
 
 import io
+import json
 import logging
-import pickle
 import zipfile
 from collections.abc import MutableMapping
 from typing import Any
@@ -21,32 +27,74 @@ logger = logging.getLogger(__name__)
 MAX_LIST_REPR = 5  # max items shown inline for lists
 
 
+# region: JSON serialization helpers
+def _to_json_serializable(val: Any) -> Any:
+    """Convert *val* to a JSON-serialisable form, raising ``TypeError`` if
+    the value cannot be represented.
+    """
+    if val is None or isinstance(val, (bool, int, float, str)):
+        return val
+    if isinstance(val, pd.Timestamp):
+        return {"__type__": "pd.Timestamp", "value": str(val)}
+    if isinstance(val, list):
+        return [_to_json_serializable(item) for item in val]
+    if isinstance(val, dict):
+        return {k: _to_json_serializable(v) for k, v in val.items()}
+    raise TypeError(f"Cannot JSON-serialise {type(val).__name__}")
+
+
+def _from_json_value(val: Any) -> Any:
+    """Reconstruct a value from its JSON-serialisable representation."""
+    if isinstance(val, dict):
+        if val.get("__type__") == "pd.Timestamp":
+            return pd.Timestamp(val["value"])
+        return {k: _from_json_value(v) for k, v in val.items()}
+    if isinstance(val, list):
+        return [_from_json_value(item) for item in val]
+    return val
+
+
+# endregion
+
+
 # region: Session state snapshot export/import logic
 def build_session_state_zip(
     session_state: MutableMapping[str, Any],
     exclude_keys: frozenset[str] | None = None,
 ) -> bytes:
-    """Pickle all serializable session state into a ZIP and return bytes."""
-    state_to_save: dict[str, Any] = {}
+    """Serialise session state into a ZIP archive and return the raw bytes.
+
+    DataFrames are stored as CSV files under ``dataframes/``, raw ``bytes``
+    values under ``files/``, and all other JSON-serialisable values are
+    collected into ``metadata.json``.  Non-serialisable values are silently
+    skipped with a debug log entry.
+    """
     _exclude_keys = exclude_keys or frozenset()
-    for key, val in session_state.items():
-        if key in _exclude_keys:
-            continue
-        try:
-            pickle.dumps(val)
-            state_to_save[key] = val
-        except Exception:
-            logger.debug(
-                "Skipping non-serializable session state key %s (type %s)",
-                key,
-                type(val),
-                exc_info=True,
-            )
-            continue
+    metadata: dict[str, Any] = {}
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("session_state.pkl", pickle.dumps(state_to_save))
+        for key, val in session_state.items():
+            if key in _exclude_keys:
+                continue
+            if isinstance(val, pd.DataFrame):
+                zf.writestr(
+                    f"dataframes/{key}.csv",
+                    val.to_csv().encode("utf-8"),
+                )
+            elif isinstance(val, bytes):
+                zf.writestr(f"files/{key}.bin", val)
+            else:
+                try:
+                    metadata[key] = _to_json_serializable(val)
+                except TypeError:
+                    logger.debug(
+                        "Skipping non-serialisable session state key"
+                        " %s (type %s)",
+                        key,
+                        type(val).__name__,
+                    )
+        zf.writestr("metadata.json", json.dumps(metadata))
     buf.seek(0)
     return buf.getvalue()
 
@@ -54,19 +102,73 @@ def build_session_state_zip(
 def restore_session_state_from_zip(
     session_state: MutableMapping[str, Any],
     zip_bytes: bytes,
-) -> list[str]:
-    """Restore session_state values from a ZIP and return warnings."""
-    warnings: list[str] = []
-    with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
-        if "session_state.pkl" not in zf.namelist():
-            warnings.append("session_state.pkl not found in ZIP — nothing restored.")
-            return warnings
-        with zf.open("session_state.pkl") as f:
-            state_dict = pickle.loads(f.read())  # noqa: S301
+) -> tuple[bool, list[str]]:
+    """Restore session state from a ZIP archive.
 
-    for key, val in state_dict.items():
-        session_state[key] = val
-    return warnings
+    Returns a ``(restored, warnings)`` tuple where *restored* is ``True``
+    when at least one key was successfully written back and *warnings* is a
+    list of human-readable problem descriptions.
+    """
+    warnings: list[str] = []
+    restored = False
+
+    try:
+        zf_io = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
+    except zipfile.BadZipFile:
+        warnings.append(
+            "The uploaded file is not a valid ZIP archive — nothing restored."
+        )
+        return False, warnings
+
+    with zf_io as zf:
+        names = set(zf.namelist())
+
+        # --- metadata.json ---------------------------------------------------
+        if "metadata.json" not in names:
+            warnings.append(
+                "metadata.json not found in ZIP — no scalar metadata restored."
+            )
+        else:
+            try:
+                raw = json.loads(zf.read("metadata.json").decode("utf-8"))
+                for key, val in raw.items():
+                    session_state[key] = _from_json_value(val)
+                restored = True
+            except Exception as exc:
+                warnings.append(f"Failed to restore metadata: {exc}")
+
+        # --- dataframes/ -----------------------------------------------------
+        df_entries = [
+            n for n in names
+            if n.startswith("dataframes/") and n.endswith(".csv")
+        ]
+        for entry in df_entries:
+            key = entry[len("dataframes/"):-len(".csv")]
+            try:
+                df = pd.read_csv(
+                    io.BytesIO(zf.read(entry)),
+                    index_col=0,
+                    parse_dates=True,
+                )
+                session_state[key] = df
+                restored = True
+            except Exception as exc:
+                warnings.append(f"Failed to restore DataFrame '{key}': {exc}")
+
+        # --- files/ ----------------------------------------------------------
+        file_entries = [
+            n for n in names
+            if n.startswith("files/") and n.endswith(".bin")
+        ]
+        for entry in file_entries:
+            key = entry[len("files/"):-len(".bin")]
+            try:
+                session_state[key] = zf.read(entry)
+                restored = True
+            except Exception as exc:
+                warnings.append(f"Failed to restore file '{key}': {exc}")
+
+    return restored, warnings
 
 
 def render_restore_session_state_ui() -> None:
@@ -89,13 +191,16 @@ def render_restore_session_state_ui() -> None:
             type="primary",
         ):
             with st.spinner("Restoring session state...", show_time=True):
-                restore_warnings = restore_session_state_from_zip(
+                restored, restore_warnings = restore_session_state_from_zip(
                     st.session_state, session_zip_upload.getvalue()
                 )
             for warning in restore_warnings:
                 st.warning(warning)
-            st.success("Session state restored successfully.")
-            st.rerun()
+            if restored:
+                st.success("Session state restored successfully.")
+                st.rerun()
+            elif not restore_warnings:
+                st.warning("Nothing was restored from the ZIP.")
 
 
 # endregion
