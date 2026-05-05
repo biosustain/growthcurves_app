@@ -69,9 +69,7 @@ if st.session_state.get("df_qurve_format") is not None:
         key="download_qurve_format",
     )
 
-render_export_session_state_ui(
-    custom_id=custom_id, exclude_keys=SNAPSHOT_EXCLUDE_KEYS
-)
+render_export_session_state_ui(custom_id=custom_id, exclude_keys=SNAPSHOT_EXCLUDE_KEYS)
 
 if st.session_state.get("debug_mode", False):
     """Debug session state page for development purposes."""
