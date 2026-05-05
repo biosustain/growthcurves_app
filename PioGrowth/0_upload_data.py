@@ -263,12 +263,12 @@ with st.container(border=True):
             )
     # Save bytes and file name to session state for later processing
     if od_adjustment_upload is not None:
-        st.session_state["od_adjustment_upload_bytes"] = od_adjustment_upload.getvalue()
+        # st.session_state["od_adjustment_upload_bytes"] = od_adjustment_upload.getvalue()
         st.session_state["od_adjustment_upload_name"] = od_adjustment_upload.name
     if turbidostat_meta_upload is not None:
-        st.session_state["turbidostat_meta_upload_bytes"] = (
-            turbidostat_meta_upload.getvalue()
-        )
+        # st.session_state["turbidostat_meta_upload_bytes"] = (
+        #     turbidostat_meta_upload.getvalue()
+        # )
         st.session_state["turbidostat_meta_upload_name"] = turbidostat_meta_upload.name
 
 # Step 3: Configure preprocessing options
