@@ -74,9 +74,11 @@ render_export_session_state_ui(custom_id=custom_id, exclude_keys=SNAPSHOT_EXCLUD
 if st.session_state.get("debug_mode", False):
     # Debug session state page for development purposes.
     st.subheader("Debug: Session State Contents")
-
+    excluded_keys = [k for k in SNAPSHOT_EXCLUDE_KEYS if k in st.session_state]
+    st.write(f"Excluded keys from snapshot (not shown): {excluded_keys}")
+    # st.write({k: v for k, v in st.session_state.items() if k in excluded_keys})
     # ── Overview table ────────────────────────────────────────────────────────────────
-    ui_overview_table(max_list_repr=MAX_LIST_REPR)
+    ui_overview_table(max_list_repr=MAX_LIST_REPR, exclude_keys=excluded_keys)
 
     # ── Per-key inspector ─────────────────────────────────────────────────────────────
-    ui_key_inspector(max_list_repr=MAX_LIST_REPR)
+    ui_key_inspector(max_list_repr=MAX_LIST_REPR, exclude_keys=excluded_keys)

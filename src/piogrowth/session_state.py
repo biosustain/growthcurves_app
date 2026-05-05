@@ -89,8 +89,7 @@ def build_session_state_zip(
                     metadata[key] = _to_json_serializable(val)
                 except TypeError:
                     logger.debug(
-                        "Skipping non-serialisable session state key"
-                        " %s (type %s)",
+                        "Skipping non-serialisable session state key" " %s (type %s)",
                         key,
                         type(val).__name__,
                     )
@@ -139,11 +138,10 @@ def restore_session_state_from_zip(
 
         # --- dataframes/ -----------------------------------------------------
         df_entries = [
-            n for n in names
-            if n.startswith("dataframes/") and n.endswith(".csv")
+            n for n in names if n.startswith("dataframes/") and n.endswith(".csv")
         ]
         for entry in df_entries:
-            key = entry[len("dataframes/"):-len(".csv")]
+            key = entry[len("dataframes/") : -len(".csv")]
             try:
                 df = pd.read_csv(
                     io.BytesIO(zf.read(entry)),
@@ -157,11 +155,10 @@ def restore_session_state_from_zip(
 
         # --- files/ ----------------------------------------------------------
         file_entries = [
-            n for n in names
-            if n.startswith("files/") and n.endswith(".bin")
+            n for n in names if n.startswith("files/") and n.endswith(".bin")
         ]
         for entry in file_entries:
-            key = entry[len("files/"):-len(".bin")]
+            key = entry[len("files/") : -len(".bin")]
             try:
                 session_state[key] = zf.read(entry)
                 restored = True
@@ -258,7 +255,9 @@ def summarize_value(val, max_list_repr=MAX_LIST_REPR):
     return val
 
 
-def ui_overview_table(max_list_repr=MAX_LIST_REPR):
+def ui_overview_table(
+    max_list_repr=MAX_LIST_REPR, exclude_keys: frozenset[str] | None = None
+):
     """Displays an overview table of all session state keys, their types, and
     summaries.
     """
@@ -268,6 +267,8 @@ def ui_overview_table(max_list_repr=MAX_LIST_REPR):
 
     rows = []
     for key, val in st.session_state.items():
+        if exclude_keys and key in exclude_keys:
+            continue
         rows.append(
             {
                 "key": str(key),
@@ -286,13 +287,18 @@ def ui_overview_table(max_list_repr=MAX_LIST_REPR):
         st.info("Session state is empty.")
 
 
-def ui_key_inspector(max_list_repr=MAX_LIST_REPR):
+def ui_key_inspector(
+    max_list_repr=MAX_LIST_REPR, exclude_keys: frozenset[str] | None = None
+):
     """Displays a UI for inspecting the value of a selected session state key in
     detail.
     """
     st.subheader("Inspect key")
 
-    keys = list(st.session_state.keys())
+    if exclude_keys:
+        keys = [k for k in list(st.session_state.keys()) if k not in exclude_keys]
+    else:
+        keys = list(st.session_state.keys())
     if keys:
         selected = st.selectbox("Select a key", options=keys, format_func=str)
 
