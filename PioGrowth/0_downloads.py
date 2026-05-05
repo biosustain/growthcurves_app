@@ -27,6 +27,8 @@ SNAPSHOT_EXCLUDE_KEYS = frozenset(
         "session_state_zip_upload",  # file-uploader widget on upload page
         "upload_page_od_adjustment_table",  # file-uploader widget state
         "upload_page_turbidostat_meta",  # file-uploader widget state
+        "prepare_session_state_zip",  # do not save state of button pressed
+        "create_qurve_format",  # do not save state of button pressed
     }
 )
 
