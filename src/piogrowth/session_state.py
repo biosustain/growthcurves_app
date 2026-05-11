@@ -38,6 +38,11 @@ def _to_json_serializable(val: Any) -> Any:
         return {"__type__": "pd.Timestamp", "value": str(val)}
     if isinstance(val, list):
         return [_to_json_serializable(item) for item in val]
+    if isinstance(val, tuple):
+        return {
+            "__type__": "tuple",
+            "value": [_to_json_serializable(item) for item in val],
+        }
     if isinstance(val, dict):
         return {k: _to_json_serializable(v) for k, v in val.items()}
     raise TypeError(f"Cannot JSON-serialise {type(val).__name__}")
@@ -48,6 +53,8 @@ def _from_json_value(val: Any) -> Any:
     if isinstance(val, dict):
         if val.get("__type__") == "pd.Timestamp":
             return pd.Timestamp(val["value"])
+        if val.get("__type__") == "tuple":
+            return tuple(_from_json_value(item) for item in val["value"])
         return {k: _from_json_value(v) for k, v in val.items()}
     if isinstance(val, list):
         return [_from_json_value(item) for item in val]
@@ -88,7 +95,7 @@ def build_session_state_zip(
                 try:
                     metadata[key] = _to_json_serializable(val)
                 except TypeError:
-                    logger.debug(
+                    logger.warning(
                         "Skipping non-serialisable session state key" " %s (type %s)",
                         key,
                         type(val).__name__,
