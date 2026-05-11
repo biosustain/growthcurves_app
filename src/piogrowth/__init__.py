@@ -13,7 +13,11 @@ __version__ = metadata.version("piogrowth")
 
 # The __all__ variable is a list of variables which are imported
 # when a user does "from example import *"
-__all__ = ["reindex_w_relative_time", "convert_to_elapsed_hours", "load"]
+__all__ = [
+    "reindex_w_relative_time",
+    "convert_to_elapsed_hours",
+    "load",
+]
 
 
 def reindex_w_relative_time(

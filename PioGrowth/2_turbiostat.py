@@ -30,7 +30,9 @@ def create_summary(maxima: dict[str, pd.Series]) -> pd.DataFrame:
 
 
 def get_values_from_df(df_wide: pd.DataFrame, indices: pd.MultiIndex) -> pd.DataFrame:
-    """Get values from the wide DataFrame based on the index of the summary DataFrame."""
+    """
+    Get values from the wide DataFrame based on the index of the summary DataFrame.
+    """
     return df_wide.loc[indices.get_level_values("timestamp")].stack().loc[indices]
 
 
@@ -206,7 +208,8 @@ with st.container(border=True):
     else:
         if not has_uploaded_metadata:
             st.caption(
-                "No dilution metadata uploaded. Upload an optional CSV on the Upload Data page (Step 2)."
+                "No dilution metadata uploaded. Upload an optional CSV "
+                "on the Upload Data page (Step 2)."
             )
             st.page_link(
                 "0_upload_data.py",
@@ -216,15 +219,19 @@ with st.container(border=True):
         st.markdown("Automatic peak detection options")
         minimum_peak_height = st.number_input(
             label=(
-                "Minimum peak height (in OD units) - used only if no metadata provided. "
-                "No value uses adaptive thresholding based on the maximum of an OD curve."
-                " The default is one-fifth of the maximum OD value in a time series."
+                "Minimum peak height (in OD units) - used only if no metadata provided."
+                " No value uses adaptive thresholding based on the maximum of an OD "
+                "curve. The default is one-fifth of the maximum OD value in a time "
+                "series."
             ),
             min_value=0.0,
             value=None,
         )
         minimum_distance = st.number_input(
-            label="Minimum distance between peaks (in number of measurement timepoints)",
+            label=(
+                "Minimum distance between peaks "
+                "(in number of measurement timepoints)"
+            ),
             min_value=3,
             value=300,
             step=1,
@@ -274,6 +281,8 @@ if turbidostat_meta_bytes is not None:
     if not mask_dilution_events.all():
         st.info('Showing only rows with "DilutionEvent" in column "event_name".')
         df_meta = df_meta.loc[mask_dilution_events]
+    # store df_meta which is the turbidostat metadata with timestamps rounded
+    # and filtered to dilution events. This is used for peak detection:
     st.session_state["df_meta"] = df_meta
     df_meta["elapsed_time_in_seconds"] = (
         df_meta["timestamp_localtime"] - start_time
@@ -375,13 +384,15 @@ with st.spinner(text="Fitting curves...", show_time=True):
     time_at_mu_max = stats_df["time_at_umax"]
 
     axes = axes.flatten()
-    for ax, _col in zip(axes, df_rolling.columns):
+    for ax, _col in zip(axes, df_rolling.columns, strict=True):
         s_maxima = time_at_mu_max.loc[_col]
         for x in s_maxima:
             ax.axvline(x=x, color="red", linestyle="--")
-    for ax, col in zip(axes, df_rolling.columns):
+    for ax, col in zip(axes, df_rolling.columns, strict=True):
         sub_df = stats_df.loc[col]
-        range_exp_phase = list(zip(sub_df["exp_phase_start"], sub_df["exp_phase_end"]))
+        range_exp_phase = list(
+            zip(sub_df["exp_phase_start"], sub_df["exp_phase_end"], strict=True)
+        )
         for _start, _end in range_exp_phase:
             ax.axvspan(_start, _end, color="gray", alpha=0.2)
 

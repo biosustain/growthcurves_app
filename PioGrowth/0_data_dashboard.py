@@ -150,6 +150,8 @@ if df_wide_raw_od_data is not None and masked is not None:
             st.warning("Using different y-axis scale for each reactor.")
 
         df_plot = df_wide_raw_od_data
+        # ! for restored sessions where it may be loaded as float
+        masked = masked.astype(bool)  # convert to boolean for plotting
         mask_plot = masked
         if use_elapsed_time:
             df_plot = piogrowth.reindex_w_relative_time(
