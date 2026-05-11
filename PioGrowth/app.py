@@ -6,6 +6,9 @@ from ui_components import render_markdown
 import piogrowth
 from piogrowth.styling import green_gradient, green_navbar, red_buttons
 
+APP_VERSION = Path(__file__).with_name("VERSION").read_text(encoding="utf-8").strip()
+PACKAGE_VERSION = piogrowth.__version__
+
 logo_path = Path(__file__).with_name("logo.svg")
 logo_source = (
     str(logo_path)
@@ -59,7 +62,8 @@ with st.sidebar:
             "4. Compare metrics across groups\n"
             "5. Export downloads"
         )
-    st.caption(f"PioGrowth v{piogrowth.__version__}")
+    st.caption(f"PioGrowth app v{APP_VERSION}")
+    st.caption(f"piogrowth package v{PACKAGE_VERSION}")
 
     debug_mode = st.checkbox(
         "Debug Mode",
