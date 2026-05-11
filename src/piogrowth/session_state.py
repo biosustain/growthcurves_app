@@ -248,7 +248,10 @@ def render_export_session_state_ui(
 def summarize_value(val, max_list_repr=MAX_LIST_REPR):
     """Return a short, human-readable summary of a session state value."""
     if isinstance(val, pd.DataFrame):
-        return f"<DataFrame shape={val.shape} columns={list(val.columns)}>"
+        return (
+            f"<DataFrame shape={val.shape} columns={list(val.columns)}"
+            f" dtypes={val.dtypes.to_dict()}>"
+        )
     if isinstance(val, list):
         if len(val) <= max_list_repr:
             return repr(val)
@@ -256,6 +259,8 @@ def summarize_value(val, max_list_repr=MAX_LIST_REPR):
             repr(val[:max_list_repr])[:-1] + f", ... +{len(val) - max_list_repr} more]"
         )
         return preview
+    if isinstance(val, bytes):
+        return f"<bytes length={len(val)}>"
     return val
 
 
