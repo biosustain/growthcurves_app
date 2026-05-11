@@ -274,6 +274,8 @@ if turbidostat_meta_bytes is not None:
     if not mask_dilution_events.all():
         st.info('Showing only rows with "DilutionEvent" in column "event_name".')
         df_meta = df_meta.loc[mask_dilution_events]
+    # store df_meta which is the turbidostat metadata with timestamps rounded
+    # and filtered to dilution events. This is used for peak detection:
     st.session_state["df_meta"] = df_meta
     df_meta["elapsed_time_in_seconds"] = (
         df_meta["timestamp_localtime"] - start_time

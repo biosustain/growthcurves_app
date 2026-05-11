@@ -174,19 +174,23 @@ def render_restore_session_state_ui() -> None:
         st.header("Restore Previous Session (Optional)")
         st.caption(
             "Upload a session state ZIP downloaded from the **Downloads** page "
-            "to restore the app exactly as it was — including all data, "
-            "preprocessing settings, and analysis results."
+            "to restore the session state for the analysis — including all data, "
+            "preprocessing settings, and analysis results, but omitting the raw byte"
+            "data from file uploading."
         )
         session_zip_upload = st.file_uploader(
             "Upload session state ZIP",
             type=["zip"],
             key="session_state_zip_upload",
         )
+        clear_session_state = st.checkbox("Clear session state", value=False)
         if session_zip_upload is not None and st.button(
             "Restore session from ZIP",
             key="restore_session_state_btn",
             type="primary",
         ):
+            if clear_session_state:
+                st.session_state.clear()
             with st.spinner("Restoring session state...", show_time=True):
                 restored, restore_warnings = restore_session_state_from_zip(
                     st.session_state, session_zip_upload.getvalue()
