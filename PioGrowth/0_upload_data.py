@@ -107,7 +107,8 @@ with st.container(border=True):
             st.markdown("**Expected structure:**")
             st.markdown("- CSV/TXT file readable by `pandas.read_csv`")
             st.markdown(
-                "- Required columns: `timestamp_localtime`, `pioreactor_unit`, `od_reading`"
+                "- Required columns: `timestamp_localtime`, `pioreactor_unit`, "
+                "`od_reading`"
             )
             st.markdown("- One row per measurement")
             st.markdown("\n > Export from PioReactor WebApp or CLI.")
@@ -144,7 +145,8 @@ with st.container(border=True):
         keep_core_data = st.checkbox(
             "Keep only core data columns (timestamp, pioreactor_unit, od_reading)?",
             value=True,
-            help="If checked, only the essential columns are kept from the uploaded file.",
+            help="If checked, only the essential columns are kept from the uploaded "
+            "file.",
         )
     with main_options_cols[1]:
         custom_id = st.text_input(
@@ -204,12 +206,12 @@ with st.container(border=True):
             st.markdown("**Turbidostat Metadata**")
             st.markdown("""
                 If provided, peaks are not autodetected.
-                
+
                 - CSV file with columns `timestamp_localtime`, `pioreactor_unit`,
                 `event_name` and `message` and `data`.
 
-                - Used to parse `DilutionEvents` for turbidostat analysis 
-                  based on event descriptions in the metadata. 
+                - Used to parse `DilutionEvents` for turbidostat analysis
+                  based on event descriptions in the metadata.
                   If not provided, peaks will be autodetected based on OD data.
                 """)
 
@@ -263,7 +265,8 @@ with st.container(border=True):
             )
     # Save bytes and file name to session state for later processing
     if od_adjustment_upload is not None:
-        # st.session_state["od_adjustment_upload_bytes"] = od_adjustment_upload.getvalue()
+        # (st.session_state["od_adjustment_upload_bytes"]
+        #  = od_adjustment_upload.getvalue())
         st.session_state["od_adjustment_upload_name"] = od_adjustment_upload.name
     if turbidostat_meta_upload is not None:
         # st.session_state["turbidostat_meta_upload_bytes"] = (
@@ -276,7 +279,8 @@ with st.container(border=True):
 with st.container(border=True):
     st.header("Step 3. Configure Processing Options")
     st.warning(
-        'Options are only saved if you press "Apply options to uploaded data" button at the end of this section.'
+        'Options are only saved if you press "Apply options to uploaded data" button '
+        "at the end of this section."
     )
 
     with st.form("Upload_data_form", clear_on_submit=False):
@@ -550,7 +554,8 @@ if file is not None:
             st.error(
                 "Could not keep only core data columns. "
                 "Please check that the uploaded file contains "
-                "the required columns: timestamp_localtime, pioreactor_unit, od_reading."
+                "the required columns: "
+                "timestamp_localtime, pioreactor_unit, od_reading."
             )
             st.stop()
     st.session_state["df_raw_od_data"] = df_raw_od_data
