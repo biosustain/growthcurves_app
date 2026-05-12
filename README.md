@@ -46,6 +46,26 @@ Install package so that new code is picked up in a restared python interpreter:
 pip install -e ".[dev]"
 ```
 
+## Versioning
+
+This repository uses a hybrid strategy:
+
+- The shared package `piogrowth` uses git-tag based versioning via `setuptools_scm`.
+- Each app keeps its own version in a local `VERSION` file.
+
+Current app version files:
+
+- `PioGrowth/VERSION`
+- `MicroGrowth/VERSION`
+
+Bump app version (choose):
+
+```bash
+bump-my-version bump patch --config-file .bumpversion-piogrowth.toml
+bump-my-version bump patch --config-file .bumpversion-microgrowth.toml
+```
+
+
 ## History
 
 Growthcurves, PioGrowth and the MicroGrowth app were developed in parallel. The 

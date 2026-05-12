@@ -3,13 +3,11 @@
 authors = [{ name = "Henry Webel", email = "heweb@dtu.dk" }]
 description = "PioGrowth related core functionality"
 name = "piogrowth"
-# This means: Load the version from the package itself.
-# See the section below: [tools.setuptools.dynamic]
-# dynamic = [
-#     "version", # version is loaded from the package
-#     #"dependencies", # add if using requirements.txt
-# ]
-version = "0.2.0"          # this is used if not using dynamic loading of the version
+# This means: Load the version from git tags via setuptools_scm.
+dynamic = [
+    "version", # version is loaded from git tags via setuptools_scm
+    #"dependencies", # add if using requirements.txt
+]
 readme = "README.md"
 requires-python = ">=3.10" # test all higher Python versions
 # These are keywords
@@ -55,7 +53,7 @@ docs = [
     "scikit-learn",
 ]
 # local development options
-dev = ["black[jupyter]", "ruff", "pytest", "isort", "jupytext"]
+dev = ["black[jupyter]", "ruff", "pytest", "isort", "jupytext", "bump-my-version"]
 
 [tool.ruff]
 # https://docs.astral.sh/ruff/rules/#flake8-bandit-s
