@@ -255,10 +255,7 @@ def render_export_session_state_ui(
 def summarize_value(val, max_list_repr=MAX_LIST_REPR):
     """Return a short, human-readable summary of a session state value."""
     if isinstance(val, pd.DataFrame):
-        return (
-            f"<DataFrame shape={val.shape} columns={list(val.columns)}"
-            f" dtypes={val.dtypes.to_dict()}>"
-        )
+        return f"DataFrame, shape={val.shape}, columns={val.dtypes.to_dict()}"
     if isinstance(val, list):
         if len(val) <= max_list_repr:
             return repr(val)
@@ -322,7 +319,7 @@ def ui_key_inspector(
 
         if isinstance(val, pd.DataFrame):
             st.write(
-                f"**DataFrame** — shape `{val.shape}`, columns: `{list(val.columns)}`"
+                f"**DataFrame** — shape `{val.shape}`, columns: `{val.dtypes.to_dict()}`"
             )
             st.dataframe(val, use_container_width=True)
         elif isinstance(val, list):
