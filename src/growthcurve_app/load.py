@@ -1,4 +1,4 @@
-"""Load PioGrowth data from CSV files."""
+"""Load AutoGrowth data from CSV files."""
 
 import pandas as pd
 
@@ -16,5 +16,6 @@ COLUMN_TYPES: dict = {
 
 
 def read_csv(file: str) -> pd.DataFrame:
-    """Read a CSV file processed with PioGrowth reactor software."""
+    """Read a CSV file processed with AutoGrowth reactor software."""
+
     return pd.read_csv(file, converters=COLUMN_TYPES).convert_dtypes()

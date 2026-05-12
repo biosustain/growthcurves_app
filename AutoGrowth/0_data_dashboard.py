@@ -3,7 +3,7 @@ from buttons import create_download_button
 from plots import create_figure_bytes_to_download, plot_growth_data_w_mask
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
-import piogrowth
+import growthcurve_app
 
 DATA_DASHBOARD_HELP = """
 Review processed upload outputs in one place:
@@ -154,11 +154,11 @@ if df_wide_raw_od_data is not None and masked is not None:
         masked = masked.astype(bool)  # convert to boolean for plotting
         mask_plot = masked
         if use_elapsed_time:
-            df_plot = piogrowth.reindex_w_relative_time(
+            df_plot = growthcurve_app.reindex_w_relative_time(
                 df=df_plot,
                 start_time=start_time,
             )
-            mask_plot = piogrowth.reindex_w_relative_time(
+            mask_plot = growthcurve_app.reindex_w_relative_time(
                 df=mask_plot,
                 start_time=start_time,
             )

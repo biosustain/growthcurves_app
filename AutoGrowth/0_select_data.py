@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
-import piogrowth.analyze
+import growthcurve_app.analyze
 
 SELECT_DATA_HELP = """
 Interactively exclude data points from the rolling-median table:
@@ -51,7 +51,7 @@ CHART_KEY = f"select_data_lasso_{selected_col}"
 
 
 def _get_selected_times() -> np.ndarray:
-    return piogrowth.analyze.get_selected_times_from_event(
+    return growthcurve_app.analyze.get_selected_times_from_event(
         st.session_state.get(CHART_KEY)
     )
 

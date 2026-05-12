@@ -11,7 +11,7 @@ parse = """(?x)                     # Verbose mode
 serialize = ["{release}.{patch}", "{release}"]
 
 [[tool.bumpversion.files]]
-filename = "PioGrowth/VERSION"
+filename = "AutoGrowth/VERSION"
 
 [tool.bumpversion.parts.release]
 calver_format = "{0Y}.{0M}.{0D}"

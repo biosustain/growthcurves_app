@@ -1,8 +1,8 @@
 # ref: https://setuptools.pypa.io/en/stable/userguide/pyproject_config.html
 [project]
 authors = [{ name = "Henry Webel", email = "heweb@dtu.dk" }]
-description = "PioGrowth related core functionality"
-name = "piogrowth"
+description = "Growthcurve Apps related to growthcurves Python package."
+name = "growthcurve-app"
 # This means: Load the version from git tags via setuptools_scm.
 dynamic = [
     "version", # version is loaded from git tags via setuptools_scm
@@ -34,8 +34,8 @@ dependencies = [
 
 
 [project.urls]
-"Bug Tracker" = "https://github.com/RasmussenLab/PioGrowth/issues"
-"Homepage" = "https://github.com/RasmussenLab/PioGrowth"
+"Bug Tracker" = "https://github.com/biosustain/growthcurves_app/issues"
+"Homepage" = "https://github.com/biosustain/growthcurves_app"
 
 [project.optional-dependencies]
 # Optional dependencies to locally build the documentation, also used for 

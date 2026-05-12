@@ -3,8 +3,8 @@ from io import BytesIO
 import streamlit as st
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
-import piogrowth.convert_qurve
-from piogrowth.session_state import (
+import growthcurve_app.convert_qurve
+from growthcurve_app.session_state import (
     render_export_session_state_ui,
     ui_key_inspector,
     ui_overview_table,
@@ -52,7 +52,7 @@ with st.container(border=True):
 if convert:
     if df_wide_raw_od_data_filtered is not None and start_time is not None:
         with st.spinner("Converting to QurvE format...", show_time=True):
-            qurve_data = piogrowth.convert_qurve.to_qurve_format(
+            qurve_data = growthcurve_app.convert_qurve.to_qurve_format(
                 df_wide_raw_od_data_filtered,
                 start_time=start_time,
             )

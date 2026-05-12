@@ -1,4 +1,4 @@
 def test_import():
-    import piogrowth
+    import growthcurve_app
 
-    assert piogrowth.__version__
+    assert growthcurve_app.__version__

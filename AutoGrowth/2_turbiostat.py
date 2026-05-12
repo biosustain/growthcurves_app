@@ -15,8 +15,8 @@ from growthcurves_options import (
 from plots import create_figure_bytes_to_download, plot_growth_data_w_peaks
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
-from piogrowth.fit_spline import get_smoothing_range
-from piogrowth.turbistat import detect_peaks
+from growthcurve_app.fit_spline import get_smoothing_range
+from growthcurve_app.turbistat import detect_peaks
 
 
 ## Logic and PLOTTING

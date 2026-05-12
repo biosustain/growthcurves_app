@@ -1,4 +1,4 @@
-# About PioGrowth
+# About AutoGrowth
 
 App for analysis of optical density (OD) measurements
 produced mainly with a [PioReactor](https://pioreactor.com/)

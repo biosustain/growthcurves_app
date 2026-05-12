@@ -3,11 +3,11 @@ from pathlib import Path
 import streamlit as st
 from ui_components import render_markdown
 
-import piogrowth
-from piogrowth.styling import green_gradient, green_navbar, red_buttons
+import growthcurve_app
+from growthcurve_app.styling import green_gradient, green_navbar, red_buttons
 
 APP_VERSION = Path(__file__).with_name("VERSION").read_text(encoding="utf-8").strip()
-PACKAGE_VERSION = piogrowth.__version__
+PACKAGE_VERSION = growthcurve_app.__version__
 
 logo_path = Path(__file__).with_name("logo.svg")
 logo_source = (
@@ -18,13 +18,13 @@ logo_source = (
 
 # General configurations
 st.set_page_config(
-    page_title="PioGrowth",
+    page_title="AutoGrowth",
     layout="wide",
     page_icon=logo_source,
     initial_sidebar_state="expanded",
 )
 
-st.logo(logo_source, link="https://github.com/biosustain/PioGrowth")
+st.logo(logo_source, link="https://github.com/biosustain/growthcurves_app/AutoGrowth")
 
 # Initialize constants
 DEFAULT_CUSTOM_ID = "pioreactor_experiment"
@@ -37,7 +37,7 @@ st.session_state["DEFAULT_XLABEL_REL"] = "Elapsed time (hours)"
 
 # function creating the about page from a markdown file
 def render_about():
-    render_markdown("PioGrowth/markdowns/about.md")
+    render_markdown("AutoGrowth/markdowns/about.md")
 
 
 # Navigation
@@ -62,8 +62,8 @@ with st.sidebar:
             "4. Compare metrics across groups\n"
             "5. Export downloads"
         )
-    st.caption(f"PioGrowth app v{APP_VERSION}")
-    st.caption(f"piogrowth package v{PACKAGE_VERSION}")
+    st.caption(f"AutoGrowth app v{APP_VERSION}")
+    st.caption(f"growthcurve-app package v{PACKAGE_VERSION}")
 
     debug_mode = st.checkbox(
         "Debug Mode",

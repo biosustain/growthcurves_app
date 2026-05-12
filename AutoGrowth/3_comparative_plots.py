@@ -1,4 +1,4 @@
-"""Comparative plots page for PioGrowth.
+"""Comparative plots page for AutoGrowth.
 
 Allows users to assign groups to reactors and generates interactive bar/box/violin
 plots comparing growth metrics across groups.

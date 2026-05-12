@@ -26,7 +26,7 @@ Options:
 ```bash
 # pwd: docs
 # apidoc
-sphinx-apidoc --force --implicit-namespaces --module-first -o reference ../src/piogrowth
+sphinx-apidoc --force --implicit-namespaces --module-first -o reference ../src/growthcurve_app
 # build docs
 sphinx-build -n -W --keep-going -b html ./ ./_build/
 ```

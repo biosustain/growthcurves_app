@@ -3,8 +3,8 @@ import pandas as pd
 import streamlit as st
 from ui_components import page_header_with_help
 
-import piogrowth
-from piogrowth.session_state import render_restore_session_state_ui
+import growthcurve_app
+from growthcurve_app.session_state import render_restore_session_state_ui
 
 custom_id = st.session_state["custom_id"]
 df_raw_od_data = st.session_state["df_raw_od_data"]
@@ -115,7 +115,7 @@ with st.container(border=True):
             st.divider()
             st.markdown("**Example file:**")
             example_data = pd.read_csv(
-                "PioGrowth/data/batch_example/example_batch_data_od_readings.csv"
+                "AutoGrowth/data/batch_example/example_batch_data_od_readings.csv"
             )
             st.dataframe(example_data.head(10), hide_index=True, width="stretch")
             st.download_button(
@@ -178,7 +178,7 @@ with st.container(border=True):
             )
             st.divider()
             st.markdown("**Example:**")
-            fname = "PioGrowth/data/batch_example/example_batch_data_od_readings_calibration.csv"
+            fname = "AutoGrowth/data/batch_example/example_batch_data_od_readings_calibration.csv"
             example_data = pd.read_csv(fname)
             st.dataframe(example_data, hide_index=True, width="stretch")
             st.download_button(
@@ -218,9 +218,7 @@ with st.container(border=True):
             st.markdown("\n > Export from PioReactor WebApp or CLI.")
             st.divider()
             st.markdown("**Example:**")
-            fname = (
-                "PioGrowth/data/turbidostat_example/example_2-Pio_Experiment_dilution_events.csv"
-            )
+            fname = "AutoGrowth/data/turbidostat_example/example_2-Pio_Experiment_dilution_events.csv"
             example_data = pd.read_csv(fname)
             st.dataframe(example_data, hide_index=True, width="stretch")
             st.download_button(
@@ -513,7 +511,7 @@ msg = ""
 # File Uploaded ########################################################################
 # this runs wheather the button is pressed or not, but only if a file is uploaded
 if file is not None:
-    df_raw_od_data = piogrowth.load.read_csv(file)
+    df_raw_od_data = growthcurve_app.load.read_csv(file)
 
     # ! add check that required columns are in data and have correct dtypes (pandera)
     msg = (
@@ -778,7 +776,7 @@ if button_pressed:
             msg += f"    - {warning}\n"
 
     #### switch wide data to time eplased in hours #####################################
-    df_rolling = piogrowth.reindex_w_relative_time(
+    df_rolling = growthcurve_app.reindex_w_relative_time(
         df=df_rolling,
         start_time=st.session_state["start_time"],
     )

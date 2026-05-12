@@ -64,8 +64,8 @@ from growthcurves_options import (
 # from names import summary_mapping
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
-import piogrowth.analyze
-from piogrowth.fit_spline import get_smoothing_range
+import growthcurve_app.analyze
+from growthcurve_app.fit_spline import get_smoothing_range
 
 logger = logging.getLogger(__name__)
 if st.session_state.get("debug_mode", False):
@@ -89,12 +89,12 @@ def _on_no_growth(
     new_stats["no_growth_reason"] = "manually assigned"
     new_stats["elapsed_time"] = np.nan
     new_stats["model_name"] = batch_options["selected_model"]
-    piogrowth.analyze.update_reactor_stats(stats_df, selected_reactor, new_stats)
+    growthcurve_app.analyze.update_reactor_stats(stats_df, selected_reactor, new_stats)
     # ? what is fit_cache?
     fit_cache.pop(selected_reactor, None)
     selected_fit_times_map[selected_reactor] = t_all.tolist()
     # ? is this needed?
-    used_params_map[selected_reactor] = piogrowth.analyze.default_analysis_params(
+    used_params_map[selected_reactor] = growthcurve_app.analyze.default_analysis_params(
         batch_options
     )
     st.session_state["batch_analysis_summary_df"] = stats_df
@@ -119,12 +119,14 @@ def _build_effective_options_from_widgets(
     options_refit["min_signal_to_noise"] = float(st.session_state[rp_min_snr_key])
     options_refit["min_data_points"] = int(st.session_state[rp_min_dp_key])
 
-    method = piogrowth.analyze.growth_method_from_model(batch_options["selected_model"])
+    method = growthcurve_app.analyze.growth_method_from_model(
+        batch_options["selected_model"]
+    )
     # Only update relevant for method
     if method == "Sliding Window":
         options_refit["window_points"] = int(st.session_state[rp_window_key])
     elif method == "Spline":
-        options_refit["smooth_mode"] = piogrowth.analyze.normalize_smooth(
+        options_refit["smooth_mode"] = growthcurve_app.analyze.normalize_smooth(
             st.session_state[rp_smooth_key]
         )
     return options_refit, None
@@ -155,7 +157,7 @@ def _on_defaults(
     )
     st.session_state[rp_min_dp_key] = int(batch_options.get("min_data_points", 50))
     st.session_state[rp_window_key] = int(batch_options.get("window_points", 150))
-    st.session_state[rp_smooth_key] = piogrowth.analyze.normalize_smooth(
+    st.session_state[rp_smooth_key] = growthcurve_app.analyze.normalize_smooth(
         batch_options.get("smooth_mode", "fast")
     )
     _fit(
@@ -208,7 +210,7 @@ def _on_reanalyse(
     )
     used_times = selected_fit_times_map.get(selected_reactor)
     if used_times:
-        t_refit, y_refit = piogrowth.analyze.collect_selected_series(
+        t_refit, y_refit = growthcurve_app.analyze.collect_selected_series(
             series, np.asarray(used_times, dtype=float)
         )
         if t_refit.size < 2:
@@ -249,12 +251,12 @@ def _on_lasso_select(
     rp_window_key,
     rp_smooth_key,
 ):
-    xs = piogrowth.analyze.get_selected_times_from_event(
+    xs = growthcurve_app.analyze.get_selected_times_from_event(
         st.session_state.get(chart_key)
     )
     if xs.size < 2:
         return
-    refit_t, refit_y = piogrowth.analyze.collect_selected_series(series, xs)
+    refit_t, refit_y = growthcurve_app.analyze.collect_selected_series(series, xs)
     if refit_t.size < 2:
         return
     options_refit, _ = _build_effective_options_from_widgets(
@@ -298,7 +300,7 @@ def _fit(
     """
     # print("analysis params in _fit")
     # print(analysis_params)
-    fit_, stats_ = piogrowth.analyze.fit_single_series(t, y, analysis_params)
+    fit_, stats_ = growthcurve_app.analyze.fit_single_series(t, y, analysis_params)
     #  allows manual overwriting of these three parameters based on _reanalyse panel
     if exp_phase_start is not None:
         stats_["exp_phase_start"] = float(exp_phase_start)
@@ -323,7 +325,7 @@ def _fit(
         stats_["elapsed_time"] = np.nan
         stats_["model_name"] = analysis_params["selected_model"]
     fit_cache[selected_reactor] = fit_
-    piogrowth.analyze.update_reactor_stats(stats_df, selected_reactor, stats_)
+    growthcurve_app.analyze.update_reactor_stats(stats_df, selected_reactor, stats_)
     selected_fit_times_map[selected_reactor] = t.tolist()
     used_params_map[selected_reactor] = analysis_params
     st.session_state["batch_analysis_summary_df"] = stats_df
@@ -401,7 +403,9 @@ Workflow:
 """
 
 
-BATCH_HELP = f"{BATCH_HELP}\n\n---\n\n{piogrowth.analyze.load_method_notes_markdown()}"
+BATCH_HELP = (
+    f"{BATCH_HELP}\n\n---\n\n{growthcurve_app.analyze.load_method_notes_markdown()}"
+)
 
 
 page_header_with_help("Analyze growth experiment in batch mode", BATCH_HELP)
@@ -445,7 +449,7 @@ with st.container(border=True):
 
 ### Analyse data after form submission    ##############################################
 if run_analysis and not no_data_uploaded:
-    stats_df_new, fit_cache = piogrowth.analyze.run_model_fitting_on_df_compat(
+    stats_df_new, fit_cache = growthcurve_app.analyze.run_model_fitting_on_df_compat(
         df_rolling,
         model_name=analysis_options["selected_model"],
         n_fits=analysis_options["n_fits"],
@@ -603,10 +607,10 @@ with st.container(border=True):
     rp_smooth_key = f"batch_rp_smooth__{selected_reactor}"
 
     if phase_key not in st.session_state:
-        exp_phase_start = piogrowth.analyze.get_reactor_stat(
+        exp_phase_start = growthcurve_app.analyze.get_reactor_stat(
             stats_df, selected_reactor, "exp_phase_start"
         )
-        exp_phase_end = piogrowth.analyze.get_reactor_stat(
+        exp_phase_end = growthcurve_app.analyze.get_reactor_stat(
             stats_df, selected_reactor, "exp_phase_end"
         )
         lag0 = (
@@ -615,7 +619,7 @@ with st.container(border=True):
         exp0 = float(exp_phase_end) if pd.notna(exp_phase_end) else float(t_all.max())
         st.session_state[phase_key] = (lag0, exp0)
     if maxod_key not in st.session_state:
-        max_od_stat = piogrowth.analyze.get_reactor_stat(
+        max_od_stat = growthcurve_app.analyze.get_reactor_stat(
             stats_df, selected_reactor, "max_od"
         )
         default_max_od = float(max_od_stat) if pd.notna(max_od_stat) else actual_max_od
@@ -640,7 +644,7 @@ with st.container(border=True):
     if rp_window_key not in st.session_state:
         st.session_state[rp_window_key] = int(batch_options.get("window_points", 10))
     if rp_smooth_key not in st.session_state:
-        st.session_state[rp_smooth_key] = piogrowth.analyze.normalize_smooth(
+        st.session_state[rp_smooth_key] = growthcurve_app.analyze.normalize_smooth(
             batch_options.get("smooth_mode", "fast")
         )
 
@@ -725,7 +729,7 @@ with st.container(border=True):
                         step=1,
                         key=rp_min_dp_key,
                     )
-                    method = piogrowth.analyze.growth_method_from_model(
+                    method = growthcurve_app.analyze.growth_method_from_model(
                         batch_options["selected_model"]
                     )
                     if method == "Sliding Window":
@@ -824,29 +828,33 @@ with st.container(border=True):
         selected_fit_times = t_all.tolist()
 
     reactor_fit = fit_cache.get(selected_reactor)
-    current_stats = piogrowth.analyze.get_reactor_stats_dict(stats_df, selected_reactor)
+    current_stats = growthcurve_app.analyze.get_reactor_stats_dict(
+        stats_df, selected_reactor
+    )
     if (
         reactor_fit is None
         and len(t_all) >= 2
-        and not piogrowth.analyze.is_bad_fit(current_stats)
+        and not growthcurve_app.analyze.is_bad_fit(current_stats)
     ):
-        fit_result, stats_new = piogrowth.analyze.fit_single_series(
+        fit_result, stats_new = growthcurve_app.analyze.fit_single_series(
             t_all, y_all, batch_options
         )
         fit_cache[selected_reactor] = fit_result
-        piogrowth.analyze.update_reactor_stats(stats_df, selected_reactor, stats_new)
+        growthcurve_app.analyze.update_reactor_stats(
+            stats_df, selected_reactor, stats_new
+        )
         st.session_state["batch_analysis_summary_df"] = stats_df
         st.session_state["batch_analysis_fit_cache"] = fit_cache
         reactor_fit = fit_result
 
-    stats = piogrowth.analyze.get_reactor_stats_dict(stats_df, selected_reactor)
+    stats = growthcurve_app.analyze.get_reactor_stats_dict(stats_df, selected_reactor)
 
     ####################################################################################
     # Row with growth information and instructions for interaction with the plot
     status_col, expander_col = st.columns([2, 5])
     with status_col:
         # ! to update to use more advanced function.
-        if piogrowth.analyze.is_bad_fit(stats):
+        if growthcurve_app.analyze.is_bad_fit(stats):
             reason = stats.get("no_growth_reason", "No growth detected")
             st.container(border=True).error(f"**No Growth:** {reason}")
         else:
@@ -864,7 +872,7 @@ with st.container(border=True):
         )
         with stats_exp_col:
             with st.popover(f"Growth Statistics — {selected_reactor}", width="stretch"):
-                stats_table = piogrowth.analyze.format_growth_stats_table(stats)
+                stats_table = growthcurve_app.analyze.format_growth_stats_table(stats)
                 st.dataframe(
                     stats_table,
                     width="stretch",
@@ -875,7 +883,7 @@ with st.container(border=True):
             with st.popover(
                 f"Analysis Parameters — {selected_reactor}", width="stretch"
             ):
-                params_table = piogrowth.analyze.format_analysis_params_table(
+                params_table = growthcurve_app.analyze.format_analysis_params_table(
                     stats,
                     batch_options,
                     used_params_map.get(selected_reactor, {}),
@@ -906,7 +914,7 @@ with st.container(border=True):
         xlabel=DEFAULT_XLABEL_REL + f" since start at {start_time}",
         marker_opacity=0.3,
     )
-    fig = piogrowth.analyze.overlay_selected_points(
+    fig = growthcurve_app.analyze.overlay_selected_points(
         fig,
         t_all,
         y_all,
@@ -981,7 +989,7 @@ with st.container(border=True):
 
     used_params_map = st.session_state.get("batch_analysis_used_params", {})
     selected_fit_times_map = st.session_state.get("batch_selected_fit_times", {})
-    params_table = piogrowth.analyze.build_analysis_params_per_sample_table(
+    params_table = growthcurve_app.analyze.build_analysis_params_per_sample_table(
         stats_df=stats_df,
         df_rolling=df_rolling,
         batch_options=batch_options,

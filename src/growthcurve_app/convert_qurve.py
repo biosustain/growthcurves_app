@@ -1,6 +1,6 @@
 import pandas as pd
 
-import piogrowth
+import growthcurve_app
 
 
 def build_three_row_header(columns):
@@ -17,7 +17,7 @@ def build_three_row_header(columns):
 def to_qurve_format(df, start_time=None):
     df = df.copy()
     df.columns = build_three_row_header(df.columns)
-    df = piogrowth.reindex_w_relative_time(df, start_time=start_time)
+    df = growthcurve_app.reindex_w_relative_time(df, start_time=start_time)
     df.index.name = ""
     df.columns.names = ["Time (h)", "", ""]
 

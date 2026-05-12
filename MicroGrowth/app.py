@@ -6,7 +6,7 @@ from src.styling import green_gradient, green_navbar, red_buttons
 APP_VERSION = Path(__file__).with_name("VERSION").read_text(encoding="utf-8").strip()
 
 try:
-    from piogrowth import __version__ as PACKAGE_VERSION
+    from growthcurve_app import __version__ as PACKAGE_VERSION
 except Exception:
     PACKAGE_VERSION = "not-installed"
 
@@ -19,7 +19,7 @@ st.set_page_config(
 
 with st.sidebar:
     st.caption(f"MicroGrowth app v{APP_VERSION}")
-    st.caption(f"piogrowth package v{PACKAGE_VERSION}")
+    st.caption(f"growthcurve_app package v{PACKAGE_VERSION}")
 
 # Display logo (will stay visible even when sidebar is collapsed)
 st.logo(
