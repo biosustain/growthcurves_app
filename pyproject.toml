@@ -75,14 +75,14 @@ requires = ["setuptools>=64", "setuptools_scm>=8"]
 # https://setuptools-scm.readthedocs.io/ 
 # used to pick up the version from the git tags or the latest commit.
 
-[tool.poetry.requires-plugins]
-poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
+# [tool.poetry.requires-plugins]
+# poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
 
 [tool.poetry]
-version = "0.0.0"
+version = "0.1.0"
 
-[tool.poetry-dynamic-versioning]
-enable = true
+# [tool.poetry-dynamic-versioning]
+# enable = true
 
 [tool.isort]
 profile = "black"
