@@ -75,5 +75,10 @@ requires = ["setuptools>=64", "setuptools_scm>=8"]
 # https://setuptools-scm.readthedocs.io/ 
 # used to pick up the version from the git tags or the latest commit.
 
+[tool.poetry]
+# ensure that poetry is not used on streamlit cloud. do not require a version
+# https://python-poetry.org/docs/basic-usage/#operating-modes
+package-mode = false
+
 [tool.isort]
 profile = "black"
