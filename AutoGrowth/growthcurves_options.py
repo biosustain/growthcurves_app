@@ -144,8 +144,8 @@ def _ui_model_selection_upload_style():
     with method_col:
         method_labels = [m[0] for m in method_options]
         default_method_idx = (
-            method_labels.index("Sliding Window")
-            if model_family == "Non-parametric" and "Sliding Window" in method_labels
+            method_labels.index("Spline")
+            if model_family == "Non-parametric" and "Spline" in method_labels
             else 0
         )
         selected_method_label = st.selectbox(
