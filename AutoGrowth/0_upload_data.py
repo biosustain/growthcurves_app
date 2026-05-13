@@ -95,6 +95,7 @@ def apply_linear_adjustments(
 
     return adjusted, warnings
 
+
 # region: UI components for upload page
 ########################################################################################
 # Session State Restore
@@ -742,8 +743,8 @@ if button_pressed:
     #### switch wide data to time eplased in hours #####################################
     if reactor_type == "PioReactor":
         df_rolling = growthcurve_app.reindex_w_relative_time(
-        df=df_rolling,
-        start_time=st.session_state["start_time"],
+            df=df_rolling,
+            start_time=st.session_state["start_time"],
         )
     elif reactor_type == "Chi.Bio":
 
