@@ -231,4 +231,7 @@ def process_od_pioreactor(
             columns="pioreactor_unit",
             values="od_reading",
         )
-    return (df_raw_od_data, df_wide_raw_od_data, msg, rerun)
+    df_raw_od_data = df_raw_od_data.rename(
+        columns=REQUIRED_COLUMNS_NAME_MAP["PioReactor"]
+    )
+    return (df_raw_od_data, df_wide_raw_od_data, msg)
