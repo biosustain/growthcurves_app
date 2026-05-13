@@ -26,6 +26,7 @@ st.session_state.setdefault("yaxis_scale", False)
 st.session_state.setdefault("USE_ELAPSED_TIME_FOR_PLOTS", True)
 use_same_yaxis_scale = bool(st.session_state.get("yaxis_scale", False))
 use_elapsed_time = bool(st.session_state.get("USE_ELAPSED_TIME_FOR_PLOTS", True))
+reactor_type = st.session_state.get("reactor_type")
 
 USE_SAME_YAXIS_SCALE = False
 TICKS_X_AXIS_INTERVAL = None
@@ -141,7 +142,7 @@ if df_wide_raw_od_data is not None and masked is not None:
 
         df_plot = df_wide_raw_od_data
         mask_plot = masked
-        if use_elapsed_time:
+        if use_elapsed_time and reactor_type == "PioReactor":
             df_plot = growthcurve_app.reindex_w_relative_time(
                 df=df_plot,
                 start_time=start_time,

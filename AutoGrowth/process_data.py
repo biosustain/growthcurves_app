@@ -60,7 +60,8 @@ def read_chibio_csv(files: list[Path], round_time: int = 60) -> pd.DataFrame:
         df["reactor"] = file.name
         dfs.append(df)
     df = pd.concat(dfs, ignore_index=True)
-    df["exp_time_rounded"] = (df["exp_time"] / round_time).round().astype(
+    # elapsed time in seconds is rounded
+    df["elapsed_time_in_seconds"] = (df["exp_time"] / round_time).round().astype(
         int
     ) * round_time
     msg = f"- Loaded {df.shape[0]:,d} rows " f"and {df.shape[1]:,d} columns.\n"
@@ -95,13 +96,13 @@ def process_chibio_data(
         df = df[
             [
                 "exp_time",
-                "exp_time_rounded",
+                "elapsed_time_in_seconds",
                 "reactor",
                 "od_measured",
             ]
         ]
     df_wide = df.pivot(
-        index="exp_time_rounded", columns="reactor", values="od_measured"
+        index="elapsed_time_in_seconds", columns="reactor", values="od_measured"
     )
     return df, df_wide, msg
 

@@ -745,6 +745,13 @@ if button_pressed:
         df=df_rolling,
         start_time=st.session_state["start_time"],
         )
+    elif reactor_type == "Chi.Bio":
+
+        df_rolling = growthcurve_app.convert_seconds_to_hours(df_rolling)
+    else:
+        # should not happen
+        st.error(f"Unknown reactor type: {reactor_type}")
+        st.stop()
     st.session_state["df_rolling"] = df_rolling
 
     st.session_state["rolling_window"] = int(rolling_window)
@@ -790,5 +797,15 @@ if st.session_state.get("debug_mode", False):
             st.write(
                 "Wide raw OD data:",
                 st.session_state["df_wide_raw_od_data"],
+            )
+        if st.session_state.get("df_wide_raw_od_data_filtered") is not None:
+            st.write(
+                "Wide raw OD data after filtering:",
+                st.session_state["df_wide_raw_od_data_filtered"],
+            )
+        if st.session_state.get("df_rolling") is not None:
+            st.write(
+                "Rolling OD data:",
+                st.session_state["df_rolling"],
             )
 # endregion
