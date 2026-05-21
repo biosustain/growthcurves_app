@@ -478,7 +478,7 @@ def ui_preprocessing_params(ss):
                     has_blank_wells = blank_well_count > 0
 
         controls_col, plate_col = st.columns([1.0, 1.35], gap="large")
-        plate_grid_height = 400
+        plate_grid_height = 380
         plate_grid_aspect_ratio = 0.65
         initial_group_map: dict[str, str] | None = None
 
