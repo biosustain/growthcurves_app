@@ -1,6 +1,12 @@
 import growthcurves as gc
 import pandas as pd
 import streamlit as st
+from process_data import (
+    REQUIRED_COLUMNS,
+    REQUIRED_COLUMNS_NAME_MAP,
+    process_chibio_data,
+    process_od_pioreactor,
+)
 from ui_components import page_header_with_help
 
 import growthcurve_app
@@ -90,134 +96,7 @@ def apply_linear_adjustments(
     return adjusted, warnings
 
 
-REQUIRED_COLUMNS = {
-    "PioReactor": ["timestamp_localtime", "pioreactor_unit", "od_reading"],
-    "Chi.Bio": ["timestamp", "reactor", "od"],
-}
-
-REQUIRED_COLUMNS_NAME_MAP = {
-    "PioReactor": {
-        "timestamp_localtime": "timestamp",
-        "pioreactor_unit": "reactor",
-        "od_reading": "od_reading",
-    },
-    "Chi.Bio": {
-        "exp_time": "elapsed_time",
-        "reactor": "reactor",
-        "exp_time": "od_reading",
-    },
-}
-
-
-def process_od_pioreactor(file):
-    df_raw_od_data = growthcurve_app.load.read_csv(file)
-
-    # ! add check that required columns are in data and have correct dtypes (pandera)
-    msg = (
-        f"- Loaded {df_raw_od_data.shape[0]:,d} rows "
-        f"and {df_raw_od_data.shape[1]:,d} columns.\n"
-    )
-    # round timestamp data
-    # ! 'timestamp_localtime' must be in data (note down requirement)
-    df_raw_od_data.insert(
-        0,
-        "timestamp_rounded",
-        df_raw_od_data["timestamp_localtime"].dt.round(
-            f"{round_time}s",
-        ),
-    )
-    # use starttime to compute elapsed time
-    start_time = df_raw_od_data["timestamp_rounded"].min()
-    st.session_state["start_time"] = start_time
-    df_raw_od_data["elapsed_time_in_seconds"] = (
-        df_raw_od_data["timestamp_rounded"] - start_time
-    ).dt.total_seconds()
-    msg += f"- Added elapsed time in seconds since start ({start_time}).\n"
-    st.session_state["round_time"] = round_time
-    rerun = st.session_state.get("df_raw_od_data") is None
-    # only keep core data?
-    if keep_core_data:
-        try:
-            df_raw_od_data = df_raw_od_data[
-                [
-                    "timestamp_rounded",
-                    "timestamp_localtime",
-                    "elapsed_time_in_seconds",
-                    "pioreactor_unit",
-                    "od_reading",
-                ]
-            ]
-            msg += "- Kept only core data columns.\n"
-        except KeyError:
-            st.error(
-                "Could not keep only core data columns. "
-                "Please check that the uploaded file contains "
-                "the required columns: "
-                "timestamp_localtime, pioreactor_unit, od_reading."
-            )
-            st.stop()
-    st.session_state["df_raw_od_data"] = df_raw_od_data
-    # re-run now with data set
-
-    msg += f"- Wide OD data with rounded timestamps to {round_time} seconds.\n"
-    # wide data of raw data
-    # - can be used in plot for visualization,
-    # - and in curve fitting (where gaps would be interpolated)
-    N_before = df_raw_od_data.shape[0]
-    df_raw_od_data = df_raw_od_data.dropna(
-        subset=["timestamp_rounded", "pioreactor_unit", "od_reading"]
-    )
-    N_after = df_raw_od_data.shape[0]
-    N_dropped = N_before - N_after
-    if N_dropped > 0:
-        msg += (
-            f"- Dropped {N_dropped:,d} rows with missing values in core columns "
-            "(timestamp_rounded, pioreactor_unit, od_reading).\n"
-        )
-    try:
-        df_wide_raw_od_data = df_raw_od_data.pivot(
-            index="timestamp_rounded",
-            columns="pioreactor_unit",
-            values="od_reading",
-        )
-    except ValueError as e:
-        st.error(
-            "Rounding produced duplicated timepoints in reactors; "
-            f"consider decreasing the rounding time below {round_time} seconds."
-        )
-        if not aggregate_duplicated_rounded_timepoint:
-            # Clear potentially stale wide/derived data before stopping to avoid
-            # inconsistencies with the current df_raw_od_data.
-            st.session_state["df_wide_raw_od_data"] = None
-            st.session_state["df_wide_raw_od_data_filtered"] = None
-            st.info(
-                "Consider aggregating duplicated timepoints if you do not "
-                "want to decrease the rounding time."
-            )
-            with st.expander("Show error details"):
-                st.write(e)
-                st.write(df_raw_od_data)
-            st.stop()
-        st.warning(
-            "Aggregating duplicated timepoint using "
-            f"the {aggregate_duplicated_rounded_timepoint_method}."
-        )
-
-        df_wide_raw_od_data = (
-            df_raw_od_data.groupby(
-                ["timestamp_rounded", "pioreactor_unit"], sort=False
-            )["od_reading"]
-            .agg(aggregate_duplicated_rounded_timepoint_method)
-            .reset_index()
-        )
-        df_wide_raw_od_data = df_wide_raw_od_data.pivot(
-            index="timestamp_rounded",
-            columns="pioreactor_unit",
-            values="od_reading",
-        )
-    return (df_raw_od_data, df_wide_raw_od_data, msg, rerun)
-
-
+# region: UI components for upload page
 ########################################################################################
 # Session State Restore
 render_restore_session_state_ui()
@@ -235,10 +114,11 @@ with st.container(border=True):
             st.markdown("**Expected structure:**")
             st.markdown("- CSV/TXT file readable by `pandas.read_csv`")
             st.markdown(
-                "- Required columns (PioReactor): "
+                "- Required columns in combined file for PioReactor: "
                 f"{', '.join(f'`{col}`' for col in REQUIRED_COLUMNS['PioReactor'])}.\n"
-                "  - Required columns (Chi.Bio): "
-                f"{', '.join(f'`{col}`' for col in REQUIRED_COLUMNS['Chi.Bio'])}.\n"
+                "  - Required columns in each file per reactor Chi.Bio: "
+                f"{', '.join(f'`{col}`' for col in REQUIRED_COLUMNS['Chi.Bio'])}"
+                " (reactor name will be the file name).\n"
             )
             st.markdown("- One row per measurement")
             st.markdown("\n > Export from PioReactor WebApp or CLI.")
@@ -360,12 +240,13 @@ with st.container(border=True):
             key="upload_page_od_adjustment_table",
         )
     with optional_upload_cols[1]:
-        st.markdown("**Turbidostat Metadata**")
+        st.markdown("**Turbidostat Metadata** (for PioReactor datasets only)")
         # help message
         with st.popover("See an Example", width="stretch"):
             st.markdown("**Turbidostat Metadata**")
             st.markdown("""
-                If provided, peaks are not autodetected.
+                If provided, peaks are not autodetected. Only available for 
+                PioReactor datasets.
 
                 - CSV file with columns `timestamp_localtime`, `pioreactor_unit`,
                 `event_name` and `message` and `data`.
@@ -400,6 +281,7 @@ with st.container(border=True):
             "Dilution metadata (for Turbidostat page)",
             type=["csv"],
             key="upload_page_turbidostat_meta",
+            disabled=reactor_type != "PioReactor",
         )
         st.session_state.setdefault("turbidostat_timestamp_col", "timestamp_localtime")
         st.session_state.setdefault("turbidostat_reactor_col", "pioreactor_unit")
@@ -457,7 +339,7 @@ with st.container(border=True):
             )
         else:
             available_reactors = sorted(
-                df_raw_od_data["pioreactor_unit"].dropna().astype(str).unique().tolist()
+                df_raw_od_data["reactor"].dropna().astype(str).unique().tolist()
             )
             reactors_selected = st.multiselect(
                 "Select reactors to include in analysis",
@@ -633,6 +515,7 @@ with st.container(border=True):
         button_pressed = st.form_submit_button(
             "Apply options to uploaded data", type="primary", width="stretch"
         )
+# endregion
 
 ### save form state
 # remember form values for next time page is opened
@@ -657,6 +540,7 @@ st.session_state["aggregate_duplicated_rounded_timepoint_method"] = (
     aggregate_duplicated_rounded_timepoint_method
 )
 
+# region: Process files
 ########################################################################################
 # Process data
 
@@ -669,20 +553,91 @@ if button_pressed and file is None and df_raw_od_data is None:
     extra_warn.warning("No data uploaded.")
     st.stop()
 
-msg = ""
+msg = st.session_state.get("upload_processing_summary_msg", "")
 
 
 # File Uploaded ########################################################################
 # this runs wheather the button is pressed or not, but only if a file is uploaded
-if file is not None:
+if file:
     # Chi.Bio: One or more files are processed
     # PioReactor: one file is processed
     if reactor_type == "Chi.Bio":
-        st.error("Processing of multiple files for Chi.Bio data is not yet implemented")
-        st.stop()
-    elif reactor_type == "PioReactor":
-        df_raw_od_data, df_wide_raw_od_data, msg, rerun = process_od_pioreactor(file)
+        missing_files = []
+        for uploaded_file in file:
+            try:
+                columns = pd.read_csv(uploaded_file, nrows=0).columns.tolist()
+                uploaded_file.seek(0)
+            except (OSError, pd.errors.ParserError, ValueError):
+                continue
+            missing = [
+                column
+                for column in REQUIRED_COLUMNS[reactor_type]
+                if column not in columns
+            ]
+            if missing:
+                missing_files.append((uploaded_file.name, missing, columns))
 
+        if missing_files:
+            _, _, columns = missing_files[0]
+            other_type = "PioReactor"
+            other_required = REQUIRED_COLUMNS[other_type]
+            wrong_type_hint = (
+                f" The files look like **{other_type}** input — did you select the wrong reactor type?"
+                if not any(column not in columns for column in other_required)
+                else ""
+            )
+            details = ", ".join(
+                f"`{name}` is missing {', '.join(f'`{col}`' for col in missing)}"
+                for name, missing, _ in missing_files
+            )
+            st.error(
+                f"One or more uploaded files are missing required columns for **{reactor_type}**. "
+                f"{details}." + wrong_type_hint
+            )
+            st.stop()
+
+        # msg is overwritten here (intended)
+        df_raw_od_data, df_wide_raw_od_data, msg = process_chibio_data(
+            files=file,
+            round_time=round_time,
+            keep_core_data=keep_core_data,
+        )
+    elif reactor_type == "PioReactor":
+        try:
+            columns = pd.read_csv(file, nrows=0).columns.tolist()
+            file.seek(0)
+        except (OSError, pd.errors.ParserError, ValueError):
+            columns = []
+
+        missing = [
+            column for column in REQUIRED_COLUMNS[reactor_type] if column not in columns
+        ]
+        if missing:
+            other_type = "Chi.Bio"
+            other_required = REQUIRED_COLUMNS[other_type]
+            wrong_type_hint = (
+                f" The file looks like **{other_type}** input — did you select the wrong reactor type?"
+                if columns
+                and not any(column not in columns for column in other_required)
+                else ""
+            )
+            st.error(
+                f"The uploaded file is missing required columns for **{reactor_type}**: "
+                f"{', '.join((f'`{col}`' for col in missing))}." + wrong_type_hint
+            )
+            st.stop()
+
+        # msg is overwritten here (intended)
+        df_raw_od_data, df_wide_raw_od_data, msg = process_od_pioreactor(
+            file=file,
+            round_time=round_time,
+            keep_core_data=keep_core_data,
+            aggregate_duplicated_rounded_timepoint=aggregate_duplicated_rounded_timepoint,
+            aggregate_duplicated_rounded_timepoint_method=aggregate_duplicated_rounded_timepoint_method,
+        )
+
+    rerun = st.session_state.get("df_raw_od_data") is None
+    st.session_state["df_raw_od_data"] = df_raw_od_data
     st.session_state["df_wide_raw_od_data"] = df_wide_raw_od_data
     st.session_state["upload_processing_summary_msg"] = msg  # ? is it needed
     if rerun:
@@ -697,7 +652,7 @@ if button_pressed:
         st.stop()
     st.write(f"Reactors included in analysis: {reactors_selected}")
     df_raw_od_data = df_raw_od_data.loc[
-        df_raw_od_data["pioreactor_unit"].astype(str).isin(reactors_selected)
+        df_raw_od_data["reactor"].astype(str).isin(reactors_selected)
     ]
 
     # initalize masked here
@@ -706,9 +661,11 @@ if button_pressed:
         index=df_wide_raw_od_data.index,
         columns=df_wide_raw_od_data.columns,
     )
+    # df_wide_raw_od_data_filtered will now be used
     df_wide_raw_od_data_filtered = df_wide_raw_od_data.copy()
 
     #### Apply Data Filtering options ##################################################
+    # all to df_wide_raw_od_data_filtered
     # Handle negative values
     n_negative = (df_wide_raw_od_data_filtered < 0).sum().sum()
     if n_negative > 0:
@@ -843,28 +800,29 @@ if button_pressed:
             msg += f"    - {warning}\n"
 
     #### switch wide data to time eplased in hours #####################################
-    df_rolling = growthcurve_app.reindex_w_relative_time(
-        df=df_rolling,
-        start_time=st.session_state["start_time"],
-    )
+    if reactor_type == "PioReactor":
+        df_rolling = growthcurve_app.reindex_w_relative_time(
+            df=df_rolling,
+            start_time=st.session_state["start_time"],
+        )
+    elif reactor_type == "Chi.Bio":
+
+        df_rolling = growthcurve_app.convert_seconds_to_hours(df_rolling)
+    else:
+        # should not happen
+        st.error(f"Unknown reactor type: {reactor_type}")
+        st.stop()
     st.session_state["df_rolling"] = df_rolling
 
     st.session_state["rolling_window"] = int(rolling_window)
 
-    df_time_map = (
-        df_raw_od_data[["timestamp_rounded", "elapsed_time_in_seconds"]]
-        .drop_duplicates()
-        .set_index("timestamp_rounded")
-    )
-    df_time_map["elapsed_time_in_hours"] = (
-        df_time_map["elapsed_time_in_seconds"] / 3600.0
-    )
-    st.session_state["df_time_map"] = df_time_map
     st.session_state["upload_processing_summary_msg"] = msg
     st.write("### Data processing summary:")
     st.write(msg)
 
+# endregion
 
+# region: Debugging and inspection
 # Debug option to inspect session state variables related to data upload and processing
 if st.session_state.get("debug_mode", False):
     with st.expander("Developer inspect (session state)", expanded=False):
@@ -900,3 +858,14 @@ if st.session_state.get("debug_mode", False):
                 "Wide raw OD data:",
                 st.session_state["df_wide_raw_od_data"],
             )
+        if st.session_state.get("df_wide_raw_od_data_filtered") is not None:
+            st.write(
+                "Wide raw OD data after filtering:",
+                st.session_state["df_wide_raw_od_data_filtered"],
+            )
+        if st.session_state.get("df_rolling") is not None:
+            st.write(
+                "Rolling OD data:",
+                st.session_state["df_rolling"],
+            )
+# endregion

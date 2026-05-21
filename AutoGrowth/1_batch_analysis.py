@@ -9,7 +9,6 @@ keys that are reactor-specific (reactor parameter): `batch_rp_{param}__{reactor}
 
 Global/shared input data:
 - USE_ELAPSED_TIME_FOR_PLOTS: Global plotting mode flag.
-- df_time_map: Optional time mapping table from uploaded data.
 - df_rolling: Rolling-median OD dataframe used as analysis input.
 - start_time: Experiment start timestamp used in plot labels/download text.
 - DEFAULT_XLABEL_TPS: Default x-axis label for timepoint mode.
@@ -381,7 +380,6 @@ def _on_exclude(
 # state
 
 use_elapsed_time = st.session_state.get("USE_ELAPSED_TIME_FOR_PLOTS", False)
-df_time_map = st.session_state.get("df_time_map")
 no_data_uploaded = st.session_state.get("df_rolling") is None
 df_rolling = st.session_state.get("df_rolling")
 start_time = st.session_state.get("start_time")

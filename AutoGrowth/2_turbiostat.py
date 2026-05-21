@@ -133,7 +133,6 @@ def _run_model_fitting_on_df_with_peaks_compat(
 # state
 
 use_elapsed_time = st.session_state.get("USE_ELAPSED_TIME_FOR_PLOTS", False)
-df_time_map = st.session_state.get("df_time_map")
 no_data_uploaded = st.session_state.get("df_rolling") is None
 df_rolling = st.session_state.get("df_rolling")
 start_time = st.session_state.get("start_time")

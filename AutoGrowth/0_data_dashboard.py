@@ -18,7 +18,6 @@ page_header_with_help("Data Dashboard", DATA_DASHBOARD_HELP)
 df_raw_od_data = st.session_state.get("df_raw_od_data")
 df_wide_raw_od_data = st.session_state.get("df_wide_raw_od_data")
 df_rolling = st.session_state.get("df_rolling")
-df_time_map = st.session_state.get("df_time_map")
 masked = st.session_state.get("masked")
 start_time = st.session_state.get("start_time")
 processing_summary = st.session_state.get("upload_processing_summary_msg")
@@ -27,6 +26,7 @@ st.session_state.setdefault("yaxis_scale", False)
 st.session_state.setdefault("USE_ELAPSED_TIME_FOR_PLOTS", True)
 use_same_yaxis_scale = bool(st.session_state.get("yaxis_scale", False))
 use_elapsed_time = bool(st.session_state.get("USE_ELAPSED_TIME_FOR_PLOTS", True))
+reactor_type = st.session_state.get("reactor_type")
 
 USE_SAME_YAXIS_SCALE = False
 TICKS_X_AXIS_INTERVAL = None
@@ -39,20 +39,11 @@ if df_raw_od_data is None and df_rolling is None:
 
 with st.container(border=True):
     st.header("Summary Tables")
-    raw_col, time_col = st.columns(2, gap="large")
-    with raw_col:
-        st.subheader("Raw OD data")
-        if df_raw_od_data is None:
-            st.info("Raw OD data preview appears after data is loaded.")
-        else:
-            st.dataframe(df_raw_od_data, width="stretch")
-
-    with time_col:
-        st.subheader("Timestamp to elapsed-time map")
-        if df_time_map is None:
-            st.info("Timestamp map is generated after preprocessing.")
-        else:
-            st.dataframe(df_time_map, width="stretch")
+    st.subheader("Raw OD data")
+    if df_raw_od_data is None:
+        st.info("Raw OD data preview appears after data is loaded.")
+    else:
+        st.dataframe(df_raw_od_data, width="stretch")
 
     download_buttons = st.columns(3)
     with download_buttons[0]:
@@ -151,7 +142,7 @@ if df_wide_raw_od_data is not None and masked is not None:
 
         df_plot = df_wide_raw_od_data
         mask_plot = masked
-        if use_elapsed_time:
+        if use_elapsed_time and reactor_type == "PioReactor":
             df_plot = growthcurve_app.reindex_w_relative_time(
                 df=df_plot,
                 start_time=start_time,
