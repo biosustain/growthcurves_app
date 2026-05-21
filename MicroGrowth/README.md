@@ -1,6 +1,7 @@
-## Live App
+## Links
 
-**[MicroGrowth.streamlit.app](https://MicroGrowth.streamlit.app/)**
+- **Homepage:** [biosustain.github.io/growthcurves_app](https://biosustain.github.io/growthcurves_app/)
+- **Live App:** [MicroGrowth.streamlit.app](https://MicroGrowth.streamlit.app/)
 
 ## Abstract
 
