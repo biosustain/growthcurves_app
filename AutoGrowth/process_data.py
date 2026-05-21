@@ -65,9 +65,9 @@ def read_chibio_csv(files: list[Path], round_time: int = 60) -> pd.DataFrame:
         dfs.append(df)
     df = pd.concat(dfs, ignore_index=True)
     # elapsed time in seconds is rounded
-    df["elapsed_time_in_seconds"] = (df["exp_time"] / round_time).dropna().round().astype(
-        int
-    ) * round_time
+    df["elapsed_time_in_seconds"] = (
+        df["exp_time"] / round_time
+    ).dropna().round().astype(int) * round_time
     msg = f"- Loaded {df.shape[0]:,d} rows " f"and {df.shape[1]:,d} columns.\n"
     return df, msg
 
