@@ -1,10 +1,14 @@
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 
 REQUIRED_COLUMNS = {
-    "PioReactor": ["timestamp_localtime", "pioreactor_unit", "od_reading"],
-    "Chi.Bio": ["exp_time", "od_measured"],
+    "PioReactor": ("timestamp_localtime", "pioreactor_unit", "od_reading"),
+    "Chi.Bio": ("exp_time", "od_measured"),
 }
+
+PIO_PIVOT_COLUMNS = ("timestamp_rounded", "pioreactor_unit", "od_reading")
 
 REQUIRED_COLUMNS_NAME_MAP = {
     "PioReactor": {
@@ -61,7 +65,7 @@ def read_chibio_csv(files: list[Path], round_time: int = 60) -> pd.DataFrame:
         dfs.append(df)
     df = pd.concat(dfs, ignore_index=True)
     # elapsed time in seconds is rounded
-    df["elapsed_time_in_seconds"] = (df["exp_time"] / round_time).round().astype(
+    df["elapsed_time_in_seconds"] = (df["exp_time"] / round_time).dropna().round().astype(
         int
     ) * round_time
     msg = f"- Loaded {df.shape[0]:,d} rows " f"and {df.shape[1]:,d} columns.\n"
@@ -69,7 +73,7 @@ def read_chibio_csv(files: list[Path], round_time: int = 60) -> pd.DataFrame:
 
 
 def drop_na_pioreactor_raw_od_data(
-    df_raw_od_data, subset=["timestamp_rounded", "pioreactor_unit", "od_reading"]
+    df_raw_od_data, subset=("timestamp_rounded", "pioreactor_unit", "od_reading")
 ):
     """Drop rows with NA values in core columns and return the number of dropped
     rows.
@@ -141,11 +145,9 @@ def process_od_pioreactor(
 
     Returns
     -------
-    pd.DataFrame, pd.DataFrame, str, bool
+    pd.DataFrame, pd.DataFrame, str
         The processed raw OD data, the processed wide OD data, a summary message of
-        the processing steps, and a boolean indicating whether this is the first time
-        processing (i.e. whether to trigger a re-run of the app to update with the
-        new data).
+        the processing steps.
     """
     df_raw_od_data, msg = read_pioreactor_csv(file, round_time)
     # use starttime to compute elapsed time
