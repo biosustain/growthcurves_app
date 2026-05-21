@@ -49,7 +49,7 @@ Key features include:
 3. **Activate the environment**
 
    ```bash
-   conda activate growth_curves_app_env
+   conda activate microgrowth_env
    ```
 
 #### Option 2: Using pip
