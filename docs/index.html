@@ -1,181 +1,247 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Growth Curves App</title>
-  <style>
-    * {
-      box-sizing: border-box;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Growth Curves App</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
 
-    body {
-      font-family: "Source Sans Pro", "Helvetica Neue", Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-      background-color: #FFFFFF;
-      color: #262730;
-      min-height: 100vh;
-    }
+      body {
+        font-family: "Source Sans Pro", "Helvetica Neue", Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #ffffff;
+        color: #262730;
+        min-height: 100vh;
+      }
 
-    .hero {
-      background: linear-gradient(to bottom, #66BB6A 0%, #FFFFFF 300px);
-      padding: 60px 20px 40px;
-      text-align: center;
-    }
+      .hero {
+        background: linear-gradient(to bottom, #66bb6a 0%, #ffffff 300px);
+        padding: 60px 20px 40px;
+        text-align: center;
+      }
 
-    h1 {
-      font-size: 3.4rem;
-      font-weight: 700;
-      color: #FFFFFF;
-      margin: 0 0 8px;
-      text-shadow: 0 1px 3px rgba(0,0,0,0.15);
-    }
+      h1 {
+        font-size: 3.4rem;
+        font-weight: 700;
+        color: #ffffff;
+        margin: 0 0 8px;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+      }
 
-    .subtitle {
-      font-size: 1.5rem;
-      color: rgba(255,255,255,0.9);
-      margin: 0 0 48px;
-    }
+      .subtitle {
+        font-size: 1.5rem;
+        color: rgba(255, 255, 255, 0.9);
+        margin: 0 0 48px;
+      }
 
-    .content {
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 0 20px 60px;
-      text-align: center;
-    }
+      .content {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 0 20px 60px;
+        text-align: center;
+      }
 
-    p {
-      font-size: 1.4rem;
-      line-height: 1.65;
-      color: #262730;
-      margin-bottom: 36px;
-    }
+      p {
+        font-size: 1.4rem;
+        line-height: 1.65;
+        color: #262730;
+        margin-bottom: 36px;
+      }
 
-    .cards {
-      display: flex;
-      gap: 24px;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
+      .cards {
+        display: flex;
+        gap: 24px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
 
-    .card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      width: 380px;
-      min-height: 320px;
-      padding: 32px 24px;
-      background-color: #F5F7FA;
-      border: 1px solid #d0d4db;
-      border-radius: 12px;
-      text-align: center;
-    }
+      .card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 380px;
+        min-height: 320px;
+        padding: 32px 24px;
+        background-color: #f5f7fa;
+        border: 1px solid #d0d4db;
+        border-radius: 12px;
+        text-align: center;
+      }
 
-    .card-icon {
-      font-size: 3rem;
-      margin-bottom: 12px;
-    }
+      .card-icon {
+        font-size: 3rem;
+        margin-bottom: 12px;
+      }
 
-    .card h2 {
-      font-size: 1.6rem;
-      font-weight: 700;
-      color: #262730;
-      margin: 0 0 10px;
-    }
+      .card h2 {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: #262730;
+        margin: 0 0 10px;
+      }
 
-    .card p {
-      font-size: 1.2rem;
-      color: #4a4f5a;
-      line-height: 1.5;
-      margin: 0 0 auto;
-      padding-bottom: 24px;
-    }
+      .card p {
+        font-size: 1.2rem;
+        color: #4a4f5a;
+        line-height: 1.5;
+        margin: 0 0 auto;
+        padding-bottom: 24px;
+      }
 
-    a.button {
-      display: inline-block;
-      padding: 12px 28px;
-      text-decoration: none;
-      border-radius: 8px;
-      font-size: 1.2rem;
-      font-weight: 600;
-      background-color: #66BB6A;
-      color: #FFFFFF;
-      border: none;
-      box-shadow: 0 2px 6px rgba(102,187,106,0.4);
-      transition: background-color 0.2s, box-shadow 0.2s;
-    }
+      a.button {
+        display: inline-block;
+        padding: 12px 28px;
+        text-decoration: none;
+        border-radius: 8px;
+        font-size: 1.2rem;
+        font-weight: 600;
+        background-color: #66bb6a;
+        color: #ffffff;
+        border: none;
+        box-shadow: 0 2px 6px rgba(102, 187, 106, 0.4);
+        transition:
+          background-color 0.2s,
+          box-shadow 0.2s;
+      }
 
-    a.button:hover {
-      background-color: #57a85b;
-      box-shadow: 0 4px 12px rgba(102,187,106,0.5);
-    }
+      a.button:hover {
+        background-color: #57a85b;
+        box-shadow: 0 4px 12px rgba(102, 187, 106, 0.5);
+      }
 
-    a.button.disabled {
-      background-color: #b0c4b1;
-      box-shadow: none;
-      cursor: default;
-      pointer-events: none;
-    }
+      a.button.disabled {
+        background-color: #b0c4b1;
+        box-shadow: none;
+        cursor: default;
+        pointer-events: none;
+      }
 
-    .badge-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.6rem;
-      justify-content: center;
-      margin-top: 20px;
-    }
+      .badge-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        justify-content: center;
+        margin-top: 20px;
+      }
 
-    .badge {
-      background: #FFFFFF;
-      border: 1.5px solid #b7dfb9;
-      border-radius: 999px;
-      padding: 0.35rem 0.9rem;
-      font-size: 0.83rem;
-      font-weight: 600;
-      color: #3a8c3e;
-      box-shadow: 0 2px 8px rgba(0,0,0,.07);
-      text-decoration: none;
-      transition: background 0.15s, border-color 0.15s;
-    }
+      .badge {
+        background: #ffffff;
+        border: 1.5px solid #b7dfb9;
+        border-radius: 999px;
+        padding: 0.35rem 0.9rem;
+        font-size: 0.83rem;
+        font-weight: 600;
+        color: #3a8c3e;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+        text-decoration: none;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
 
-    .badge:hover {
-      background: #d6f0d7;
-      border-color: #66BB6A;
-    }
-  </style>
-</head>
-<body>
-  <div class="hero">
-    <h1>GrowthCurves Apps</h1>
-    <p class="subtitle">Human-in-the-loop growth curve analysis for microbiology experiments</p>
-    <div class="badge-row">
-      <a href="https://github.com/biosustain/growthcurves" target="_blank" rel="noopener noreferrer" class="badge">&#128196; growthcurves Github</a>
-      <a href="https://github.com/biosustain/growthcurves_app" target="_blank" rel="noopener noreferrer" class="badge">&#128196; App Github and Local Installation</a>
-      <a href="https://pypi.org/project/growthcurves/" target="_blank" rel="noopener noreferrer" class="badge">&#128230; growthcurves PyPi</a>
-      <a href="https://growthcurves.readthedocs.io/en/latest/" target="_blank" rel="noopener noreferrer" class="badge">&#128230; ReadtheDocs Tutorial notebooks</a>
-    
-    </div>
-  </div>
-
-  <div class="content">
-    <p>Choose the app that matches your experimental setup.</p>
-
-    <div class="cards">
-      <div class="card">
-        <div class="card-icon">🔬</div>
-        <h2>MicroGrowth</h2>
-        <p>Analyse growth curves from <strong>microtiter plate reader</strong> experiments. Supports multi-condition layouts with interactive quality control.</p>
-        <a class="button" href="https://thegrowthanalysisapp.streamlit.app/" target="_blank" rel="noopener noreferrer">Open MicroGrowth</a>
+      .badge:hover {
+        background: #d6f0d7;
+        border-color: #66bb6a;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="hero">
+      <h1>GrowthCurves Apps</h1>
+      <p class="subtitle">
+        Human-in-the-loop growth curve analysis for microbiology experiments
+      </p>
+      <div class="badge-row">
+        <a
+          href="https://github.com/biosustain/growthcurves"
+          target="_blank"
+          rel="noopener
+      noreferrer"
+          class="badge"
+          >&#128196; growthcurves Github</a
+        >
+        <a
+          href="https://github.com/biosustain/growthcurves_app"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="badge"
+          >&#128196; App Github and Local Installation</a
+        >
+        <a
+          href="https://pypi.org/project/growthcurves/"
+          target="_blank"
+          rel="noopener
+      noreferrer"
+          class="badge"
+          >&#128230; growthcurves PyPi</a
+        >
+        <a
+          href="https://growthcurves.readthedocs.io/en/latest/"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="badge"
+          >&#128230; ReadtheDocs Tutorial notebooks</a
+        >
       </div>
-      <div class="card">
-        <div class="card-icon">⚗️</div>
-        <h2>AutoGrowth</h2>
-        <p>Analyse growth curves from <strong>Pioreactor</strong> bioreactor experiments. Built for continuous culture and real-time monitoring data.</p>
-        <a class="button" href="https://autogrowth.streamlit.app/" target="_blank" rel="noopener noreferrer">Open AutoGrowth</a>
-      </div>
     </div>
-    <p style="margin-top: 36px; font-size: 1.1rem;">To install the apps locally, follow the installation instructions on the <a href="https://github.com/biosustain/growthcurves_app.git" target="_blank" rel="noopener noreferrer">Github homepage</a>. To learn more about the Python API, check out the <a href="https://growthcurves.readthedocs.io/en/latest/" target="_blank" rel="noopener noreferrer">documentation</a>.</p>
-  </div>
-</body>
+
+    <div class="content">
+      <p>Choose the app that matches your experimental setup.</p>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-icon">🔬</div>
+          <h2>MicroGrowth</h2>
+          <p>
+            Analyse growth curves from
+            <strong>microtiter plate reader</strong> experiments. Supports
+            multi-condition layouts with interactive quality control.
+          </p>
+          <a
+            class="button"
+            href="https://thegrowthanalysisapp.streamlit.app/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Open MicroGrowth</a
+          >
+        </div>
+        <div class="card">
+          <div class="card-icon">⚗️</div>
+          <h2>AutoGrowth</h2>
+          <p>
+            Analyse growth curves from mini-bioreactor experiments, such as
+            <strong>Pioreactor</strong> and <strong>Chi.Bio</strong> mini-reactors.
+            Built for continuous culture and real-time
+            monitoring data.
+          </p>
+          <a
+            class="button"
+            href="https://autogrowth.streamlit.app/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Open AutoGrowth</a
+          >
+        </div>
+      </div>
+      <p style="margin-top: 36px; font-size: 1.1rem">
+        To install the apps locally, follow the installation instructions on the
+        <a
+          href="https://github.com/biosustain/growthcurves_app.git"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Github homepage</a
+        >. To learn more about the Python API, check out the
+        <a
+          href="https://growthcurves.readthedocs.io/en/latest/"
+          target="_blank"
+          rel="noopener noreferrer"
+          >documentation</a
+        >.
+      </p>
+    </div>
+  </body>
 </html>

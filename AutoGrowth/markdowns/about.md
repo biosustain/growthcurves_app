@@ -1,7 +1,6 @@
 # About AutoGrowth
 
-App for analysis of optical density (OD) measurements
-produced mainly with a [PioReactor](https://pioreactor.com/)
+App for analysis of optical bioscatter measurements.
 
 It was created on the basis of three individual apps
 
@@ -12,8 +11,8 @@ It was created on the basis of three individual apps
 The code translated to Python was based on the original R code from the Shiny apps.
 
 
-## Use Cases
-It can be used to analyze readouts and save summarized information of the
-raw optical density (OD) measurements, which are `600nm` wave length measurements commonly
-used in microbiology and biotechnology applications with micro-organisms like yeast or 
-bacteria.
+## Other Cases
+
+Check our overview of apps for other usecases:
+
+- [growthcurves based apps](https://biosustain.github.io/growthcurves_app/)
