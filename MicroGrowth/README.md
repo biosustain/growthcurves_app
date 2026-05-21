@@ -1,6 +1,7 @@
-## Live App
+## Links
 
-**[MicroGrowth.streamlit.app](https://MicroGrowth.streamlit.app/)**
+- **Homepage:** [biosustain.github.io/growthcurves_app](https://biosustain.github.io/growthcurves_app/)
+- **Live App:** [MicroGrowth.streamlit.app](https://MicroGrowth.streamlit.app/)
 
 ## Abstract
 
@@ -49,7 +50,7 @@ Key features include:
 3. **Activate the environment**
 
    ```bash
-   conda activate growth_curves_app_env
+   conda activate microgrowth_env
    ```
 
 #### Option 2: Using pip
