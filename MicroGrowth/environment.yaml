@@ -11,9 +11,9 @@ dependencies:
   - streamlit
   - openpyxl # .xlsx support
   - xlrd # .xls support (legacy)
-  - growthcurves
   - pip:
       - kaleido
       - streamlit-plotly-events
       - streamlit-sortables
       - streamlit-aggrid
+      - growthcurves
