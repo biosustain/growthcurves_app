@@ -642,9 +642,15 @@ if button_pressed:
         st.warning("No reactors selected. Select at least one reactor to continue.")
         st.stop()
     st.write(f"Reactors included in analysis: {reactors_selected}")
-    df_raw_od_data = df_raw_od_data.loc[
-        df_raw_od_data["reactor"].astype(str).isin(reactors_selected)
-    ]
+    if (
+        st.session_state.get("reactors_selected")
+        and reactors_selected != st.session_state["reactors_selected"]
+    ):
+        # ! If reactors changed, maybe one needs to reset the wide data
+        st.session_state["reactors_selected"] = reactors_selected
+    msg += "reactors included in analysis: " + ", ".join(reactors_selected) + "\n"
+    df_wide_raw_od_data = df_wide_raw_od_data[reactors_selected]
+    st.session_state["df_wide_raw_od_data"] = df_wide_raw_od_data
 
     # initalize masked here
     masked = pd.DataFrame(
@@ -655,7 +661,7 @@ if button_pressed:
     # df_wide_raw_od_data_filtered will now be used
     df_wide_raw_od_data_filtered = df_wide_raw_od_data.copy()
 
-    msg = "Applied data filtering options:\n"
+    msg += "Applied data filtering options:\n"
 
     #### Apply Data Filtering options ##################################################
     # all to df_wide_raw_od_data_filtered
