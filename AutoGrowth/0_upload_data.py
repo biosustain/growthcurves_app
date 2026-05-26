@@ -54,10 +54,10 @@ def apply_linear_adjustments(
     required_columns = {"reactor", "od"}
     missing_columns = required_columns - set(adjustment_table.columns)
     if missing_columns:
-        return df_rolling, [
+        raise KeyError(
             "Adjustment table is missing columns: "
-            f"{', '.join(sorted(missing_columns))}."
-        ]
+            f"{', '.join(sorted(missing_columns))}.",
+        )
 
     warnings = []
     adjusted = df_rolling.copy()
@@ -786,9 +786,17 @@ if button_pressed:
                 "Re-applying will overwrite previous adjustments."
             )
         df_adjustments = pd.read_csv(od_adjustment_upload).convert_dtypes()
-        df_rolling, adjustment_warnings = apply_linear_adjustments(
-            df_rolling, df_adjustments
-        )
+        try:
+            df_rolling, adjustment_warnings = apply_linear_adjustments(
+                df_rolling, df_adjustments
+            )
+        except KeyError as e:
+            error_text = str(e.args[0]) if e.args else str(e)
+            st.error(
+                "Check that the required header and columns are present. "
+                f"{error_text}"
+            )
+            st.stop()
         st.session_state["is_df_rolling_adjusted"] = True
         st.session_state["df_rolling"] = df_rolling
         st.session_state["df_od_adjustment"] = df_adjustments
