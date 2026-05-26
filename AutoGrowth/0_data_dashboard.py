@@ -41,10 +41,10 @@ if df_raw_od_data is None and df_rolling is None:
 with st.container(border=True):
     st.header("Summary Tables")
     st.subheader("Raw OD data")
-    if df_raw_od_data is None:
+    if df_wide_raw_od_data is None:
         st.info("Raw OD data preview appears after data is loaded.")
     else:
-        st.dataframe(df_raw_od_data, width="stretch")
+        st.dataframe(df_wide_raw_od_data, width="stretch")
 
     download_buttons = st.columns(3)
     with download_buttons[0]:

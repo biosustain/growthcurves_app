@@ -357,7 +357,7 @@ with st.container(border=True):
                 "Impute negative values by moving average",
             ]
             default_negative = st.session_state.get(
-                "negative_handling", negative_options[1]
+                "negative_handling", negative_options[0]
             )
             try:
                 default_negative_index = negative_options.index(default_negative)
@@ -386,17 +386,6 @@ with st.container(border=True):
                     "option."
                 ),
                 value=st.session_state.get("fill_na", False),
-            )
-            # ! move to after smoothing is applied?
-            remove_downward_trending = st.checkbox(
-                label="Remove downward trending data points (negative OD changes) "
-                " globally after smoothing the data.",
-                value=st.session_state.get("remove_downward_trending", False),
-                help=(
-                    "This can be used to remove data points that are smaller than a "
-                    "previous one. Downward trends will be removed, but the upward "
-                    "trend will be kept from a local minimum."
-                ),
             )
             remove_max = st.checkbox(
                 "Remove maximum OD readings by quantile",
@@ -525,7 +514,6 @@ st.session_state["reactors_selected"] = reactors_selected
 st.session_state["remove_negative"] = remove_negative
 st.session_state["negative_handling"] = negative_handling
 st.session_state["fill_na"] = fill_na
-st.session_state["remove_downward_trending"] = remove_downward_trending
 st.session_state["remove_max"] = remove_max
 st.session_state["outlier_method"] = outlier_method
 st.session_state["quantile_max"] = quantile_max
@@ -664,45 +652,10 @@ if button_pressed:
     # df_wide_raw_od_data_filtered will now be used
     df_wide_raw_od_data_filtered = df_wide_raw_od_data.copy()
 
+    msg = "Applied data filtering options:\n"
+
     #### Apply Data Filtering options ##################################################
     # all to df_wide_raw_od_data_filtered
-    # Handle negative values
-    n_negative = (df_wide_raw_od_data_filtered < 0).sum().sum()
-    if n_negative > 0:
-        st.warning(f"Found {n_negative:,d} negative OD readings.")
-        msg += f"- Found {n_negative:,d} negative OD readings.\n"
-    if remove_negative:
-        mask_negative = df_wide_raw_od_data_filtered < 0
-        msg += (
-            f"- Setting {mask_negative.sum().sum():,d} negative OD readings to NaN.\n"
-        )
-        msg += f"   - in detail: {mask_negative.sum().to_dict()}\n"
-        df_wide_raw_od_data_filtered = df_wide_raw_od_data_filtered.mask(mask_negative)
-        masked = masked | mask_negative
-    else:
-        mask_negative = df_wide_raw_od_data_filtered < 0
-        window = 31
-        # Replace negatives with NaN,
-        # then compute centered rolling mean over non-missing values
-        temp = df_wide_raw_od_data_filtered.mask(mask_negative)
-        rolling_mean = temp.rolling(window=window, min_periods=1, center=True).mean()
-        df_wide_raw_od_data_filtered = df_wide_raw_od_data_filtered.mask(
-            mask_negative, rolling_mean
-        )
-        n_imputed = mask_negative.sum().sum()
-        msg += (
-            f"- Imputed {n_imputed:,d} negative OD readings using"
-            f" centered rolling mean (window={window}).\n"
-        )
-        msg += f"   - in detail: {mask_negative.sum().to_dict()}\n"
-        masked = masked | mask_negative
-        del temp, rolling_mean, mask_negative
-    if fill_na:
-        mask_na = df_wide_raw_od_data_filtered.isna()
-        msg += f"- Filling {mask_na.sum().sum():,d} missing OD readings.\n"
-        msg += f"   - in detail: {mask_na.sum().to_dict()}\n"
-        # ! should I visualize the values differently?
-        df_wide_raw_od_data_filtered = df_wide_raw_od_data_filtered.ffill().bfill()
 
     # remove quantiles
     if remove_max:
@@ -718,6 +671,23 @@ if button_pressed:
             mask_extreme_values
         )
         masked = masked | mask_extreme_values
+
+    if outlier_method == "ECOD":
+        mask_na = df_wide_raw_od_data_filtered.isna()
+        if not fill_na and mask_na.sum().sum() > 0:
+            st.error(
+                "Found missing values in the data. ECOD outlier detection does not work"
+                " with missing values. Consider setting forward and backward filling "
+                " before applying ECOD outlier detection."
+            )
+            st.stop()
+        if mask_na.sum().sum() > 0:
+            msg += "Warning: ECOD outlier detection does not work with missing values. "
+            msg += "Filling missing values before applying ECOD outlier detection.\n"
+            msg += f"- Filling {mask_na.sum().sum():,d} missing OD readings.\n"
+            msg += f"   - in detail: {mask_na.sum().to_dict()}\n"
+            # ! should I visualize the values differently?
+            df_wide_raw_od_data_filtered = df_wide_raw_od_data_filtered.ffill().bfill()
 
     # outlier detection using IQR on rolling window: sets for center value of window a
     # true or false (this would be arguing maybe for long data format)
@@ -753,10 +723,49 @@ if button_pressed:
                 mask_outliers
             )
 
-    masked = masked.fillna(False).astype(bool)
+    # Handle negative values
+    n_negative = (df_wide_raw_od_data_filtered < 0).sum().sum()
+    if n_negative > 0:
+        st.warning(f"Found {n_negative:,d} negative OD readings.")
+        msg += f"- Found {n_negative:,d} negative OD readings.\n"
+    if remove_negative:
+        mask_negative = df_wide_raw_od_data_filtered < 0
+        msg += (
+            f"- Setting {mask_negative.sum().sum():,d} negative OD readings to NaN.\n"
+        )
+        msg += f"   - in detail: {mask_negative.sum().to_dict()}\n"
+        df_wide_raw_od_data_filtered = df_wide_raw_od_data_filtered.mask(mask_negative)
+        masked = masked | mask_negative
+    else:
+        mask_negative = df_wide_raw_od_data_filtered < 0
+        window = 31
+        # Replace negatives with NaN,
+        # then compute centered rolling mean over non-missing values
+        temp = df_wide_raw_od_data_filtered.mask(mask_negative)
+        rolling_mean = temp.rolling(window=window, min_periods=1, center=True).mean()
+        df_wide_raw_od_data_filtered = df_wide_raw_od_data_filtered.mask(
+            mask_negative, rolling_mean
+        )
+        n_imputed = mask_negative.sum().sum()
+        msg += (
+            f"- Imputed {n_imputed:,d} negative OD readings using"
+            f" centered rolling mean (window={window}).\n"
+        )
+        msg += f"   - in detail: {mask_negative.sum().to_dict()}\n"
+        masked = masked | mask_negative
+        del temp, rolling_mean, mask_negative
 
-    st.session_state["df_wide_raw_od_data_filtered"] = df_wide_raw_od_data_filtered
+    masked = masked.fillna(False).astype(bool)
     st.session_state["masked"] = masked
+    st.session_state["df_wide_raw_od_data_filtered"] = df_wide_raw_od_data_filtered
+
+    # now only apply NA filling for rolling median data?
+    if fill_na:
+        mask_na = df_wide_raw_od_data_filtered.isna()
+        msg += f"- Filling {mask_na.sum().sum():,d} missing OD readings.\n"
+        msg += f"   - in detail: {mask_na.sum().to_dict()}\n"
+        # ! should I visualize the values differently?
+        df_wide_raw_od_data_filtered = df_wide_raw_od_data_filtered.ffill().bfill()
 
     df_rolling = (
         df_wide_raw_od_data_filtered.rolling(
@@ -767,16 +776,6 @@ if button_pressed:
         .median()
         .sort_index()
     )
-
-    if remove_downward_trending:
-        # Remove downward trending data globally on averaged data
-        df_wide_raw_od_data_filtered = df_wide_raw_od_data_filtered.mask(
-            df_wide_raw_od_data_filtered.diff().le(0)
-        )
-        msg += (
-            "- Downward trending data points (negative OD changes) were "
-            "removed globally."
-        )
 
     # ? Should it not be possible to be run twice in a single session?
     if od_adjustment_upload is not None:
@@ -820,6 +819,7 @@ if button_pressed:
         # should not happen
         st.error(f"Unknown reactor type: {reactor_type}")
         st.stop()
+        
     st.session_state["df_rolling"] = df_rolling
 
     st.session_state["rolling_window"] = int(rolling_window)
@@ -842,9 +842,6 @@ if st.session_state.get("debug_mode", False):
                 "reactors_selected": st.session_state.get("reactors_selected"),
                 "remove_negative": st.session_state.get("remove_negative"),
                 "fill_na": st.session_state.get("fill_na"),
-                "remove_downward_trending": st.session_state.get(
-                    "remove_downward_trending"
-                ),
                 "remove_max": st.session_state.get("remove_max"),
                 "filter_by_iqr_range": st.session_state.get("filter_by_iqr_range"),
                 "quantile_max": st.session_state.get("quantile_max"),
