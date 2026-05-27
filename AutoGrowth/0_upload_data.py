@@ -339,7 +339,6 @@ with st.container(border=True):
             )
         else:
             # ! form is only build upon rerun
-            print("df_wide_raw_od_data columns:", df_wide_raw_od_data.columns.to_list())
             available_reactors = df_wide_raw_od_data.columns.to_list()
             # ! once removed reactors are for now not recovered.
             reactors_selected = st.multiselect(
@@ -697,7 +696,6 @@ if button_pressed:
     # true or false (this would be arguing maybe for long data format)
     # can be used in plot for visualization
     # https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.rolling.html
-    print(f"Applying outlier method: {outlier_method}")
     if outlier_method in ("IQR", "ECOD"):
         kwargs_iqr = {
             "method": "iqr",
