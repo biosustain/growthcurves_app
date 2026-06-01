@@ -65,13 +65,12 @@ def ui_method_visualization(growth_method: str, model_type: str = None):
                 st.latex(
                     r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\exp\!\left[-\exp\!\left(\frac{\mu_{\max}\exp(1)(\lambda-t)}{A}+1\right)\right]+A\exp\!\left(\alpha(t-t_{\mathrm{shift}})\right)"
                 )
+                st.caption("Modified Gompertz asymmetric S-curve for diphasic growth.")
             else:
                 st.latex(
                     r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\exp\!\left[-\exp\!\left(\frac{\mu_{\max}\exp(1)(\lambda-t)}{A}+1\right)\right]"
                 )
-            st.caption(
-                "Modified Gompertz with baseline offset y₀ and amplitude A = K − y₀. Asymmetric S-curve; often fits bacterial growth better than logistic."
-            )
+                st.caption("Gompertz asymmetric S-curve.")
 
         elif "richards" in str(model_type):
             st.markdown("**Richards** (Currently Selected)")
