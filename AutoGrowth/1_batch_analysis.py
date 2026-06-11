@@ -157,7 +157,7 @@ def _on_defaults(
     st.session_state[rp_min_dp_key] = int(batch_options.get("min_data_points", 50))
     st.session_state[rp_window_key] = int(batch_options.get("window_points", 150))
     st.session_state[rp_smooth_key] = growthcurve_app.analyze.normalize_smooth(
-        batch_options.get("smooth_mode", "fast")
+        batch_options.get("smooth_mode", "slow")
     )
     _fit(
         t=t_all,
@@ -452,7 +452,7 @@ if run_analysis and not no_data_uploaded:
         model_name=analysis_options["selected_model"],
         n_fits=analysis_options["n_fits"],
         spline_s=analysis_options["spline_smoothing_value"],
-        smooth_mode=analysis_options.get("smooth_mode", "fast"),
+        smooth_mode=analysis_options.get("smooth_mode", "slow"),
         window_points=analysis_options["window_points"],
         phase_boundary_method=analysis_options["phase_boundary_method"],
         lag_cutoff=analysis_options["lag_cutoff"],
@@ -643,7 +643,7 @@ with st.container(border=True):
         st.session_state[rp_window_key] = int(batch_options.get("window_points", 10))
     if rp_smooth_key not in st.session_state:
         st.session_state[rp_smooth_key] = growthcurve_app.analyze.normalize_smooth(
-            batch_options.get("smooth_mode", "fast")
+            batch_options.get("smooth_mode", "slow")
         )
 
     # Right top-box in panel for step 2

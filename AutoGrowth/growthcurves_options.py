@@ -202,7 +202,7 @@ def _ui_method_params_upload_style(
             smooth_mode = st.radio(
                 "Spline fitting mode",
                 options=["fast", "slow"],
-                index=0,
+                index=1,
                 horizontal=True,
                 format_func=lambda v: v.capitalize(),
                 help=(

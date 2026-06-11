@@ -387,7 +387,7 @@ window_points = analysis_options["window_points"]
 phase_boundary_method = analysis_options["phase_boundary_method"]
 lag_cutoff = analysis_options["lag_cutoff"]
 exp_cutoff = analysis_options["exp_cutoff"]
-smooth_mode = analysis_options.get("smooth_mode", "fast")
+smooth_mode = analysis_options.get("smooth_mode", "slow")
 
 # views for plotting to allow for elapsed time option
 xlabel = DEFAULT_XLABEL_REL
