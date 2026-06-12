@@ -1,5 +1,6 @@
 """Upload inputs, configure analysis parameters, and run plate analysis."""
 
+from src.functions.session_io import render_restore_session_ui
 from src.functions.upload_functions import init_state
 from src.ui_functions.uploads_ui import (
     ui_analysis_params,
@@ -12,6 +13,7 @@ from src.ui_functions.uploads_ui import (
 ss = init_state()
 
 ui_upload_and_analyse_header()
+render_restore_session_ui()
 ui_upload_files(ss)
 ui_preprocessing_params(ss)
 ui_analysis_params(ss)

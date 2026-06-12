@@ -2,6 +2,7 @@
 
 import streamlit as st
 from src.functions.common import require_plates
+from src.functions.session_io import render_export_session_ui
 from src.ui_functions.download_analyzed_data_ui import (
     _render_global_plots_container,
     _render_tabulated_data_container,
@@ -119,3 +120,6 @@ st.download_button(
     width="stretch",
     type="primary",
 )
+
+# ---- Save / restore full session ----
+render_export_session_ui()
