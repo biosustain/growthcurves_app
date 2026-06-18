@@ -1,4 +1,4 @@
-# PioGrowth Streamlit Application
+# AutoGrowth Streamlit Application
 
 ## Data Formats
 

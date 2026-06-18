@@ -5,7 +5,7 @@ Overview of example data used to test the app. For now not made publicly availab
 ## Standard batch growth experiment without dilution
 
 - OD data: `batch_example/example_batch_data_od_readings.csv`
-- OD calibration data: `data/batch_example/example_batch_data_od_readings_calibration.csv`
+- OD calibration data: `batch_example/example_batch_data_od_readings_calibration.csv`
 
 ## Standard growth experiment with dilution (turbidostat mode)
 

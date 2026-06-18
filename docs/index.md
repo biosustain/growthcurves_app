@@ -21,7 +21,7 @@ tutorials/*
 :caption: "Reference"
 :hidden: true
 
-reference/piogrowth
+reference/growthcurve_app
 ```
 
 ```{toctree}

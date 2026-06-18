@@ -15,10 +15,10 @@ from importlib import metadata
 
 # -- Project information -----------------------------------------------------
 
-project = "piogrowth"
+project = "growthcurve_app"
 copyright = "2025, Henry Webel, DSP team"
 author = "Henry Webel, DSP team"
-PACKAGE_VERSION = metadata.version("piogrowth")
+PACKAGE_VERSION = metadata.version("growthcurve_app")
 version = PACKAGE_VERSION
 release = PACKAGE_VERSION
 
@@ -98,8 +98,8 @@ html_theme = "sphinx_book_theme"
 # html_logo = "_static/logo-wide.svg"
 # html_favicon = "_static/logo-square.svg"
 html_theme_options = {
-    "github_url": "https://github.com/biosustain/PioGrowth",
-    "repository_url": "https://github.com/biosustain/PioGrowth",
+    "github_url": "https://github.com/biosustain/growthcurves_app",
+    "repository_url": "https://github.com/biosustain/growthcurves_app",
     "repository_branch": "main",
     "home_page_in_toc": True,
     "path_to_docs": "docs",
@@ -131,7 +131,7 @@ if os.environ.get("READTHEDOCS") == "True":
     from pathlib import Path
 
     PROJECT_ROOT = Path(__file__).parent.parent
-    PACKAGE_ROOT = PROJECT_ROOT / "src" / "piogrowth"
+    PACKAGE_ROOT = PROJECT_ROOT / "src" / "growthcurve_app"
 
     def run_apidoc(_):
         from sphinx.ext import apidoc

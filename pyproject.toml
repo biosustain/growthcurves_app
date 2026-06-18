@@ -1,15 +1,13 @@
 # ref: https://setuptools.pypa.io/en/stable/userguide/pyproject_config.html
 [project]
 authors = [{ name = "Henry Webel", email = "heweb@dtu.dk" }]
-description = "PioGrowth related core functionality"
-name = "piogrowth"
-# This means: Load the version from the package itself.
-# See the section below: [tools.setuptools.dynamic]
-# dynamic = [
-#     "version", # version is loaded from the package
-#     #"dependencies", # add if using requirements.txt
-# ]
-version = "0.2.0"          # this is used if not using dynamic loading of the version
+description = "Growthcurve Apps related to growthcurves Python package."
+name = "growthcurve-app"
+# This means: Load the version from git tags via setuptools_scm.
+dynamic = [
+    "version", # version is loaded from git tags via setuptools_scm
+    #"dependencies", # add if using requirements.txt
+]
 readme = "README.md"
 requires-python = ">=3.10" # test all higher Python versions
 # These are keywords
@@ -36,8 +34,8 @@ dependencies = [
 
 
 [project.urls]
-"Bug Tracker" = "https://github.com/RasmussenLab/PioGrowth/issues"
-"Homepage" = "https://github.com/RasmussenLab/PioGrowth"
+"Bug Tracker" = "https://github.com/biosustain/growthcurves_app/issues"
+"Homepage" = "https://github.com/biosustain/growthcurves_app"
 
 [project.optional-dependencies]
 # Optional dependencies to locally build the documentation, also used for 
@@ -55,7 +53,7 @@ docs = [
     "scikit-learn",
 ]
 # local development options
-dev = ["black[jupyter]", "ruff", "pytest", "isort", "jupytext"]
+dev = ["black[jupyter]", "ruff", "pytest", "isort", "jupytext", "bump-my-version"]
 
 [tool.ruff]
 # https://docs.astral.sh/ruff/rules/#flake8-bandit-s
@@ -76,6 +74,15 @@ requires = ["setuptools>=64", "setuptools_scm>=8"]
 [tool.setuptools_scm]
 # https://setuptools-scm.readthedocs.io/ 
 # used to pick up the version from the git tags or the latest commit.
+
+# [tool.poetry.requires-plugins]
+# poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
+
+[tool.poetry]
+version = "0.1.0"
+
+# [tool.poetry-dynamic-versioning]
+# enable = true
 
 [tool.isort]
 profile = "black"

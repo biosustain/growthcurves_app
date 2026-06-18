@@ -15,8 +15,8 @@ from growthcurves_options import (
 from plots import create_figure_bytes_to_download, plot_growth_data_w_peaks
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
-from piogrowth.fit_spline import get_smoothing_range
-from piogrowth.turbistat import detect_peaks
+from growthcurve_app.fit_spline import get_smoothing_range
+from growthcurve_app.turbistat import detect_peaks
 
 
 ## Logic and PLOTTING
@@ -30,7 +30,9 @@ def create_summary(maxima: dict[str, pd.Series]) -> pd.DataFrame:
 
 
 def get_values_from_df(df_wide: pd.DataFrame, indices: pd.MultiIndex) -> pd.DataFrame:
-    """Get values from the wide DataFrame based on the index of the summary DataFrame."""
+    """
+    Get values from the wide DataFrame based on the index of the summary DataFrame.
+    """
     return df_wide.loc[indices.get_level_values("timestamp")].stack().loc[indices]
 
 
@@ -131,7 +133,6 @@ def _run_model_fitting_on_df_with_peaks_compat(
 # state
 
 use_elapsed_time = st.session_state.get("USE_ELAPSED_TIME_FOR_PLOTS", False)
-df_time_map = st.session_state.get("df_time_map")
 no_data_uploaded = st.session_state.get("df_rolling") is None
 df_rolling = st.session_state.get("df_rolling")
 start_time = st.session_state.get("start_time")
@@ -206,7 +207,8 @@ with st.container(border=True):
     else:
         if not has_uploaded_metadata:
             st.caption(
-                "No dilution metadata uploaded. Upload an optional CSV on the Upload Data page (Step 2)."
+                "No dilution metadata uploaded. Upload an optional CSV "
+                "on the Upload Data page (Step 2)."
             )
             st.page_link(
                 "0_upload_data.py",
@@ -216,15 +218,19 @@ with st.container(border=True):
         st.markdown("Automatic peak detection options")
         minimum_peak_height = st.number_input(
             label=(
-                "Minimum peak height (in OD units) - used only if no metadata provided. "
-                "No value uses adaptive thresholding based on the maximum of an OD curve."
-                " The default is one-fifth of the maximum OD value in a time series."
+                "Minimum peak height (in OD units) - used only if no metadata provided."
+                " No value uses adaptive thresholding based on the maximum of an OD "
+                "curve. The default is one-fifth of the maximum OD value in a time "
+                "series."
             ),
             min_value=0.0,
             value=None,
         )
         minimum_distance = st.number_input(
-            label="Minimum distance between peaks (in number of measurement timepoints)",
+            label=(
+                "Minimum distance between peaks "
+                "(in number of measurement timepoints)"
+            ),
             min_value=3,
             value=300,
             step=1,
@@ -272,8 +278,10 @@ if turbidostat_meta_bytes is not None:
     )
     mask_dilution_events = df_meta["event_name"] == "DilutionEvent"
     if not mask_dilution_events.all():
-        st.info('Showing only rows with "DilutionEvent" in column "event_name".')
+        # only keep dilution events
         df_meta = df_meta.loc[mask_dilution_events]
+    # store df_meta which is the turbidostat metadata with timestamps rounded
+    # and filtered to dilution events. This is used for peak detection:
     st.session_state["df_meta"] = df_meta
     df_meta["elapsed_time_in_seconds"] = (
         df_meta["timestamp_localtime"] - start_time
@@ -313,6 +321,38 @@ if use_uploaded_peak_times:
         except KeyError:
             st.session_state["show_error"] = True
             st.rerun()
+        with st.expander(
+            "Uploaded metadata (filtered to dilution events)", expanded=False
+        ):
+            st.info('Showing only rows with "DilutionEvent" in column "event_name".')
+            st.write(df_meta)
+        unique_reactors_in_meta = df_meta[col_reactors].unique()
+        _reactors_with_dilution_events = df_rolling.columns.isin(
+            unique_reactors_in_meta
+        )
+        if len(unique_reactors_in_meta) == 0:
+            st.error(
+                "No reactors found in uploaded metadata. Please check the selected "
+                "reactor column and the content of the uploaded file."
+            )
+            st.stop()
+        elif not _reactors_with_dilution_events.all():
+            _missing_reactors = df_rolling.columns[~_reactors_with_dilution_events]
+            st.error(
+                "Dilution Events for reactors not found:"
+                f" {', '.join(_missing_reactors)}.\n\nPlease check the selected "
+                "reactor column and the content of the uploaded file. Exlude "
+                "reactor(s) otherwise on preprocessing tab."
+            )
+            st.page_link(
+                "0_upload_data.py",
+                icon=":material/upload:",
+                label="Upload Data",
+                help="Go to upload data page.",
+            )
+            st.stop()
+
+
 else:
     with st.container(border=True):
         st.subheader("Step 3. Detect Peaks Automatically")
@@ -347,7 +387,7 @@ window_points = analysis_options["window_points"]
 phase_boundary_method = analysis_options["phase_boundary_method"]
 lag_cutoff = analysis_options["lag_cutoff"]
 exp_cutoff = analysis_options["exp_cutoff"]
-smooth_mode = analysis_options.get("smooth_mode", "fast")
+smooth_mode = analysis_options.get("smooth_mode", "slow")
 
 # views for plotting to allow for elapsed time option
 xlabel = DEFAULT_XLABEL_REL
@@ -375,13 +415,15 @@ with st.spinner(text="Fitting curves...", show_time=True):
     time_at_mu_max = stats_df["time_at_umax"]
 
     axes = axes.flatten()
-    for ax, _col in zip(axes, df_rolling.columns):
+    for ax, _col in zip(axes, df_rolling.columns, strict=True):
         s_maxima = time_at_mu_max.loc[_col]
         for x in s_maxima:
             ax.axvline(x=x, color="red", linestyle="--")
-    for ax, col in zip(axes, df_rolling.columns):
+    for ax, col in zip(axes, df_rolling.columns, strict=True):
         sub_df = stats_df.loc[col]
-        range_exp_phase = list(zip(sub_df["exp_phase_start"], sub_df["exp_phase_end"]))
+        range_exp_phase = list(
+            zip(sub_df["exp_phase_start"], sub_df["exp_phase_end"], strict=True)
+        )
         for _start, _end in range_exp_phase:
             ax.axvspan(_start, _end, color="gray", alpha=0.2)
 

@@ -1,6 +1,7 @@
 *.csv
 *.html
 *.xlsx
+*.zip
 
 querve_files/
 stijn_kral/

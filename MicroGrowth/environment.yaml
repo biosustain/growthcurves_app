@@ -1,19 +1,21 @@
-name: growth_curves_app_env
+name: microgrowth_env
 channels:
   - conda-forge
 dependencies:
   - python=3.11
   - pip
-  - numpy
-  - pandas
-  - scipy
-  - plotly
-  - streamlit
-  - openpyxl # .xlsx support
-  - xlrd # .xls support (legacy)
-  - growthcurves
+  - numpy=2.3.5
+  - pandas=2.3.3
+  - scipy=1.16.3
+  - plotly=6.3.1
+  - streamlit=1.52.0
+  - openpyxl=3.1.5 # .xlsx support
+  - xlrd=2.0.2 # .xls support (legacy)
   - pip:
-      - kaleido
+      - kaleido==0.2.1
       - streamlit-plotly-events
-      - streamlit-sortables
-      - streamlit-aggrid
+      - streamlit-sortables==0.3.1
+      - streamlit-aggrid==1.2.1
+      - st_selectable_grid==1.0.0
+      - pyod==2.0.7
+      - growthcurves>=0.7.1

@@ -1,9 +1,10 @@
+import plotly.express as px
 import streamlit as st
 from buttons import create_download_button
 from plots import create_figure_bytes_to_download, plot_growth_data_w_mask
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
-import piogrowth
+import growthcurve_app
 
 DATA_DASHBOARD_HELP = """
 Review processed upload outputs in one place:
@@ -18,7 +19,6 @@ page_header_with_help("Data Dashboard", DATA_DASHBOARD_HELP)
 df_raw_od_data = st.session_state.get("df_raw_od_data")
 df_wide_raw_od_data = st.session_state.get("df_wide_raw_od_data")
 df_rolling = st.session_state.get("df_rolling")
-df_time_map = st.session_state.get("df_time_map")
 masked = st.session_state.get("masked")
 start_time = st.session_state.get("start_time")
 processing_summary = st.session_state.get("upload_processing_summary_msg")
@@ -27,6 +27,7 @@ st.session_state.setdefault("yaxis_scale", False)
 st.session_state.setdefault("USE_ELAPSED_TIME_FOR_PLOTS", True)
 use_same_yaxis_scale = bool(st.session_state.get("yaxis_scale", False))
 use_elapsed_time = bool(st.session_state.get("USE_ELAPSED_TIME_FOR_PLOTS", True))
+reactor_type = st.session_state.get("reactor_type")
 
 USE_SAME_YAXIS_SCALE = False
 TICKS_X_AXIS_INTERVAL = None
@@ -39,20 +40,11 @@ if df_raw_od_data is None and df_rolling is None:
 
 with st.container(border=True):
     st.header("Summary Tables")
-    raw_col, time_col = st.columns(2, gap="large")
-    with raw_col:
-        st.subheader("Raw OD data")
-        if df_raw_od_data is None:
-            st.info("Raw OD data preview appears after data is loaded.")
-        else:
-            st.dataframe(df_raw_od_data, width="stretch")
-
-    with time_col:
-        st.subheader("Timestamp to elapsed-time map")
-        if df_time_map is None:
-            st.info("Timestamp map is generated after preprocessing.")
-        else:
-            st.dataframe(df_time_map, width="stretch")
+    st.subheader("Raw OD data")
+    if df_wide_raw_od_data is None:
+        st.info("Raw OD data preview appears after data is loaded.")
+    else:
+        st.dataframe(df_wide_raw_od_data, width="stretch")
 
     download_buttons = st.columns(3)
     with download_buttons[0]:
@@ -148,17 +140,109 @@ if df_wide_raw_od_data is not None and masked is not None:
 
         if not use_same_yaxis_scale:
             st.warning("Using different y-axis scale for each reactor.")
+
         df_plot = df_wide_raw_od_data
         mask_plot = masked
-        if use_elapsed_time:
-            df_plot = piogrowth.reindex_w_relative_time(
+        if use_elapsed_time and reactor_type == "PioReactor":
+            df_plot = growthcurve_app.reindex_w_relative_time(
                 df=df_plot,
                 start_time=start_time,
             )
-            mask_plot = piogrowth.reindex_w_relative_time(
+            mask_plot = growthcurve_app.reindex_w_relative_time(
                 df=mask_plot,
                 start_time=start_time,
             )
+
+        # Time window filtering
+        st.divider()
+        st.write("#### Time window filtering (Raw data view):")
+        st.write(
+            "Select time windows to display. Data outside the selected windows "
+            "will not appear in plots. Use the Upload Data page to re-process "
+            "with different options."
+        )
+        st.info(
+            "Note: Shows the raw data to highlight the filtered points before "
+            "smoothing of the data is applied."
+        )
+        st.warning(
+            "Moving the slider leads to permanent changes in the data "
+            "shown in the plots below."
+        )
+
+        # Reset stored ranges when elapsed-time mode changes to avoid type mismatch
+        _prev_use_elapsed = st.session_state.get("_dashboard_prev_use_elapsed")
+        if _prev_use_elapsed != use_elapsed_time:
+            st.session_state.pop("dashboard_min_t", None)
+            st.session_state.pop("dashboard_max_t", None)
+            st.session_state.pop("dashboard_time_ranges", None)
+        st.session_state["_dashboard_prev_use_elapsed"] = use_elapsed_time
+
+        all_timepoints = df_plot.index
+        _stored_min = st.session_state.get("dashboard_min_t", all_timepoints.min())
+        _stored_max = st.session_state.get("dashboard_max_t", all_timepoints.max())
+        if _stored_min not in all_timepoints:
+            _stored_min = all_timepoints.min()
+        if _stored_max not in all_timepoints:
+            _stored_max = all_timepoints.max()
+
+        time_window_cols = st.columns([7, 1], gap="large", vertical_alignment="bottom")
+        with time_window_cols[0]:
+            min_t, max_t = st.select_slider(
+                "Select overall time window (inferred).",
+                options=all_timepoints,
+                value=(_stored_min, _stored_max),
+            )
+        with time_window_cols[1]:
+            update_zero_timepoint = st.checkbox(
+                "Reset T0",
+                value=st.session_state.get("update_zero_timepoint", False),
+                help=(
+                    "If checked, a new zero time is set to the minimum "
+                    "timestamp of the overall time window."
+                ),
+            )
+
+        st.session_state["dashboard_min_t"] = min_t
+        st.session_state["dashboard_max_t"] = max_t
+        st.session_state["update_zero_timepoint"] = update_zero_timepoint
+
+        df_plot = df_plot.loc[min_t:max_t]
+        mask_plot = mask_plot.loc[min_t:max_t]
+
+        if df_rolling is not None:
+            df_rolling = df_rolling.loc[min_t:max_t]
+            st.session_state["df_rolling"] = df_rolling
+            # ! filtered dataframe is not affected.
+
+        with st.expander("Select time window per reactor"):
+            st.info("Note: Minimum and maximum for slider are reactor specific!")
+            dashboard_time_ranges = st.session_state.get("dashboard_time_ranges", {})
+            for reactor in list(df_plot.columns):
+                reactor_data = df_plot[reactor].dropna()
+                if reactor_data.empty:
+                    continue
+                _options = reactor_data.index
+                _stored_r = dashboard_time_ranges.get(reactor)
+                if (
+                    _stored_r is not None
+                    and _stored_r[0] in _options
+                    and _stored_r[1] in _options
+                ):
+                    _r_min, _r_max = _stored_r
+                else:
+                    _r_min, _r_max = _options.min(), _options.max()
+                r_min_t, r_max_t = st.select_slider(
+                    f"Select time window (inferred) for {reactor}."
+                    " Bounded by overall time window.",
+                    options=_options,
+                    value=(_r_min, _r_max),
+                )
+                dashboard_time_ranges[reactor] = (r_min_t, r_max_t)
+                reactor_in_window = df_plot.index.to_series().between(r_min_t, r_max_t)
+                df_plot.loc[:, reactor] = df_plot[reactor].where(reactor_in_window)
+            st.session_state["dashboard_time_ranges"] = dashboard_time_ranges
+
         # Figure showing the raw and masked growth data for each reactor
         fig = plot_growth_data_w_mask(
             df_plot,
@@ -198,13 +282,29 @@ if processing_summary:
 # show rolling median table
 if df_rolling is not None:
     with st.container(border=True):
-        st.header("Rolling Median")
+        st.header("Smoothed data view.")
         if rolling_window is not None:
             st.subheader(
                 f"Rolling median in window of {rolling_window}s using filtered OD data"
             )
         else:
-            st.subheader("Rolling median using filtered OD data")
+            st.subheader("Filtered raw OD data (untrimmed and not calibrated)")
+        fig = px.scatter(
+            df_wide_raw_od_data_filtered,
+            x=df_wide_raw_od_data_filtered.index,
+            y=df_wide_raw_od_data_filtered.columns,
+            labels={"value": "OD (rolling median)", "index": "Time"},
+            title="Filtered raw data.",
+        )
+        st.plotly_chart(fig)
+        fig = px.line(
+            df_rolling,
+            x=df_rolling.index,
+            y=df_rolling.columns,
+            labels={"value": "OD (rolling median)", "index": "Time"},
+            title="Smoothed, trimmed and calibrated growth curves",
+        )
+        st.plotly_chart(fig)
         st.write(df_rolling)
         create_download_button(
             data=df_rolling.to_csv(index=True).encode("utf-8"),
@@ -213,43 +313,3 @@ if df_rolling is not None:
             disabled=False,
             mime="text/csv",
         )
-
-        # ! removing this plot for now
-        # if not use_elapsed_time and start_time is not None:
-        #     view = df_rolling.copy()
-        #     view.index = start_time + pd.to_timedelta(view.index, unit="h")
-        # else:
-        #     view = df_rolling
-
-        # ax = view.plot.line(style=".", ms=2)
-        # st.write(ax.get_figure())
-
-# ! This was moved to the place in the main page, not sidebar. Can be reverted.
-# Download buttons in sidebar
-# if st.session_state.get("df_raw_od_data") is not None:
-#     download_data_button_in_sidebar(
-#         "df_raw_od_data",
-#         "Download raw data  \n(long format)",
-#         file_name="data_long_rounded_timestamps.csv",
-#     )
-
-# if st.session_state.get("df_wide_raw_od_data") is not None:
-#     download_data_button_in_sidebar(
-#         "df_wide_raw_od_data",
-#         "Download raw data  \n(wide format)",
-#         file_name="data_wide_rounded_timestamps.csv",
-#     )
-
-# if st.session_state.get("df_wide_raw_od_data_filtered") is not None:
-#     download_data_button_in_sidebar(
-#         "df_wide_raw_od_data_filtered",
-#         "Download filtered data",
-#         file_name="filtered_data_wide_rounded_timestamps.csv",
-#     )
-
-# if df_rolling is not None:
-#     download_data_button_in_sidebar(
-#         "df_rolling",
-#         "Download rolling median data",
-#         file_name="rolling_median_on_filtered_wide_data_with_rounded_timestamps.csv",
-#     )

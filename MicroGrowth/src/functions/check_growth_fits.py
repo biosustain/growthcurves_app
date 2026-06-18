@@ -59,18 +59,32 @@ def _get_selected_points(event) -> tuple[np.ndarray, np.ndarray]:
 def _match_selected_times(
     all_t: np.ndarray, selected_times: np.ndarray, *, time_tolerance: float = 0.01
 ) -> np.ndarray:
-    """Return indices in all_t that match selected_times within tolerance."""
+    """Return indices in all_t that match selected_times within tolerance.
+
+    The matching tolerance is capped at half the smallest gap between distinct
+    timepoints, so a selected time can never fall within tolerance of two
+    adjacent timepoints at once (each selection maps to exactly one index).
+    """
     if all_t.size == 0 or selected_times.size == 0:
         return np.array([], dtype=int)
+
+    finite_t = all_t[np.isfinite(all_t)]
+    # np.unique already returns sorted unique values.
+    diffs = np.diff(np.unique(finite_t))
+    positive_diffs = diffs[diffs > 0]
+    min_spacing = (
+        float(np.min(positive_diffs)) if positive_diffs.size else time_tolerance
+    )
+    effective_tolerance = min(time_tolerance, min_spacing / 2)
 
     refit_indices = []
     seen = set()
     for sel_t in selected_times:
-        matches = np.where(np.abs(all_t - sel_t) < time_tolerance)[0]
-        if len(matches) == 0:
+        distances = np.abs(all_t - sel_t)
+        if not np.any(np.isfinite(distances)):
             continue
-        idx = int(matches[0])
-        if idx not in seen:
+        idx = int(np.nanargmin(distances))
+        if distances[idx] <= effective_tolerance and idx not in seen:
             refit_indices.append(idx)
             seen.add(idx)
 

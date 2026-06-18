@@ -3,25 +3,31 @@ from pathlib import Path
 import streamlit as st
 from ui_components import render_markdown
 
-import piogrowth
-from piogrowth.styling import green_gradient, green_navbar, red_buttons
+import growthcurve_app
+from growthcurve_app.styling import green_gradient, green_navbar, red_buttons
 
-logo_path = Path(__file__).with_name("logo.svg")
+APP_VERSION = Path(__file__).with_name("VERSION").read_text(encoding="utf-8").strip()
+PACKAGE_VERSION = growthcurve_app.__version__
+
+logo_path = Path("../MicroGrowth/logo.svg")
 logo_source = (
     str(logo_path)
     if logo_path.exists()
-    else "https://raw.githubusercontent.com/sambra95/TheGrowthAnalysisApp/main/logo.svg"
+    else "https://raw.githubusercontent.com/biosustain/growthcurves_app/refs/heads/main/MicroGrowth/logo.svg"
 )
 
 # General configurations
 st.set_page_config(
-    page_title="PioGrowth",
+    page_title="AutoGrowth",
     layout="wide",
     page_icon=logo_source,
     initial_sidebar_state="expanded",
 )
 
-st.logo(logo_source, link="https://github.com/biosustain/PioGrowth")
+st.logo(
+    logo_source,
+    link="https://github.com/biosustain/growthcurves_app/tree/main/AutoGrowth",
+)
 
 # Initialize constants
 DEFAULT_CUSTOM_ID = "pioreactor_experiment"
@@ -34,7 +40,7 @@ st.session_state["DEFAULT_XLABEL_REL"] = "Elapsed time (hours)"
 
 # function creating the about page from a markdown file
 def render_about():
-    render_markdown("app/markdowns/about.md")
+    render_markdown("AutoGrowth/markdowns/about.md")
 
 
 # Navigation
@@ -43,6 +49,7 @@ data_dashboard = st.Page("0_data_dashboard.py", title="Data Dashboard")
 select_data = st.Page("0_select_data.py", title="Select / Exclude Data")
 batch_analysis = st.Page("1_batch_analysis.py", title="Batch Growth Analysis")
 turbistat_modus = st.Page("2_turbiostat.py", title="Turbidostat Growth Analysis")
+comparative_plots = st.Page("3_comparative_plots.py", title="Comparative Plots")
 downloads_page = st.Page("0_downloads.py", title="Downloads")
 about_page = st.Page(render_about, title="About")
 
@@ -55,9 +62,11 @@ with st.sidebar:
             "1. Upload and preprocess data\n"
             "2. Review data dashboard\n"
             "3. Run batch or turbidostat analysis\n"
-            "4. Export downloads"
+            "4. Compare metrics across groups\n"
+            "5. Export downloads"
         )
-    st.caption(f"PioGrowth v{piogrowth.__version__}")
+    st.caption(f"AutoGrowth app v{APP_VERSION}")
+    st.caption(f"growthcurve-app package v{PACKAGE_VERSION}")
 
     debug_mode = st.checkbox(
         "Debug Mode",
@@ -78,6 +87,7 @@ pg = st.navigation(
         select_data,
         batch_analysis,
         turbistat_modus,
+        comparative_plots,
         downloads_page,
         about_page,
     ],
