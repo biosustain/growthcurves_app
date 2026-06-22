@@ -441,7 +441,10 @@ with st.container(border=True):
                 8.0,
                 st.session_state.get("ecod_factor", 4.0),
                 step=0.1,
-                help="Used when outlier method is ECOD. Anomaly detection sensitivity.",
+                help=(
+                    "Used when outlier method is ECOD. Lower values are more "
+                    "sensitive; higher values are less sensitive."
+                ),
             )
 
         st.divider()
