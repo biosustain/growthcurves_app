@@ -6,6 +6,7 @@ from process_data import (
     REQUIRED_COLUMNS_NAME_MAP,
     process_chibio_data,
     process_od_pioreactor,
+    read_od_adjustment_table,
 )
 from ui_components import page_header_with_help
 
@@ -820,7 +821,7 @@ if button_pressed:
                 "OD adjustments have already been applied. "
                 "Re-applying will overwrite previous adjustments."
             )
-        df_adjustments = pd.read_csv(od_adjustment_upload).convert_dtypes()
+        df_adjustments = read_od_adjustment_table(od_adjustment_upload)
         try:
             df_rolling, adjustment_warnings = apply_linear_adjustments(
                 df_rolling, df_adjustments

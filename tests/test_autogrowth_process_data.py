@@ -1,4 +1,5 @@
 import importlib.util
+import io
 from pathlib import Path
 
 import pandas as pd
@@ -61,3 +62,21 @@ def test_maybe_aggregate_high_frequency_raw_data_skips_15s_or_above():
     assert was_aggregated is False
     assert median_interval == 15.0
     pd.testing.assert_frame_equal(not_aggregated.reset_index(drop=True), df)
+
+
+def test_read_od_adjustment_table_accepts_comma_delimited_csv():
+    uploaded = io.StringIO("reactor,od\nr1,0.1\nr2,0.2\n")
+    df = process_data.read_od_adjustment_table(uploaded)
+
+    assert list(df.columns) == ["reactor", "od"]
+    assert df["reactor"].tolist() == ["r1", "r2"]
+    assert df["od"].tolist() == [0.1, 0.2]
+
+
+def test_read_od_adjustment_table_accepts_semicolon_delimited_csv():
+    uploaded = io.StringIO("reactor;od\nr1;0.1\nr2;0.2\n")
+    df = process_data.read_od_adjustment_table(uploaded)
+
+    assert list(df.columns) == ["reactor", "od"]
+    assert df["reactor"].tolist() == ["r1", "r2"]
+    assert df["od"].tolist() == [0.1, 0.2]

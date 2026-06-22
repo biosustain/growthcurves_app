@@ -78,6 +78,13 @@ def maybe_aggregate_high_frequency_raw_data(
     return df_aggregated.convert_dtypes(), True, median_interval_seconds
 
 
+def read_od_adjustment_table(file) -> pd.DataFrame:
+    """Read OD adjustment table from CSV/TXT with automatic delimiter detection."""
+    if hasattr(file, "seek"):
+        file.seek(0)
+    return pd.read_csv(file, sep=None, engine="python").convert_dtypes()
+
+
 def read_pioreactor_csv(file: str, round_time: int = 60):
     """Read raw OD data from a PioReactor export CSV file and round timestamps."""
     df_raw_od_data = pd.read_csv(file, converters=COLUMN_TYPES_PIO).convert_dtypes()
