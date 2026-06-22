@@ -211,7 +211,7 @@ with st.container(border=True):
         with st.popover("See an Example", width="stretch"):
             st.markdown("**OD Calibration Table**")
             st.markdown(
-                "- CSV file with columns `reactor` and `od`.\n"
+                "- CSV/TXT (`,` or `;`) or Excel file with columns `reactor` and `od`.\n"
                 "- Used to adjust OD readings by reactor based on calibration data."
             )
             st.divider()
@@ -237,7 +237,7 @@ with st.container(border=True):
             st.info(f"File previously uploaded: {_file_name}")
         od_adjustment_upload = st.file_uploader(
             "OD adjustment table",
-            type=["csv", "txt"],
+            type=["csv", "txt", "xlsx", "xls"],
             key="upload_page_od_adjustment_table",
         )
     with optional_upload_cols[1]:

@@ -79,9 +79,12 @@ def maybe_aggregate_high_frequency_raw_data(
 
 
 def read_od_adjustment_table(file) -> pd.DataFrame:
-    """Read OD adjustment table from CSV/TXT with automatic delimiter detection."""
+    """Read OD adjustment table from CSV/TXT or Excel files."""
+    suffix = Path(getattr(file, "name", "")).suffix.lower()
     if hasattr(file, "seek"):
         file.seek(0)
+    if suffix in {".xlsx", ".xls"}:
+        return pd.read_excel(file).convert_dtypes()
     return pd.read_csv(file, sep=None, engine="python").convert_dtypes()
 
 

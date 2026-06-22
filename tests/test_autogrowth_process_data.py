@@ -80,3 +80,17 @@ def test_read_od_adjustment_table_accepts_semicolon_delimited_csv():
     assert list(df.columns) == ["reactor", "od"]
     assert df["reactor"].tolist() == ["r1", "r2"]
     assert df["od"].tolist() == [0.1, 0.2]
+
+
+def test_read_od_adjustment_table_accepts_excel_file():
+    df_in = pd.DataFrame({"reactor": ["r1", "r2"], "od": [0.1, 0.2]})
+    uploaded = io.BytesIO()
+    df_in.to_excel(uploaded, index=False)
+    uploaded.name = "calibration.xlsx"
+    uploaded.seek(0)
+
+    df = process_data.read_od_adjustment_table(uploaded)
+
+    assert list(df.columns) == ["reactor", "od"]
+    assert df["reactor"].tolist() == ["r1", "r2"]
+    assert df["od"].tolist() == [0.1, 0.2]
