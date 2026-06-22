@@ -504,6 +504,15 @@ with st.container(border=True):
                     "outliers and therefore the default."
                 ),
             )
+        aggregate_high_frequency_raw_data = st.checkbox(
+            "Aggregate raw OD data when sampled below every 15 seconds (PioReactor)",
+            value=st.session_state.get("aggregate_high_frequency_raw_data", False),
+            disabled=reactor_type != "PioReactor",
+            help=(
+                "If enabled, PioReactor raw OD data sampled faster than every 15 "
+                "seconds is aggregated to 15-second time bins before processing."
+            ),
+        )
         st.divider()
         button_pressed = st.form_submit_button(
             "Apply options to uploaded data", type="primary", width="stretch"
@@ -531,6 +540,7 @@ st.session_state["aggregate_duplicated_rounded_timepoint"] = (
 st.session_state["aggregate_duplicated_rounded_timepoint_method"] = (
     aggregate_duplicated_rounded_timepoint_method
 )
+st.session_state["aggregate_high_frequency_raw_data"] = aggregate_high_frequency_raw_data
 
 # region: Process files
 ########################################################################################
@@ -626,6 +636,7 @@ if file:
             keep_core_data=keep_core_data,
             aggregate_duplicated_rounded_timepoint=aggregate_duplicated_rounded_timepoint,
             aggregate_duplicated_rounded_timepoint_method=aggregate_duplicated_rounded_timepoint_method,
+            aggregate_high_frequency_raw_data=aggregate_high_frequency_raw_data,
         )
 
     rerun = st.session_state.get("df_raw_od_data") is None
