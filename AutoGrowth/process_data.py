@@ -42,7 +42,14 @@ def maybe_aggregate_high_frequency_raw_data(
     min_interval_seconds: int = 15,
     aggregation_method: str = "median",
 ) -> tuple[pd.DataFrame, bool, float | None]:
-    """Aggregate OD data if sampling is faster than the minimum interval."""
+    """Aggregate OD data if sampling is faster than the minimum interval.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, bool, float | None]
+        (possibly aggregated data, whether aggregation was applied,
+        median sampling interval in seconds).
+    """
     sampling_interval = (
         df_raw_od_data.sort_values(["pioreactor_unit", "timestamp_localtime"])
         .groupby("pioreactor_unit")["timestamp_localtime"]
@@ -79,13 +86,34 @@ def maybe_aggregate_high_frequency_raw_data(
 
 
 def read_od_adjustment_table(file) -> pd.DataFrame:
-    """Read OD adjustment table from CSV/TXT or Excel files."""
+    """Read OD adjustment table from CSV/TXT or Excel files.
+
+    Parameters
+    ----------
+    file
+        Uploaded file-like object with a ``name`` attribute.
+
+    Returns
+    -------
+    pd.DataFrame
+        Adjustment table expected to include ``reactor`` and ``od`` columns.
+    """
     suffix = Path(getattr(file, "name", "")).suffix.lower()
     if hasattr(file, "seek"):
         file.seek(0)
     if suffix in {".xlsx", ".xls"}:
         return pd.read_excel(file).convert_dtypes()
-    return pd.read_csv(file, sep=None, engine="python").convert_dtypes()
+    if hasattr(file, "read"):
+        preview = file.read(4096)
+        if hasattr(file, "seek"):
+            file.seek(0)
+    else:
+        preview = ""
+    if isinstance(preview, bytes):
+        preview = preview.decode("utf-8", errors="ignore")
+    header = next((line for line in preview.splitlines() if line.strip()), "")
+    delimiter = ";" if header.count(";") > header.count(",") else ","
+    return pd.read_csv(file, sep=delimiter).convert_dtypes()
 
 
 def read_pioreactor_csv(file: str, round_time: int = 60):
