@@ -1,3 +1,4 @@
+import csv
 from pathlib import Path
 
 import pandas as pd
@@ -112,7 +113,10 @@ def read_od_adjustment_table(file) -> pd.DataFrame:
     if isinstance(preview, bytes):
         preview = preview.decode("utf-8", errors="ignore")
     header = next((line for line in preview.splitlines() if line.strip()), "")
-    delimiter = ";" if header.count(";") > header.count(",") else ","
+    try:
+        delimiter = csv.Sniffer().sniff(header, delimiters=",;").delimiter
+    except csv.Error:
+        delimiter = ","
     return pd.read_csv(file, sep=delimiter).convert_dtypes()
 
 
