@@ -4,10 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-
-MODULE_PATH = (
-    Path(__file__).resolve().parents[1] / "AutoGrowth" / "process_data.py"
-)
+MODULE_PATH = Path(__file__).resolve().parents[1] / "AutoGrowth" / "process_data.py"
 SPEC = importlib.util.spec_from_file_location("autogrowth_process_data", MODULE_PATH)
 process_data = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None

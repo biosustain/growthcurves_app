@@ -544,7 +544,9 @@ st.session_state["aggregate_duplicated_rounded_timepoint"] = (
 st.session_state["aggregate_duplicated_rounded_timepoint_method"] = (
     aggregate_duplicated_rounded_timepoint_method
 )
-st.session_state["aggregate_high_frequency_raw_data"] = aggregate_high_frequency_raw_data
+st.session_state["aggregate_high_frequency_raw_data"] = (
+    aggregate_high_frequency_raw_data
+)
 
 # region: Process files
 ########################################################################################

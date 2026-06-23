@@ -68,9 +68,9 @@ def maybe_aggregate_high_frequency_raw_data(
         return df_raw_od_data, False, median_interval_seconds
 
     df_aggregated = df_raw_od_data.copy()
-    df_aggregated["timestamp_localtime"] = df_aggregated["timestamp_localtime"].dt.floor(
-        f"{min_interval_seconds}s"
-    )
+    df_aggregated["timestamp_localtime"] = df_aggregated[
+        "timestamp_localtime"
+    ].dt.floor(f"{min_interval_seconds}s")
     group_columns = ["timestamp_localtime", "pioreactor_unit"]
     agg_map = {
         col: (aggregation_method if col == "od_reading" else "first")
