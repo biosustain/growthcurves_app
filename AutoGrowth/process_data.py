@@ -1,3 +1,4 @@
+import csv
 from pathlib import Path
 
 import pandas as pd
@@ -35,6 +36,90 @@ COLUMN_TYPES_PIO: dict = {
     # "angle": float,
     # "channel": float,
 }
+
+
+def maybe_aggregate_high_frequency_raw_data(
+    df_raw_od_data: pd.DataFrame,
+    min_interval_seconds: int = 15,
+    aggregation_method: str = "median",
+) -> tuple[pd.DataFrame, bool, float | None]:
+    """Aggregate OD data if sampling is faster than the minimum interval.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, bool, float | None]
+        (possibly aggregated data, whether aggregation was applied,
+        median sampling interval in seconds).
+    """
+    sampling_interval = (
+        df_raw_od_data.sort_values(["pioreactor_unit", "timestamp_localtime"])
+        .groupby("pioreactor_unit")["timestamp_localtime"]
+        .diff()
+        .dt.total_seconds()
+        .dropna()
+    )
+    median_interval_seconds = (
+        float(sampling_interval.median()) if not sampling_interval.empty else None
+    )
+    if (
+        median_interval_seconds is None
+        or median_interval_seconds >= min_interval_seconds
+    ):
+        return df_raw_od_data, False, median_interval_seconds
+
+    df_aggregated = df_raw_od_data.copy()
+    # flooring to 00, 15, 30, 45 seconds for example, to aggregate to 15s intervals
+    # ? Can it cause trouble with metadata?
+    df_aggregated["timestamp_localtime"] = df_aggregated[
+        "timestamp_localtime"
+    ].dt.floor(f"{min_interval_seconds}s")
+    group_columns = ["timestamp_localtime", "pioreactor_unit"]
+    agg_map = {
+        col: (aggregation_method if col == "od_reading" else "first")
+        for col in df_aggregated.columns
+        if col not in group_columns
+    }
+    df_aggregated = df_aggregated.groupby(
+        group_columns,
+        sort=False,
+        dropna=False,
+        as_index=False,
+    ).agg(agg_map)
+    return df_aggregated.convert_dtypes(), True, median_interval_seconds
+
+
+def read_od_adjustment_table(file) -> pd.DataFrame:
+    """Read OD adjustment table from CSV/TXT or Excel files.
+
+    Parameters
+    ----------
+    file
+        Uploaded file-like object with a ``name`` attribute.
+
+    Returns
+    -------
+    pd.DataFrame
+        Adjustment table expected to include ``reactor`` and ``od`` columns.
+    """
+    suffix = Path(getattr(file, "name", "")).suffix.lower()
+    if hasattr(file, "seek"):
+        file.seek(0)
+    if suffix in {".xlsx", ".xls"}:
+        return pd.read_excel(file).convert_dtypes()
+    if hasattr(file, "read"):
+        preview = file.read(4096)
+        if hasattr(file, "seek"):
+            file.seek(0)
+    else:
+        preview = ""
+    if isinstance(preview, bytes):
+        preview = preview.decode("utf-8", errors="ignore")
+    header = next((line for line in preview.splitlines() if line.strip()), "")
+    try:
+        delimiter = csv.Sniffer().sniff(header, delimiters=",;").delimiter
+    except csv.Error:
+        delimiter = ","
+    return pd.read_csv(file, sep=delimiter).convert_dtypes()
 
 
 def read_pioreactor_csv(file: str, round_time: int = 60):
@@ -117,6 +202,8 @@ def process_od_pioreactor(
     keep_core_data: bool = True,
     aggregate_duplicated_rounded_timepoint: bool = True,
     aggregate_duplicated_rounded_timepoint_method: str = "mean",
+    aggregate_high_frequency_raw_data: bool = False,
+    min_raw_sampling_interval_seconds: int = 15,
 ):
     """Process raw OD data from a PioReactor export CSV file and return both the
     raw and wide formats of the data, along with a summary message and a boolean
@@ -142,6 +229,11 @@ def process_od_pioreactor(
         Method to use for aggregating duplicated rounded timepoints, by default "mean".
         Options are what pandas groupby.agg accepts, e.g. "mean", "median",
         "min", "max", etc.
+    aggregate_high_frequency_raw_data : bool, optional
+        Whether to aggregate raw OD data before processing when sampling is faster
+        than the minimum sampling interval.
+    min_raw_sampling_interval_seconds : int, optional
+        Minimum expected sampling interval in seconds, default 15.
 
     Returns
     -------
@@ -150,6 +242,29 @@ def process_od_pioreactor(
         the processing steps.
     """
     df_raw_od_data, msg = read_pioreactor_csv(file, round_time)
+    if aggregate_high_frequency_raw_data:
+        n_before = df_raw_od_data.shape[0]
+        df_raw_od_data, was_aggregated, median_interval_seconds = (
+            maybe_aggregate_high_frequency_raw_data(
+                df_raw_od_data=df_raw_od_data,
+                min_interval_seconds=min_raw_sampling_interval_seconds,
+                aggregation_method=aggregate_duplicated_rounded_timepoint_method,
+            )
+        )
+        if was_aggregated:
+            n_after = df_raw_od_data.shape[0]
+            msg += (
+                "- Aggregated high-frequency raw OD data sampled every "
+                f"{median_interval_seconds:.1f}s to {min_raw_sampling_interval_seconds}s "
+                f"(rows: {n_before:,d} -> {n_after:,d}).\n"
+            )
+        elif median_interval_seconds is not None:
+            msg += (
+                "- Raw OD data sampling interval is "
+                f"{median_interval_seconds:.1f}s (>= "
+                f"{min_raw_sampling_interval_seconds}s), so no pre-aggregation was "
+                "applied.\n"
+            )
     # use starttime to compute elapsed time
     start_time = df_raw_od_data["timestamp_rounded"].min()
     st.session_state["start_time"] = start_time

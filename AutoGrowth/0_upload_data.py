@@ -6,6 +6,7 @@ from process_data import (
     REQUIRED_COLUMNS_NAME_MAP,
     process_chibio_data,
     process_od_pioreactor,
+    read_od_adjustment_table,
 )
 from ui_components import page_header_with_help
 
@@ -210,7 +211,7 @@ with st.container(border=True):
         with st.popover("See an Example", width="stretch"):
             st.markdown("**OD Calibration Table**")
             st.markdown(
-                "- CSV file with columns `reactor` and `od`.\n"
+                "- CSV/TXT (`,` or `;`) or Excel file with columns `reactor` and `od`.\n"
                 "- Used to adjust OD readings by reactor based on calibration data."
             )
             st.divider()
@@ -236,7 +237,7 @@ with st.container(border=True):
             st.info(f"File previously uploaded: {_file_name}")
         od_adjustment_upload = st.file_uploader(
             "OD adjustment table",
-            type=["csv", "txt"],
+            type=["csv", "txt", "xlsx", "xls"],
             key="upload_page_od_adjustment_table",
         )
     with optional_upload_cols[1]:
@@ -422,7 +423,7 @@ with st.container(border=True):
             iqr_range_value = st.slider(
                 "IQR factor for outlier removal",
                 1.0,
-                3.0,
+                5.0,
                 st.session_state.get("iqr_range_value", 1.5),
                 step=0.1,
                 help="Used when outlier method is IQR. Multiplier of the IQR.",
@@ -430,7 +431,7 @@ with st.container(border=True):
             rolling_window = st.slider(
                 "Rolling window (of timepoints) for IQR outlier removal",
                 11,
-                61,
+                141,
                 st.session_state.get("rolling_window", 21),
                 step=2,
                 help="Used when outlier method is IQR.",
@@ -438,10 +439,13 @@ with st.container(border=True):
             ecod_factor = st.slider(
                 "ECOD factor for outlier removal",
                 0.5,
-                8.0,
+                12.0,
                 st.session_state.get("ecod_factor", 4.0),
                 step=0.1,
-                help="Used when outlier method is ECOD. Anomaly detection sensitivity.",
+                help=(
+                    "Used when outlier method is ECOD. Lower values are more "
+                    "sensitive; higher values are less sensitive."
+                ),
             )
 
         st.divider()
@@ -460,10 +464,10 @@ with st.container(border=True):
                 "Round time to nearest second (defining timesteps). "
                 "Used to align timeseries "
                 "with slight time offsets.",
-                1,
+                5,
                 300,
                 st.session_state.get("round_time", 5),
-                step=1,
+                step=5,
                 help=(
                     "Rounding helps pivot the data to wide format from the "
                     "long format. If you have multiple measurements for the same "
@@ -504,6 +508,15 @@ with st.container(border=True):
                     "outliers and therefore the default."
                 ),
             )
+        aggregate_high_frequency_raw_data = st.checkbox(
+            "Aggregate raw OD data when sampled below every 15 seconds (PioReactor)",
+            value=st.session_state.get("aggregate_high_frequency_raw_data", False),
+            disabled=reactor_type != "PioReactor",
+            help=(
+                "If enabled, PioReactor raw OD data sampled faster than every 15 "
+                "seconds is aggregated to 15-second time bins before processing."
+            ),
+        )
         st.divider()
         button_pressed = st.form_submit_button(
             "Apply options to uploaded data", type="primary", width="stretch"
@@ -530,6 +543,9 @@ st.session_state["aggregate_duplicated_rounded_timepoint"] = (
 )
 st.session_state["aggregate_duplicated_rounded_timepoint_method"] = (
     aggregate_duplicated_rounded_timepoint_method
+)
+st.session_state["aggregate_high_frequency_raw_data"] = (
+    aggregate_high_frequency_raw_data
 )
 
 # region: Process files
@@ -626,6 +642,7 @@ if file:
             keep_core_data=keep_core_data,
             aggregate_duplicated_rounded_timepoint=aggregate_duplicated_rounded_timepoint,
             aggregate_duplicated_rounded_timepoint_method=aggregate_duplicated_rounded_timepoint_method,
+            aggregate_high_frequency_raw_data=aggregate_high_frequency_raw_data,
         )
 
     rerun = st.session_state.get("df_raw_od_data") is None
@@ -806,7 +823,7 @@ if button_pressed:
                 "OD adjustments have already been applied. "
                 "Re-applying will overwrite previous adjustments."
             )
-        df_adjustments = pd.read_csv(od_adjustment_upload).convert_dtypes()
+        df_adjustments = read_od_adjustment_table(od_adjustment_upload)
         try:
             df_rolling, adjustment_warnings = apply_linear_adjustments(
                 df_rolling, df_adjustments
