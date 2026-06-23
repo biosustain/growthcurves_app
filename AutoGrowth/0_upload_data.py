@@ -423,7 +423,7 @@ with st.container(border=True):
             iqr_range_value = st.slider(
                 "IQR factor for outlier removal",
                 1.0,
-                3.0,
+                5.0,
                 st.session_state.get("iqr_range_value", 1.5),
                 step=0.1,
                 help="Used when outlier method is IQR. Multiplier of the IQR.",
@@ -431,7 +431,7 @@ with st.container(border=True):
             rolling_window = st.slider(
                 "Rolling window (of timepoints) for IQR outlier removal",
                 11,
-                61,
+                141,
                 st.session_state.get("rolling_window", 21),
                 step=2,
                 help="Used when outlier method is IQR.",
@@ -439,7 +439,7 @@ with st.container(border=True):
             ecod_factor = st.slider(
                 "ECOD factor for outlier removal",
                 0.5,
-                8.0,
+                12.0,
                 st.session_state.get("ecod_factor", 4.0),
                 step=0.1,
                 help=(
@@ -464,10 +464,10 @@ with st.container(border=True):
                 "Round time to nearest second (defining timesteps). "
                 "Used to align timeseries "
                 "with slight time offsets.",
-                1,
+                5,
                 300,
                 st.session_state.get("round_time", 5),
-                step=1,
+                step=5,
                 help=(
                     "Rounding helps pivot the data to wide format from the "
                     "long format. If you have multiple measurements for the same "
