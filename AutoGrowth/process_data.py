@@ -68,6 +68,8 @@ def maybe_aggregate_high_frequency_raw_data(
         return df_raw_od_data, False, median_interval_seconds
 
     df_aggregated = df_raw_od_data.copy()
+    # flooring to 00, 15, 30, 45 seconds for example, to aggregate to 15s intervals
+    # ? Can it cause trouble with metadata?
     df_aggregated["timestamp_localtime"] = df_aggregated[
         "timestamp_localtime"
     ].dt.floor(f"{min_interval_seconds}s")

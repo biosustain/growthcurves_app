@@ -26,7 +26,15 @@ def test_maybe_aggregate_high_frequency_raw_data_aggregates_sub_15s():
             "od_reading": [0.1, 0.2, 0.3, 0.4],
         }
     )
-
+    expected = pd.DataFrame(
+        {
+            "timestamp_localtime": pd.to_datetime(
+                ["2024-01-01 00:00:00", "2024-01-01 00:00:15"]
+            ),
+            "pioreactor_unit": ["r1", "r1"],
+            "od_reading": [0.2, 0.4],
+        }
+    ).convert_dtypes()
     aggregated, was_aggregated, median_interval = (
         process_data.maybe_aggregate_high_frequency_raw_data(df)
     )
@@ -35,6 +43,41 @@ def test_maybe_aggregate_high_frequency_raw_data_aggregates_sub_15s():
     assert median_interval == 5.0
     assert aggregated.shape[0] == 2
     assert aggregated["od_reading"].tolist() == [0.2, 0.4]
+    assert pd.testing.assert_frame_equal(aggregated, expected) is None
+
+
+def test_maybe_aggregate_high_frequency_raw_data_aggregates_sub_15s_non_zero_start():
+    df = pd.DataFrame(
+        {
+            "timestamp_localtime": pd.to_datetime(
+                [
+                    "2024-01-01 00:00:03",
+                    "2024-01-01 00:00:13",
+                    "2024-01-01 00:00:18",
+                    "2024-01-01 00:00:22",
+                ]
+            ),
+            "pioreactor_unit": ["r1", "r1", "r1", "r1"],
+            "od_reading": [0.1, 0.2, 0.3, 0.4],
+        }
+    )
+    expected = pd.DataFrame(
+        {
+            "timestamp_localtime": pd.to_datetime(
+                ["2024-01-01 00:00:00", "2024-01-01 00:00:15"]
+            ),
+            "pioreactor_unit": ["r1", "r1"],
+            "od_reading": [0.15, 0.35],
+        }
+    ).convert_dtypes()
+    aggregated, was_aggregated, median_interval = (
+        process_data.maybe_aggregate_high_frequency_raw_data(df)
+    )
+
+    assert was_aggregated is True
+    assert median_interval == 5.0
+    assert aggregated.shape[0] == 2
+    assert pd.testing.assert_frame_equal(aggregated, expected) is None
 
 
 def test_maybe_aggregate_high_frequency_raw_data_skips_15s_or_above():
@@ -91,3 +134,6 @@ def test_read_od_adjustment_table_accepts_excel_file():
     assert list(df.columns) == ["reactor", "od"]
     assert df["reactor"].tolist() == ["r1", "r2"]
     assert df["od"].tolist() == [0.1, 0.2]
+
+
+# %%
