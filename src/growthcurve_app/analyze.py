@@ -8,6 +8,7 @@ import growthcurves as gc
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import streamlit as st
 
 logger = logging.getLogger(__name__)
 
@@ -75,49 +76,53 @@ def run_model_fitting_on_df_compat(
     """Run fitting across reactors using gc.fit_model in a version-compatible way."""
     stats_df = {}
     fit_cache = {}
-
-    for col in df.columns:
-        s = df[col].dropna()
-        t_start = time.time()
-        fit_kwargs = build_fit_kwargs(
-            model_name=model_name,
-            n_fits=n_fits,
-            window_points=window_points,
-            spline_s=spline_s,
-            smooth_mode=smooth_mode,
-        )
-        _t = s.index.to_numpy()
-        _n = s.to_numpy()
-
-        fit_result, stats = gc.fit_model(
-            t=_t,
-            N=_n,
-            model_name=model_name,
-            lag_threshold=lag_cutoff,
-            exp_threshold=exp_cutoff,
-            phase_boundary_method=phase_boundary_method,
-            **fit_kwargs,
-        )
-        res_no_growth = gc.inference.detect_no_growth(
-            t=_t,
-            N=_n,
-            growth_stats=stats,
-            min_data_points=min_data_points,
-            min_signal_to_noise=min_signal_to_noise,
-            min_od_increase=min_od_increase,
-            min_growth_rate=min_growth_rate,
-        )
-        if res_no_growth["is_no_growth"]:
-            # overwrite stats with reason
-            logger.debug(res_no_growth)
-            stats = gc.inference.bad_fit_stats()
-            stats["no_growth_reason"] = res_no_growth.get(
-                "reason", "No growth detected"
+    _placeholder = st.empty()
+    with _placeholder.status(f"Fitting reactors using {model_name} model..."):
+        for col in df.columns:
+            st.write(f"Fitting model for reactor/sample: **{col}**")
+            s = df[col].dropna()
+            t_start = time.time()
+            fit_kwargs = build_fit_kwargs(
+                model_name=model_name,
+                n_fits=n_fits,
+                window_points=window_points,
+                spline_s=spline_s,
+                smooth_mode=smooth_mode,
             )
-        fit_cache[col] = fit_result
-        stats["elapsed_time"] = time.time() - t_start
-        stats["model_name"] = model_name
-        stats_df[col] = stats
+            _t = s.index.to_numpy()
+            _n = s.to_numpy()
+
+            fit_result, stats = gc.fit_model(
+                t=_t,
+                N=_n,
+                model_name=model_name,
+                lag_threshold=lag_cutoff,
+                exp_threshold=exp_cutoff,
+                phase_boundary_method=phase_boundary_method,
+                **fit_kwargs,
+            )
+            res_no_growth = gc.inference.detect_no_growth(
+                t=_t,
+                N=_n,
+                growth_stats=stats,
+                min_data_points=min_data_points,
+                min_signal_to_noise=min_signal_to_noise,
+                min_od_increase=min_od_increase,
+                min_growth_rate=min_growth_rate,
+            )
+            if res_no_growth["is_no_growth"]:
+                # overwrite stats with reason
+                logger.debug(res_no_growth)
+                stats = gc.inference.bad_fit_stats()
+                stats["no_growth_reason"] = res_no_growth.get(
+                    "reason", "No growth detected"
+                )
+            fit_cache[col] = fit_result
+            stats["elapsed_time"] = time.time() - t_start
+            stats["model_name"] = model_name
+            stats_df[col] = stats
+
+    _placeholder.empty()
 
     return pd.DataFrame(stats_df).T, fit_cache
 
