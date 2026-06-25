@@ -10,22 +10,25 @@ APP_VERSION = Path(__file__).with_name("VERSION").read_text(encoding="utf-8").st
 PACKAGE_VERSION = growthcurve_app.__version__
 
 logo_path = Path("../MicroGrowth/logo.svg")
-logo_source = (
+LOGO_SOURCE = (
     str(logo_path)
     if logo_path.exists()
-    else "https://raw.githubusercontent.com/biosustain/growthcurves_app/refs/heads/main/MicroGrowth/logo.svg"
+    else (
+        "https://raw.githubusercontent.com/biosustain/growthcurves_app/refs/heads/"
+        "main/MicroGrowth/logo.svg"
+    )
 )
 
 # General configurations
 st.set_page_config(
     page_title="AutoGrowth",
     layout="wide",
-    page_icon=logo_source,
+    page_icon=LOGO_SOURCE,
     initial_sidebar_state="expanded",
 )
 
 st.logo(
-    logo_source,
+    LOGO_SOURCE,
     link="https://github.com/biosustain/growthcurves_app/tree/main/AutoGrowth",
 )
 
