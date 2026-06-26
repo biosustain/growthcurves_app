@@ -19,6 +19,7 @@ from growthcurve_app.fit_spline import get_smoothing_range
 from growthcurve_app.turbistat import detect_peaks
 
 
+# region: functions and callbacks
 ## Logic and PLOTTING
 def create_summary(maxima: dict[str, pd.Series]) -> pd.DataFrame:
     """Create a summary DataFrame from the maxima dictionary."""
@@ -127,10 +128,10 @@ def _run_model_fitting_on_df_with_peaks_compat(
     stats_df = pd.DataFrame(stats_dict).T
     stats_df.index.names = ["reactor", "segment"]
     return stats_df
-
+# endregion
 
 ########################################################################################
-# state
+# region: state
 
 use_elapsed_time = st.session_state.get("USE_ELAPSED_TIME_FOR_PLOTS", False)
 no_data_uploaded = st.session_state.get("df_rolling") is None
@@ -149,8 +150,9 @@ DEFAULT_XLABEL_REL = st.session_state.get("DEFAULT_XLABEL_REL", "Elapsed time (h
 NON_PARAMETRIC_FIT_PARAMS = set(
     inspect.signature(gc.non_parametric.fit_non_parametric).parameters
 )
+# endregion
 ########################################################################################
-# UI
+# region: UI
 
 
 TURBIDOSTAT_HELP = """
@@ -176,6 +178,7 @@ has_uploaded_metadata = turbidostat_meta_bytes is not None
 if not has_uploaded_metadata:
     st.session_state["turbidostat_use_uploaded_peaks"] = False
 
+# Step 1: Configure peak detection
 with st.container(border=True):
     st.header("Step 1. Configure peak detection")
     checkbox_cols = st.columns(2, gap="large")
@@ -239,6 +242,7 @@ with st.container(border=True):
 
 smoothing_range = get_smoothing_range(len(df_rolling))
 
+# region: Step 2: Configure growth analysis options
 with st.container(border=True):
     st.header("Step 2. Configure and Run Analysis")
     analysis_options = render_upload_style_analysis_options(
@@ -257,7 +261,7 @@ if st.session_state.get("show_error"):
             "Could not find column in metadata. Please check the column names."
             " The selection was adjusted to the available columns."
         )
-
+# endregion
 ########################################################################################
 ### On Submission of form parameters
 if not run_analysis:
@@ -291,7 +295,7 @@ else:
     df_meta = None
     st.session_state["df_meta"] = None
 
-# Peak detection: Uploaded peak times or automatic scipy.signal.find_peaks
+# region: Step 3. Peak detection (loading from metadata or automatic)
 if use_uploaded_peak_times:
     with st.container(border=True):
         st.subheader("Step 3. Detect Peaks from Uploaded Metadata")
@@ -351,9 +355,8 @@ if use_uploaded_peak_times:
                 help="Go to upload data page.",
             )
             st.stop()
-
-
 else:
+    # No metadata for DelutionEvents provided.
     with st.container(border=True):
         st.subheader("Step 3. Detect Peaks Automatically")
         st.write(
@@ -372,6 +375,7 @@ else:
     )
     peaks = df_rolling.apply(_detect_peaks)
     st.session_state["peaks"] = peaks
+# endregion
 
 if remove_downward_trending:
     # Remove downward trending data globally on averaged data
