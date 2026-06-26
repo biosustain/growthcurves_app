@@ -64,7 +64,6 @@ def run_model_fitting_on_df_compat(
     n_fits: int,
     spline_s: int,
     smooth_mode: Union[str, float],
-    # spline_smoothing_value: int,
     window_points: int,
     phase_boundary_method: str,
     lag_cutoff: float,
@@ -90,8 +89,6 @@ def run_model_fitting_on_df_compat(
                 spline_s=spline_s,
                 smooth_mode=smooth_mode,
             )
-            if smooth_mode not in {"fast", "slow"}:
-                smooth_mode = spline_s
 
             _t = s.index.to_numpy()
             _n = s.to_numpy()
@@ -150,6 +147,11 @@ def build_fit_kwargs(
                 fit_kwargs["smooth"] = smooth_mode
             elif smooth_mode == "manual":
                 fit_kwargs["smooth"] = spline_s
+            else:
+                raise ValueError(
+                    f"Invalid smooth_mode: '{smooth_mode}'. "
+                    "select 'fast', 'slow', or 'manual'"
+                )
         if "spline_s" in NON_PARAMETRIC_FIT_PARAMS:
             fit_kwargs["spline_s"] = spline_s
     return fit_kwargs
