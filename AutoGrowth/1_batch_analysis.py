@@ -34,7 +34,7 @@ UI selection/toggle state:
 - batch_show_fitted_model: Toggle for fitted model curve.
 - batch_log_scale: Toggle for linear vs log plotting.
 
-Per-reactor dynamic keys (created from selected reactor id):
+Per-reactor dynamic keys (created from selected reactor id as reactor parameter (rp)):
 - batch_phase__{reactor}: Tuple[lag_end, exp_end] slider state.
 - batch_maxod__{reactor}: Max OD slider state.
 - batch_rp_min_od__{reactor}: Re-analysis threshold (min OD increase).
@@ -43,6 +43,8 @@ Per-reactor dynamic keys (created from selected reactor id):
 - batch_rp_min_dp__{reactor}: Re-analysis threshold (min data points).
 - batch_rp_window__{reactor}: Re-analysis window size (sliding window method).
 - batch_rp_smooth__{reactor}: Re-analysis spline smooth mode (spline method).
+- batch_rp_spline_s__{reactor}: Re-analysis manual spline smoothing value
+  (spline method, manual mode).
 - batch_lasso_fit_{reactor}: Plotly lasso selection event payload key.
 """
 
@@ -111,6 +113,7 @@ def _build_effective_options_from_widgets(
     rp_min_dp_key,
     rp_window_key,
     rp_smooth_key,
+    rp_spline_s_key,
 ) -> tuple[dict, dict]:
     options_refit = dict(batch_options)
     options_refit["min_od_increase"] = float(st.session_state[rp_min_od_key])
@@ -125,9 +128,15 @@ def _build_effective_options_from_widgets(
     if method == "Sliding Window":
         options_refit["window_points"] = int(st.session_state[rp_window_key])
     elif method == "Spline":
-        options_refit["smooth_mode"] = growthcurve_app.analyze.normalize_smooth(
+        # ! I need to get rid of that
+        smooth = growthcurve_app.analyze.normalize_smooth(
             st.session_state[rp_smooth_key]
         )
+        options_refit["smooth_mode"] = smooth
+        if smooth == "manual":
+            options_refit["spline_smoothing_value"] = int(
+                st.session_state[rp_spline_s_key]
+            )
     return options_refit, None
 
 
@@ -147,6 +156,7 @@ def _on_defaults(
     rp_min_dp_key: str,
     rp_window_key: str,
     rp_smooth_key: str,
+    rp_spline_s_key: str,
 ):
     # reset reactor parameters (rp) to defaults from batch_options
     st.session_state[rp_min_od_key] = float(batch_options.get("min_od_increase", 0.05))
@@ -158,6 +168,9 @@ def _on_defaults(
     st.session_state[rp_window_key] = int(batch_options.get("window_points", 150))
     st.session_state[rp_smooth_key] = growthcurve_app.analyze.normalize_smooth(
         batch_options.get("smooth_mode", "slow")
+    )
+    st.session_state[rp_spline_s_key] = int(
+        batch_options.get("spline_smoothing_value", 1000)
     )
     _fit(
         t=t_all,
@@ -193,6 +206,7 @@ def _on_reanalyse(
     rp_min_dp_key,
     rp_window_key,
     rp_smooth_key,
+    rp_spline_s_key,
 ):
     # update batch_options with used_params_map
     _batch_options = dict(batch_options)
@@ -206,6 +220,7 @@ def _on_reanalyse(
         rp_min_dp_key,
         rp_window_key,
         rp_smooth_key,
+        rp_spline_s_key,
     )
     used_times = selected_fit_times_map.get(selected_reactor)
     if used_times:
@@ -249,6 +264,7 @@ def _on_lasso_select(
     rp_min_dp_key,
     rp_window_key,
     rp_smooth_key,
+    rp_spline_s_key,
 ):
     xs = growthcurve_app.analyze.get_selected_times_from_event(
         st.session_state.get(chart_key)
@@ -266,6 +282,7 @@ def _on_lasso_select(
         rp_min_dp_key=rp_min_dp_key,
         rp_window_key=rp_window_key,
         rp_smooth_key=rp_smooth_key,
+        rp_spline_s_key=rp_spline_s_key,
     )
     _fit(
         t=refit_t,
@@ -419,8 +436,8 @@ smoothing_range = get_smoothing_range(len(df_rolling))
 with st.container(border=True):
     st.header("Step 1. Configure Analysis Options")
     analysis_options = render_upload_style_analysis_options(
-        s_min=smoothing_range.s_min,
-        s_max=smoothing_range.s_max,
+        s_min=0.01,
+        s_max=float(smoothing_range.s_max),
         min_window_points=15,
         max_window_points=500,
         default_window_points=st.session_state["batch_analysis_options"].get(
@@ -445,13 +462,14 @@ with st.container(border=True):
     # remember of any changes to options
     st.session_state["batch_analysis_options"] = analysis_options
 
+# region: global analysis across all parameters after 'Run Analysis' button is pressed
 ### Analyse data after form submission    ##############################################
 if run_analysis and not no_data_uploaded:
     stats_df_new, fit_cache = growthcurve_app.analyze.run_model_fitting_on_df_compat(
         df_rolling,
         model_name=analysis_options["selected_model"],
         n_fits=analysis_options["n_fits"],
-        spline_s=analysis_options["spline_smoothing_value"],
+        spline_s=analysis_options.get("spline_smoothing_value", smoothing_range.s),
         smooth_mode=analysis_options.get("smooth_mode", "slow"),
         window_points=analysis_options["window_points"],
         phase_boundary_method=analysis_options["phase_boundary_method"],
@@ -477,15 +495,15 @@ if run_analysis and not no_data_uploaded:
 
 stats_df = st.session_state.get("batch_analysis_summary_df")
 batch_options = st.session_state.get("batch_analysis_options")
-
+# end region
 
 ########################################################################################
-### Display results and interactive plot ###############################################
+# Display results and interactive plot ###############################################
 if stats_df is None or batch_options is None:
     st.stop()
 
-# Step 2: Review results, interactively select points to re-fit, and update stats_df
-#         and fit_cache accordingly
+# region: Step 2: Review results, interactively select points to re-fit, and update
+# stats_df (after analysis is done across all reactors)        and fit_cache accordingly
 with st.container(border=True):
     st.header("Step 2. Review Results")
 
@@ -603,6 +621,7 @@ with st.container(border=True):
     rp_min_dp_key = f"batch_rp_min_dp__{selected_reactor}"
     rp_window_key = f"batch_rp_window__{selected_reactor}"
     rp_smooth_key = f"batch_rp_smooth__{selected_reactor}"
+    rp_spline_s_key = f"batch_rp_spline_s__{selected_reactor}"
 
     if phase_key not in st.session_state:
         exp_phase_start = growthcurve_app.analyze.get_reactor_stat(
@@ -644,6 +663,10 @@ with st.container(border=True):
     if rp_smooth_key not in st.session_state:
         st.session_state[rp_smooth_key] = growthcurve_app.analyze.normalize_smooth(
             batch_options.get("smooth_mode", "slow")
+        )
+    if rp_spline_s_key not in st.session_state:
+        st.session_state[rp_spline_s_key] = int(
+            batch_options.get("spline_smoothing_value", smoothing_range.s_max)
         )
 
     # Right top-box in panel for step 2
@@ -731,20 +754,28 @@ with st.container(border=True):
                         batch_options["selected_model"]
                     )
                     if method == "Sliding Window":
-                        st.number_input(
+                        rp_window_val = st.number_input(
                             "Window size (points)",
                             min_value=3,
                             step=1,
                             key=rp_window_key,
                         )
                     elif method == "Spline":
-                        st.radio(
+                        smooth_val = st.radio(
                             "Spline fitting mode",
-                            options=["fast", "slow"],
+                            options=["fast", "slow", "manual"],
                             key=rp_smooth_key,
                             horizontal=True,
                             format_func=lambda v: v.capitalize(),
                         )
+                        if smooth_val == "manual":
+                            rp_spline_s_val = st.number_input(
+                                "Smoothing value (s)",
+                                min_value=float(0.01),
+                                max_value=float(smoothing_range.s_max),
+                                step=0.01,
+                                key=rp_spline_s_key,
+                            )
                     btn_col, defaults_col = st.columns(2)
                     with btn_col:
                         st.button(
@@ -773,6 +804,7 @@ with st.container(border=True):
                                 rp_min_dp_key,
                                 rp_window_key,
                                 rp_smooth_key,
+                                rp_spline_s_key,
                             ),
                         )
                     with defaults_col:
@@ -801,6 +833,7 @@ with st.container(border=True):
                                 rp_min_dp_key,
                                 rp_window_key,
                                 rp_smooth_key,
+                                rp_spline_s_key,
                             ),
                         )
             # Exclude timeseries from analysis
@@ -970,6 +1003,7 @@ with st.container(border=True):
             rp_min_dp_key,
             rp_window_key,
             rp_smooth_key,
+            rp_spline_s_key,
         ),
         width="stretch",
     )

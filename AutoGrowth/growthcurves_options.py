@@ -6,6 +6,10 @@ from growthcurves.models import MODEL_REGISTRY
 
 INFO_PLOTS_DIR = Path(__file__).resolve().parent.parent / "info_plots"
 
+def _info_plot_url(filename: str) -> str:
+    """Build local file path for info-plot assets."""
+    return str(INFO_PLOTS_DIR / filename)
+
 
 def render_options_for_growthcurve_fitting(s_min=3, s_max=1000, s_default=1000):
     st.write("### Model selection")
@@ -186,6 +190,7 @@ def _ui_method_params_upload_style(
     window_step_size=1,
 ):
     """Render method-specific controls and convert to spline_s/window_points values."""
+    spline_s = int(s_max)
     with param_col:
         if growth_method == "Sliding Window":
             window_points = st.number_input(
@@ -205,7 +210,7 @@ def _ui_method_params_upload_style(
             window_points = default_window_points
             smooth_mode = st.radio(
                 "Spline fitting mode",
-                options=["fast", "slow"],
+                options=["fast", "slow", "manual"],
                 index=1,
                 horizontal=True,
                 format_func=lambda v: v.capitalize(),
@@ -215,14 +220,24 @@ def _ui_method_params_upload_style(
                 ),
                 key="batch_spline_mode",
             )
+            if smooth_mode == "manual":
+                spline_s = int(st.number_input(
+                    "Spline smoothing value (s)",
+                    float(s_min),
+                    float(s_max),
+                    st.session_state.get("batch_spline_s", float(s_max)),
+                    0.01,
+                    help=(
+                        "Smoothing parameter for spline fit. "
+                        "Higher values result in smoother curves."
+                    ),
+                    key="batch_spline_s",
+                ))
+            elif smooth_mode == "slow":
+                spline_s = int(max(s_min, 1))
         else:
             window_points = default_window_points
             smooth_mode = "fast"
-
-    if growth_method == "Spline":
-        spline_s = int(s_max if smooth_mode == "fast" else max(s_min, 1))
-    else:
-        spline_s = int(s_max)
 
     return int(window_points), smooth_mode, spline_s
 
@@ -327,11 +342,7 @@ def _ui_phase_boundaries_upload_style():
 
     return phase_boundary_method, float(lag_cutoff), float(exp_cutoff)
 
-
-def _info_plot_url(filename: str) -> str:
-    """Build local file path for info-plot assets."""
-    return str(INFO_PLOTS_DIR / filename)
-
+# region: model visualization and info plots
 
 def _render_method_visualization_upload_style(
     growth_method: str, model_type: str | None = None
@@ -420,7 +431,7 @@ def _render_method_visualization_upload_style(
         return _info_plot_url(f"{model_type}.png")
 
     return None
-
+# endregion
 
 def _render_phase_boundary_visualization_upload_style(
     phase_boundary_method: str,
@@ -548,7 +559,7 @@ div.param-calc-table th {{
     For more information see the
     [growthcurves documentation](https://growthcurves.readthedocs.io/),
     especially the tutorial on fitting curves with growthcurves
-    [here](https://growthcurves.readthedocs.io/en/latest/tutorial/analysis.html)
+    [here](https://growthcurves.readthedocs.io/en/latest/tutorial/analysis.html).
     """)
 
 
@@ -630,7 +641,6 @@ def render_upload_style_analysis_options(
 
     return {
         "selected_model": selected_model,
-        "spline_smoothing_value": spline_smoothing_value,
         "n_fits": 50,
         "window_points": window_points,
         "phase_boundary_method": phase_boundary_method,
@@ -644,4 +654,5 @@ def render_upload_style_analysis_options(
         "model_family": model_family,
         "model_type": model_type,
         "smooth_mode": smooth_mode,
+        "spline_smoothing_value": spline_smoothing_value,
     }
