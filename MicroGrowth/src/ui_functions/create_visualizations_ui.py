@@ -1,11 +1,47 @@
 """UI helpers for the Create Visualizations page."""
 
+import json
+
 import pandas as pd
 import streamlit as st
 from src.functions.visualization_functions import _unique_preserve_order
 from src.styling import data_grid_style
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 from streamlit_sortables import sort_items
+
+
+def _persistent_selectbox(container, label, options, store_key):
+    """Selectbox whose selection survives page navigation via a plain state key."""
+    wkey = f"{store_key}_widget"
+    stored = st.session_state.get(store_key)
+    st.session_state.setdefault(wkey, stored if stored in options else options[0])
+    value = container.selectbox(label, options, key=wkey)
+    st.session_state[store_key] = value
+    return value
+
+
+def _persistent_sortable(order_key, label, values, sig_extra=None):
+    """Drag-sortable list whose order survives navigation; empty values keep the order."""
+    sig_key = f"{order_key}_sig"
+    ver_key = f"{order_key}_ver"
+    st.session_state.setdefault(order_key, [])
+    st.session_state.setdefault(ver_key, 0)
+    if values:
+        order = [v for v in st.session_state[order_key] if v in values]
+        order += [v for v in values if v not in order]
+        st.session_state[order_key] = order
+
+        sig = (sig_extra, tuple(values))
+        if st.session_state.get(sig_key) != sig:
+            st.session_state[sig_key] = sig
+            st.session_state[ver_key] += 1
+
+        st.markdown(f"**{label}**")
+        st.session_state[order_key] = sort_items(
+            st.session_state[order_key],
+            key=f"{order_key}_sortable_{st.session_state[ver_key]}",
+        )
+    return [v for v in st.session_state[order_key] if v in values]
 
 
 def ui_growth_selection_container(plates: dict) -> dict:
@@ -45,8 +81,6 @@ def ui_growth_selection_container(plates: dict) -> dict:
     sel = st.session_state.setdefault(sel_key, {})
     st.session_state[sel_key] = {sid: bool(sel.get(sid, False)) for sid in ids}
     sel = st.session_state[sel_key]
-    grid_ver_key = "sample_selection_grid_ver"
-    st.session_state.setdefault(grid_ver_key, 0)
 
     def _selected_ids():
         return [sid for sid in ids if sel.get(sid, False)]
@@ -88,16 +122,33 @@ def ui_growth_selection_container(plates: dict) -> dict:
                 checkboxSelection=True,
             )
         grid_options = gb.build()
-        pre_selected_rows = [idx for idx, sid in enumerate(ids) if sel.get(sid, False)]
+
+        # Re-check stored selection on (re)mount; pre_selected_rows is unreliable.
+        grid_options["getRowId"] = JsCode(
+            "function(params) { return String(params.data._id); }"
+        )
+        preselected_ids_json = json.dumps([sid for sid in ids if sel.get(sid, False)])
+        grid_options["onFirstDataRendered"] = JsCode(
+            f"""
+            function(params) {{
+                const preselectedIds = new Set({preselected_ids_json});
+                params.api.forEachNode(function(node) {{
+                    if (node.data && preselectedIds.has(String(node.data._id))) {{
+                        node.setSelected(true);
+                    }}
+                }});
+            }}
+            """
+        )
         grid_response = AgGrid(
             display_df,
             gridOptions=grid_options,
             update_mode=GridUpdateMode.SELECTION_CHANGED,
-            pre_selected_rows=pre_selected_rows,
+            allow_unsafe_jscode=True,
             fit_columns_on_grid_load=True,
             height=400,
             width="100%",
-            key=f"sample_selection_grid_{st.session_state[grid_ver_key]}",
+            key="sample_selection_grid",
         )
         selected_rows = grid_response.get("selected_rows")
         if selected_rows is None:
@@ -139,22 +190,6 @@ def ui_growth_selection_container(plates: dict) -> dict:
 @st.fragment
 def ui_growth_stats_controls_container(has_split: bool, sel_opt: pd.DataFrame) -> dict:
     """Render growth stats controls and return form selections."""
-    # -----------------------------
-    # Order state (stats x-axis + legend)
-    # -----------------------------
-    x_order_key = "growth_stats_x_order"
-    x_order_sig_key = "growth_stats_x_order_sig"
-    x_order_ver_key = "growth_stats_x_order_ver"
-
-    leg_order_key = "growth_stats_legend_order"
-    leg_order_sig_key = "growth_stats_legend_order_sig"
-    leg_order_ver_key = "growth_stats_legend_order_ver"
-
-    st.session_state.setdefault(x_order_key, [])
-    st.session_state.setdefault(x_order_ver_key, 0)
-    st.session_state.setdefault(leg_order_key, [])
-    st.session_state.setdefault(leg_order_ver_key, 0)
-
     with st.container(border=True):
         st.header("Step 2. option a) Plot Growth Statistics")
 
@@ -165,17 +200,11 @@ def ui_growth_stats_controls_container(has_split: bool, sel_opt: pd.DataFrame) -
             group_choices += ["Strain", "Condition"]
 
         cA, cB = st.columns([1, 1])
-        x_col = cA.selectbox(
-            "X-axis column",
-            options=x_choices,
-            index=0,
-            key="growth_stats_x_col",
+        x_col = _persistent_selectbox(
+            cA, "X-axis column", x_choices, "growth_stats_x_col"
         )
-        legend_group = cB.selectbox(
-            "Legend grouping",
-            options=group_choices,
-            index=0,
-            key="growth_stats_legend_group",
+        legend_group = _persistent_selectbox(
+            cB, "Legend grouping", group_choices, "growth_stats_legend_group"
         )
         legend_col = None if legend_group == "None" else legend_group
 
@@ -190,53 +219,15 @@ def ui_growth_stats_controls_container(has_split: bool, sel_opt: pd.DataFrame) -
             else []
         )
 
-        # drag ordering: x-axis
-        cur_x_order = [v for v in st.session_state[x_order_key] if v in x_vals]
-        for v in x_vals:
-            if v not in cur_x_order:
-                cur_x_order.append(v)
-        st.session_state[x_order_key] = cur_x_order
-
-        x_sig = (x_col, tuple(x_vals))
-        if st.session_state.get(x_order_sig_key) != x_sig:
-            st.session_state[x_order_sig_key] = x_sig
-            st.session_state[x_order_ver_key] += 1
-
-        if x_vals:
-            st.markdown("**Drag to set x-axis order:**")
-            st.session_state[x_order_key] = sort_items(
-                st.session_state[x_order_key],
-                key=f"growth_stats_x_sortable_{st.session_state[x_order_ver_key]}",
-            )
-
-        # drag ordering: legend
-        if legend_col:
-            cur_leg_order = [
-                v for v in st.session_state[leg_order_key] if v in legend_vals
-            ]
-            for v in legend_vals:
-                if v not in cur_leg_order:
-                    cur_leg_order.append(v)
-            st.session_state[leg_order_key] = cur_leg_order
-
-            leg_sig = (legend_col, tuple(legend_vals))
-            if st.session_state.get(leg_order_sig_key) != leg_sig:
-                st.session_state[leg_order_sig_key] = leg_sig
-                st.session_state[leg_order_ver_key] += 1
-
-            if legend_vals:
-                st.markdown("**Drag to set legend order:**")
-                st.session_state[leg_order_key] = sort_items(
-                    st.session_state[leg_order_key],
-                    key=f"growth_stats_leg_sortable_{st.session_state[leg_order_ver_key]}",
-                )
-
-    x_ordered = [v for v in st.session_state[x_order_key] if v in x_vals]
-    legend_ordered = (
-        [v for v in st.session_state[leg_order_key] if v in legend_vals]
-        if legend_col
-        else []
-    )
+        x_ordered = _persistent_sortable(
+            "growth_stats_x_order", "Drag to set x-axis order:", x_vals, x_col
+        )
+        legend_ordered = _persistent_sortable(
+            "growth_stats_legend_order",
+            "Drag to set legend order:",
+            legend_vals,
+            legend_col,
+        )
 
     return {
         "x_col": x_col,
@@ -251,51 +242,30 @@ def ui_growth_curves_controls_container(
     max_t: float, sel_sample_names: list[str]
 ) -> dict:
     """Render growth curves controls and return form selections."""
-    # -----------------------------
-    # Order state (curves sample order: mean+reps)
-    # -----------------------------
-    curves_order_key = "growth_curves_sample_order"
-    curves_order_sig_key = "growth_curves_sample_order_sig"
-    curves_order_ver_key = "growth_curves_sample_order_ver"
-    st.session_state.setdefault(curves_order_key, [])
-    st.session_state.setdefault(curves_order_ver_key, 0)
-
     with st.container(border=True):
         st.header("Step 2. option b) Plot Growth Curves")
 
+        # Persist across navigation via a plain key; re-seed widget when absent.
+        tw_key = "growth_curves_time_window"
+        tw_wkey = f"{tw_key}_widget"
+        lo0, hi0 = st.session_state.get(tw_key, (0.0, min(72.0, max_t)))
+        lo0 = min(max(float(lo0), 0.0), max_t)
+        hi0 = min(max(float(hi0), lo0), max_t)
+        st.session_state.setdefault(tw_wkey, (lo0, hi0))
         curves_t0, curves_t1 = st.slider(
             "Mean/replicates plot time window (hours)",
             0.0,
             max_t,
-            (0.0, min(72.0, max_t)),
             step=0.5,
-            key="growth_curves_time_window",
+            key=tw_wkey,
         )
+        st.session_state[tw_key] = (curves_t0, curves_t1)
 
-        # drag ordering: sample names (specific to mean+reps)
-        cur_curves_order = [
-            v for v in st.session_state[curves_order_key] if v in sel_sample_names
-        ]
-        for v in sel_sample_names:
-            if v not in cur_curves_order:
-                cur_curves_order.append(v)
-        st.session_state[curves_order_key] = cur_curves_order
-
-        curves_sig = tuple(sel_sample_names)
-        if st.session_state.get(curves_order_sig_key) != curves_sig:
-            st.session_state[curves_order_sig_key] = curves_sig
-            st.session_state[curves_order_ver_key] += 1
-
-        if sel_sample_names:
-            st.markdown("**Drag to set Sample Name order (mean/replicates):**")
-            st.session_state[curves_order_key] = sort_items(
-                st.session_state[curves_order_key],
-                key=f"growth_curves_sortable_{st.session_state[curves_order_ver_key]}",
-            )
-
-    curves_ordered = [
-        v for v in st.session_state[curves_order_key] if v in sel_sample_names
-    ]
+        curves_ordered = _persistent_sortable(
+            "growth_curves_sample_order",
+            "Drag to set Sample Name order (mean/replicates):",
+            sel_sample_names,
+        )
 
     return {
         "curves_t0": curves_t0,
