@@ -123,7 +123,8 @@ def ui_growth_selection_container(plates: dict) -> dict:
             )
         grid_options = gb.build()
 
-        # Re-check stored selection on (re)mount; pre_selected_rows is unreliable.
+        # On (re)mount the grid renders unchecked, so re-check the rows saved in
+        # growth_combined_sel; a stable getRowId lets onFirstDataRendered match them.
         grid_options["getRowId"] = JsCode(
             "function(params) { return String(params.data._id); }"
         )
