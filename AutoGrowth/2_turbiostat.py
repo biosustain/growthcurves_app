@@ -177,7 +177,7 @@ if not has_uploaded_metadata:
     st.session_state["turbidostat_use_uploaded_peaks"] = False
 
 with st.container(border=True):
-    st.header("Step 1. Configure peak detection")
+    st.subheader("1. Configure peak detection")
     checkbox_cols = st.columns(2, gap="large")
     with checkbox_cols[0]:
         use_uploaded_peak_times = st.checkbox(
@@ -240,7 +240,7 @@ with st.container(border=True):
 smoothing_range = get_smoothing_range(len(df_rolling))
 
 with st.container(border=True):
-    st.header("Step 2. Configure and Run Analysis")
+    st.subheader("2. onfigure and Run Analysis")
     analysis_options = render_upload_style_analysis_options(
         s_min=smoothing_range.s_min, s_max=smoothing_range.s_max
     )
@@ -294,7 +294,7 @@ else:
 # Peak detection: Uploaded peak times or automatic scipy.signal.find_peaks
 if use_uploaded_peak_times:
     with st.container(border=True):
-        st.subheader("Step 3. Detect Peaks from Uploaded Metadata")
+        st.subheader("3. Detect Peaks from Uploaded Metadata")
         st.write("Data is rounded to match OD data timepoints.")
         if df_meta is None:
             st.error(
@@ -355,7 +355,7 @@ if use_uploaded_peak_times:
 
 else:
     with st.container(border=True):
-        st.subheader("Step 3. Detect Peaks Automatically")
+        st.subheader("4. Detect Peaks Automatically")
         st.write(
             "Note: Peaks are detected using "
             "[`scipy.signal.find_peaks`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.find_peaks.html)"
@@ -428,7 +428,7 @@ with st.spinner(text="Fitting curves...", show_time=True):
             ax.axvspan(_start, _end, color="gray", alpha=0.2)
 
 with st.container(border=True):
-    st.subheader("Step 4. Review Fitted Curves and Peaks")
+    st.subheader("5. Review Fitted Curves and Peaks")
     st.markdown(
         """
         - <span style="color:#1f77b4;"><b>Blue points</b></span>: OD data used for
@@ -457,7 +457,7 @@ with st.container(border=True):
 # Summary table
 ### Summary Table ##################################################################
 with st.container(border=True):
-    st.subheader("Step 5. Summary of High Growth Periods")
+    st.subheader("6. Summary of High Growth Periods")
     st.write(
         f"The start time was {start_time}. Timepoints are relative to this start time."
     )
