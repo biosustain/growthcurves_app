@@ -129,8 +129,7 @@ def ui_growth_selection_container(plates: dict) -> dict:
             "function(params) { return String(params.data._id); }"
         )
         preselected_ids_json = json.dumps([sid for sid in ids if sel.get(sid, False)])
-        grid_options["onFirstDataRendered"] = JsCode(
-            f"""
+        grid_options["onFirstDataRendered"] = JsCode(f"""
             function(params) {{
                 const preselectedIds = new Set({preselected_ids_json});
                 params.api.forEachNode(function(node) {{
@@ -139,8 +138,7 @@ def ui_growth_selection_container(plates: dict) -> dict:
                     }}
                 }});
             }}
-            """
-        )
+            """)
         grid_response = AgGrid(
             display_df,
             gridOptions=grid_options,
