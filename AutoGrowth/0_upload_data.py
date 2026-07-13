@@ -429,12 +429,13 @@ with st.container(border=True):
                 help="Used when outlier method is IQR. Multiplier of the IQR.",
             )
             rolling_window = st.slider(
-                "Rolling window (of timepoints) for IQR outlier removal",
+                "Rolling window (of timepoints) for data Smoothing and "
+                " IQR outlier removal",
                 11,
                 141,
                 st.session_state.get("rolling_window", 21),
                 step=2,
-                help="Used when outlier method is IQR.",
+                help="Used for data smoothing  and when outlier method is IQR.",
             )
             ecod_factor = st.slider(
                 "ECOD factor for outlier removal",
