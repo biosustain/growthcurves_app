@@ -835,7 +835,9 @@ if button_pressed:
             .median()
             .sort_index()
         )
-        msg += f"- Applied rolling median smoothing (window={rolling_window_smoothing}).\n"
+        msg += (
+            f"- Applied rolling median smoothing (window={rolling_window_smoothing}).\n"
+        )
     else:
         df_rolling = df_wide_raw_od_data_filtered.sort_index()
         msg += "- Smoothing disabled; using filtered data directly.\n"
@@ -911,7 +913,9 @@ if st.session_state.get("debug_mode", False):
                 "quantile_max": st.session_state.get("quantile_max"),
                 "iqr_range_value": st.session_state.get("iqr_range_value"),
                 "apply_smoothing": st.session_state.get("apply_smoothing"),
-                "rolling_window_smoothing": st.session_state.get("rolling_window_smoothing"),
+                "rolling_window_smoothing": st.session_state.get(
+                    "rolling_window_smoothing"
+                ),
                 "rolling_window_iqr": st.session_state.get("rolling_window_iqr"),
                 "round_time": st.session_state.get("round_time"),
                 "time_ranges": st.session_state.get("time_ranges"),
