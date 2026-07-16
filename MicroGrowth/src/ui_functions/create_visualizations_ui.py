@@ -76,16 +76,6 @@ def ui_growth_selection_container(plates: dict) -> dict:
     # -----------------------------
     sel_key = "growth_combined_sel"
     sel = st.session_state.setdefault(sel_key, {})
-    st.session_state[sel_key] = {sid: bool(sel.get(sid, False)) for sid in ids}
-    sel = st.session_state[sel_key]
-
-    def _selected_ids():
-        return [sid for sid in ids if sel.get(sid, False)]
-
-    def _selected_opt_rows(sel_ids: list[str]) -> pd.DataFrame:
-        if not sel_ids:
-            return opt.iloc[0:0].copy()
-        return opt[opt["_id"].isin(sel_ids)].copy()
 
     # -----------------------------
     # UI: Step 1 selection (outside form so grid changes rerun)
@@ -93,43 +83,37 @@ def ui_growth_selection_container(plates: dict) -> dict:
     with st.container(border=True):
         st.header("Step 1. Select Samples for Visualization")
 
-        # Apply styling for data grid (moved to styling.py)
         data_grid_style()
 
-        # Prepare dataframe for display with selection column
         if has_split:
             display_cols = ["Plate", "Sample Name", "Strain", "Condition", "Wells"]
         else:
             display_cols = ["Plate", "Sample Name", "Wells"]
 
-        # Build the editor's "Select" column straight from the saved state on
-        # every render, so the checkboxes always show what was last saved -
-        # including right after navigating back to this page.
-        display_df = opt[["_id"] + display_cols].copy()
-        display_df.insert(
-            0, "Select", display_df["_id"].map(sel).fillna(False).astype(bool)
-        )
-
-        edited_df = st.data_editor(
-            display_df,
-            column_config={"_id": None},
-            disabled=display_cols,
+        # selection_default only applies when the widget's keyed state is absent,
+        # so it restores the saved ticks on returning from another page.
+        event = st.dataframe(
+            opt[display_cols],
             hide_index=True,
             width="stretch",
             height=400,
-            key="sample_selection_editor",
+            on_select="rerun",
+            selection_mode="multi-row",
+            selection_default={
+                "selection": {
+                    "rows": [i for i, sid in enumerate(ids) if sel.get(sid, False)]
+                }
+            },
+            key="sample_selection_grid",
         )
 
-        if st.button("Save selection"):
-            for _, row in edited_df.iterrows():
-                sel[row["_id"]] = bool(row["Select"])
+        chosen = set(event.selection.rows)
+        st.session_state[sel_key] = {sid: i in chosen for i, sid in enumerate(ids)}
 
-        sel_ids = _selected_ids()
-        sel_opt = _selected_opt_rows(sel_ids)
-        sel_sample_names = (
-            _unique_preserve_order(sel_opt["Sample Name"].astype(str).tolist())
-            if not sel_opt.empty
-            else []
+        sel_ids = [sid for i, sid in enumerate(ids) if i in chosen]
+        sel_opt = opt[opt["_id"].isin(sel_ids)].copy()
+        sel_sample_names = _unique_preserve_order(
+            sel_opt["Sample Name"].astype(str).tolist()
         )
 
     return {

@@ -23,7 +23,9 @@ dependencies = [
     "scipy",
     "matplotlib",
     "seaborn",
-    "streamlit>=1.52.0",
+    # 1.56.0 added st.dataframe(selection_default=...), which Step 1 sample
+    # selection needs to restore ticked rows after page navigation.
+    "streamlit>=1.56.0",
     "growthcurves",
 ]
 # use requirements.txt instead of pyproject.toml for dependencies
