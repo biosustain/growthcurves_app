@@ -1,12 +1,10 @@
 """UI helpers for the Create Visualizations page."""
 
-import json
-
 import pandas as pd
 import streamlit as st
 from src.functions.visualization_functions import _unique_preserve_order
 from src.styling import data_grid_style
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 from streamlit_sortables import sort_items
 
 
@@ -122,28 +120,10 @@ def ui_growth_selection_container(plates: dict) -> dict:
                 checkboxSelection=True,
             )
         grid_options = gb.build()
-
-        # On (re)mount the grid renders unchecked, so re-check the rows saved in
-        # growth_combined_sel; a stable getRowId lets onFirstDataRendered match them.
-        grid_options["getRowId"] = JsCode(
-            "function(params) { return String(params.data._id); }"
-        )
-        preselected_ids_json = json.dumps([sid for sid in ids if sel.get(sid, False)])
-        grid_options["onFirstDataRendered"] = JsCode(f"""
-            function(params) {{
-                const preselectedIds = new Set({preselected_ids_json});
-                params.api.forEachNode(function(node) {{
-                    if (node.data && preselectedIds.has(String(node.data._id))) {{
-                        node.setSelected(true);
-                    }}
-                }});
-            }}
-            """)
         grid_response = AgGrid(
             display_df,
             gridOptions=grid_options,
             update_mode=GridUpdateMode.SELECTION_CHANGED,
-            allow_unsafe_jscode=True,
             fit_columns_on_grid_load=True,
             height=400,
             width="100%",
@@ -165,8 +145,12 @@ def ui_growth_selection_container(plates: dict) -> dict:
                 selected_ids = {row for row in selected_rows if isinstance(row, str)}
         else:
             selected_ids = set()
-        for sid in ids:
-            sel[sid] = sid in selected_ids
+
+        # The grid remounts unchecked on page navigation, so only overwrite the
+        # saved selection when the user explicitly confirms it with this button.
+        if st.button("Save selection"):
+            for sid in ids:
+                sel[sid] = sid in selected_ids
 
         sel_ids = _selected_ids()
         sel_opt = _selected_opt_rows(sel_ids)
