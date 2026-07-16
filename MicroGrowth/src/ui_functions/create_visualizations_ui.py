@@ -4,7 +4,6 @@ import pandas as pd
 import streamlit as st
 from src.functions.visualization_functions import _unique_preserve_order
 from src.styling import data_grid_style
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 from streamlit_sortables import sort_items
 
 
@@ -103,54 +102,27 @@ def ui_growth_selection_container(plates: dict) -> dict:
         else:
             display_cols = ["Plate", "Sample Name", "Wells"]
 
-        display_df = opt[display_cols + ["_id"]].copy()
-
-        gb = GridOptionsBuilder.from_dataframe(display_df)
-        gb.configure_selection(
-            "multiple",
-            use_checkbox=True,
-            rowMultiSelectWithClick=True,
+        # Build the editor's "Select" column straight from the saved state on
+        # every render, so the checkboxes always show what was last saved -
+        # including right after navigating back to this page.
+        display_df = opt[["_id"] + display_cols].copy()
+        display_df.insert(
+            0, "Select", display_df["_id"].map(sel).fillna(False).astype(bool)
         )
-        gb.configure_column("_id", hide=True)
-        gb.configure_columns(display_cols, editable=False)
-        if display_cols:
-            gb.configure_column(
-                display_cols[0],
-                headerCheckboxSelection=True,
-                checkboxSelection=True,
-            )
-        grid_options = gb.build()
-        grid_response = AgGrid(
+
+        edited_df = st.data_editor(
             display_df,
-            gridOptions=grid_options,
-            update_mode=GridUpdateMode.SELECTION_CHANGED,
-            fit_columns_on_grid_load=True,
+            column_config={"_id": None},
+            disabled=display_cols,
+            hide_index=True,
+            width="stretch",
             height=400,
-            width="100%",
-            key="sample_selection_grid",
+            key="sample_selection_editor",
         )
-        selected_rows = grid_response.get("selected_rows")
-        if selected_rows is None:
-            selected_ids = set()
-        elif isinstance(selected_rows, pd.DataFrame):
-            selected_ids = set(
-                selected_rows.get("_id", pd.Series([], dtype=str)).tolist()
-            )
-        elif isinstance(selected_rows, list):
-            if selected_rows and isinstance(selected_rows[0], dict):
-                selected_ids = {
-                    row.get("_id") for row in selected_rows if row.get("_id")
-                }
-            else:
-                selected_ids = {row for row in selected_rows if isinstance(row, str)}
-        else:
-            selected_ids = set()
 
-        # The grid remounts unchecked on page navigation, so only overwrite the
-        # saved selection when the user explicitly confirms it with this button.
         if st.button("Save selection"):
-            for sid in ids:
-                sel[sid] = sid in selected_ids
+            for _, row in edited_df.iterrows():
+                sel[row["_id"]] = bool(row["Select"])
 
         sel_ids = _selected_ids()
         sel_opt = _selected_opt_rows(sel_ids)
