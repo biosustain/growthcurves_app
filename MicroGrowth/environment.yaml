@@ -8,14 +8,13 @@ dependencies:
   - pandas=2.3.3
   - scipy=1.16.3
   - plotly=6.3.1
-  - streamlit=1.52.0
+  - streamlit=1.59.2
   - openpyxl=3.1.5 # .xlsx support
   - xlrd=2.0.2 # .xls support (legacy)
   - pip:
       - kaleido==0.2.1
       - streamlit-plotly-events
       - streamlit-sortables==0.3.1
-      - streamlit-aggrid==1.2.1
       - st_selectable_grid==1.0.0
       - pyod==2.0.7
       - growthcurves>=0.7.1

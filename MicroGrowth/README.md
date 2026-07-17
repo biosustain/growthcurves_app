@@ -273,7 +273,6 @@ The threshold is configurable and affects how conservatively phase transitions a
 - xlrd (for .xls file support)
 - growthcurves (core analysis package)
 - streamlit_sortables
-- streamlit-aggrid
 
 See `requirements.txt` or `environment.yaml` for specific versions.
 
