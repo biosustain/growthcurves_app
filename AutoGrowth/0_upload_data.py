@@ -436,11 +436,12 @@ with st.container(border=True):
                 step=0.1,
                 help="Used when outlier method is IQR. Multiplier of the IQR.",
             )
+            _rw_fallback = st.session_state.get("rolling_window", 21)
             rolling_window_smoothing = st.slider(
                 "Rolling window (timepoints) for data smoothing",
                 5,
                 141,
-                st.session_state.get("rolling_window_smoothing", 21),
+                st.session_state.get("rolling_window_smoothing", _rw_fallback),
                 step=2,
                 disabled=not apply_smoothing,
                 help="Rolling median window size for OD data smoothing.",
@@ -449,7 +450,7 @@ with st.container(border=True):
                 "Rolling window (timepoints) for IQR outlier removal",
                 11,
                 141,
-                st.session_state.get("rolling_window_iqr", 21),
+                st.session_state.get("rolling_window_iqr", _rw_fallback),
                 step=2,
                 help="Used when outlier method is IQR.",
             )
