@@ -197,8 +197,11 @@ with st.container(border=True):
             key="remove_downward_trending",
         )
 
-    minimum_peak_height = None
-    minimum_distance = int(st.session_state.get("turbiostat_distance", 300))
+    # Automatic peak detection inputs are only persisted across page switches
+    # once an analysis has actually been run (see the save below the
+    # "Run Analysis" gate), so unrun edits don't linger after navigating away.
+    minimum_peak_height = st.session_state.get("turbidostat_min_peak_height")
+    minimum_distance = int(st.session_state.get("turbidostat_min_distance", 300))
     if use_uploaded_peak_times:
         meta_label = (
             turbidostat_meta_name if turbidostat_meta_name else "uploaded_metadata.csv"
@@ -224,7 +227,7 @@ with st.container(border=True):
                 "series."
             ),
             min_value=0.0,
-            value=None,
+            value=minimum_peak_height,
         )
         minimum_distance = st.number_input(
             label=(
@@ -232,9 +235,8 @@ with st.container(border=True):
                 "(in number of measurement timepoints)"
             ),
             min_value=3,
-            value=300,
+            value=minimum_distance,
             step=1,
-            key="turbiostat_distance",
         )
 
 smoothing_range = get_smoothing_range(len(df_rolling))
@@ -264,6 +266,11 @@ if not run_analysis:
     st.stop()
 
 st.session_state["show_error"] = False
+
+# Persist automatic peak detection inputs now that the analysis has run, so
+# they're restored when the user navigates away and back to this page.
+st.session_state["turbidostat_min_peak_height"] = minimum_peak_height
+st.session_state["turbidostat_min_distance"] = minimum_distance
 
 if turbidostat_meta_bytes is not None:
     df_meta = pd.read_csv(
