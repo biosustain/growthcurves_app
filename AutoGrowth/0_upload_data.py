@@ -438,7 +438,7 @@ with st.container(border=True):
             )
             rolling_window_smoothing = st.slider(
                 "Rolling window (timepoints) for data smoothing",
-                11,
+                5,
                 141,
                 st.session_state.get("rolling_window_smoothing", 21),
                 step=2,
