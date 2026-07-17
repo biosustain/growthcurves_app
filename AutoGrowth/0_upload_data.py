@@ -413,6 +413,14 @@ with st.container(border=True):
                 ),
             )
         with filter_columns[1]:
+            apply_smoothing = st.checkbox(
+                "Apply rolling median smoothing",
+                value=st.session_state.get("apply_smoothing", True),
+                help=(
+                    "If checked, a rolling median is applied to smooth the OD data "
+                    "before growth rate estimation."
+                ),
+            )
             quantile_max = st.slider(
                 "Max quantile for maximum removal",
                 0.9,
@@ -428,11 +436,21 @@ with st.container(border=True):
                 step=0.1,
                 help="Used when outlier method is IQR. Multiplier of the IQR.",
             )
-            rolling_window = st.slider(
-                "Rolling window (of timepoints) for IQR outlier removal",
+            _rw_fallback = st.session_state.get("rolling_window", 21)
+            rolling_window_smoothing = st.slider(
+                "Rolling window (timepoints) for data smoothing",
+                5,
+                141,
+                st.session_state.get("rolling_window_smoothing", _rw_fallback),
+                step=2,
+                disabled=not apply_smoothing,
+                help="Rolling median window size for OD data smoothing.",
+            )
+            rolling_window_iqr = st.slider(
+                "Rolling window (timepoints) for IQR outlier removal",
                 11,
                 141,
-                st.session_state.get("rolling_window", 21),
+                st.session_state.get("rolling_window_iqr", _rw_fallback),
                 step=2,
                 help="Used when outlier method is IQR.",
             )
@@ -535,7 +553,9 @@ st.session_state["remove_max"] = remove_max
 st.session_state["outlier_method"] = outlier_method
 st.session_state["quantile_max"] = quantile_max
 st.session_state["iqr_range_value"] = iqr_range_value
-st.session_state["rolling_window"] = rolling_window
+st.session_state["apply_smoothing"] = apply_smoothing
+st.session_state["rolling_window_smoothing"] = rolling_window_smoothing
+st.session_state["rolling_window_iqr"] = rolling_window_iqr
 st.session_state["ecod_factor"] = ecod_factor
 st.session_state["round_time"] = round_time
 st.session_state["aggregate_duplicated_rounded_timepoint"] = (
@@ -717,7 +737,7 @@ if button_pressed:
         kwargs_iqr = {
             "method": "iqr",
             "factor": iqr_range_value,
-            "window_size": rolling_window,
+            "window_size": rolling_window_iqr,
         }
         kwargs = (
             kwargs_iqr
@@ -806,15 +826,22 @@ if button_pressed:
         # ! should I visualize the values differently?
         df_wide_raw_od_data_filtered = df_wide_raw_od_data_filtered.ffill().bfill()
 
-    df_rolling = (
-        df_wide_raw_od_data_filtered.rolling(
-            rolling_window,
-            min_periods=min_periods,
-            center=True,
+    if apply_smoothing:
+        df_rolling = (
+            df_wide_raw_od_data_filtered.rolling(
+                rolling_window_smoothing,
+                min_periods=min_periods,
+                center=True,
+            )
+            .median()
+            .sort_index()
         )
-        .median()
-        .sort_index()
-    )
+        msg += (
+            f"- Applied rolling median smoothing (window={rolling_window_smoothing}).\n"
+        )
+    else:
+        df_rolling = df_wide_raw_od_data_filtered.sort_index()
+        msg += "- Smoothing disabled; using filtered data directly.\n"
 
     # ? Should it not be possible to be run twice in a single session?
     if od_adjustment_upload is not None:
@@ -861,7 +888,8 @@ if button_pressed:
 
     st.session_state["df_rolling"] = df_rolling
 
-    st.session_state["rolling_window"] = int(rolling_window)
+    st.session_state["rolling_window_smoothing"] = int(rolling_window_smoothing)
+    st.session_state["rolling_window_iqr"] = int(rolling_window_iqr)
 
     st.session_state["upload_processing_summary_msg"] = msg
     st.write("### Data processing summary:")
@@ -885,7 +913,11 @@ if st.session_state.get("debug_mode", False):
                 "filter_by_iqr_range": st.session_state.get("filter_by_iqr_range"),
                 "quantile_max": st.session_state.get("quantile_max"),
                 "iqr_range_value": st.session_state.get("iqr_range_value"),
-                "rolling_window": st.session_state.get("rolling_window"),
+                "apply_smoothing": st.session_state.get("apply_smoothing"),
+                "rolling_window_smoothing": st.session_state.get(
+                    "rolling_window_smoothing"
+                ),
+                "rolling_window_iqr": st.session_state.get("rolling_window_iqr"),
                 "round_time": st.session_state.get("round_time"),
                 "time_ranges": st.session_state.get("time_ranges"),
                 "update_zero_timepoint": st.session_state.get("update_zero_timepoint"),

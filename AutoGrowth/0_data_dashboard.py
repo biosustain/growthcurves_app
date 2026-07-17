@@ -22,7 +22,8 @@ df_rolling = st.session_state.get("df_rolling")
 masked = st.session_state.get("masked")
 start_time = st.session_state.get("start_time")
 processing_summary = st.session_state.get("upload_processing_summary_msg")
-rolling_window = st.session_state.get("rolling_window")
+rolling_window_smoothing = st.session_state.get("rolling_window_smoothing")
+apply_smoothing = st.session_state.get("apply_smoothing", True)
 st.session_state.setdefault("yaxis_scale", False)
 st.session_state.setdefault("USE_ELAPSED_TIME_FOR_PLOTS", True)
 use_same_yaxis_scale = bool(st.session_state.get("yaxis_scale", False))
@@ -283,12 +284,12 @@ if processing_summary:
 if df_rolling is not None:
     with st.container(border=True):
         st.header("Smoothed data view.")
-        if rolling_window is not None:
+        if apply_smoothing and rolling_window_smoothing is not None:
             st.subheader(
-                f"Rolling median in window of {rolling_window}s using filtered OD data"
+                f"Rolling median smoothing (window={rolling_window_smoothing}) applied to filtered OD data"
             )
         else:
-            st.subheader("Filtered raw OD data (untrimmed and not calibrated)")
+            st.subheader("Filtered raw OD data (no smoothing applied)")
         fig = px.scatter(
             df_wide_raw_od_data_filtered,
             x=df_wide_raw_od_data_filtered.index,
