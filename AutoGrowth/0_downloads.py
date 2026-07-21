@@ -1,3 +1,9 @@
+"""Download available exports and session state snapshot.
+
+Snapshot: Saved in JSON format the session state and data loaded to pandas
+as CSV.
+"""
+
 from io import BytesIO
 
 import streamlit as st

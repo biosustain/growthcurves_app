@@ -17,10 +17,14 @@ def render_options_for_growthcurve_fitting(s_min=3, s_max=1000, s_default=1000):
     )
     st.session_state["selected_model"] = selected_model
     st.write("#### Spline fitting options:")
+    URL_SCIPY_SPLINE = (
+        "https://docs.scipy.org/doc/scipy/reference/generated/"
+        "scipy.interpolate.make_splrep.html"
+    )
     spline_smoothing_value = st.slider(
         "Smoothing of the spline fitted to OD values (zero means no smoothing). "
         "Range suggested using scipy, see "
-        "[docs](https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.make_splrep.html)",
+        f"[docs]({URL_SCIPY_SPLINE})",
         1,
         s_max,
         s_default,
@@ -284,7 +288,8 @@ def _ui_qc_filters_upload_style(
 def _ui_phase_boundaries_upload_style():
     """Render phase boundary controls."""
     st.caption(
-        "Phase boundaries define when the lag phase ends and when the exponential phase ends."
+        "Phase boundaries define when the lag phase ends and when the exponential phase"
+        " ends."
     )
     phase_boundary_method = st.selectbox(
         "Phase boundary calculation",
@@ -336,7 +341,8 @@ def _render_method_visualization_upload_style(
         st.markdown("**Sliding Window Method** (Currently Selected)")
         st.latex(r"\ln(N(t)) = N_0 + b\,t")
         st.caption(
-            "Local linear regression in moving windows. Calculates growth rate from nearby data points without assuming global curve shape."
+            "Local linear regression in moving windows. Calculates growth rate from "
+            "nearby data points without assuming global curve shape."
         )
         return _info_plot_url("sliding_window.png")
 
@@ -344,7 +350,8 @@ def _render_method_visualization_upload_style(
         st.markdown("**Spline Method** (Currently Selected)")
         st.latex(r"\ln(N(t)) = \mathrm{spline}(t)")
         st.caption(
-            "Fitted smoothed curve without underlying shape assumptions. Flexible non-parametric approach."
+            "Fitted smoothed curve without underlying shape assumptions. Flexible "
+            "non-parametric approach."
         )
         return _info_plot_url("spline.png")
 
@@ -355,10 +362,12 @@ def _render_method_visualization_upload_style(
                 st.latex(r"\frac{dN}{dt} = \mu\left(1-\frac{N}{K}\right)N")
             else:
                 st.latex(
-                    r"\ln\!\left(\frac{N(t)}{N_0}\right) = \frac{A}{1+\exp\!\left(\frac{4\mu_{\max}(\lambda-t)}{A}+2\right)}"
+                    r"\ln\!\left(\frac{N(t)}{N_0}\right) = "
+                    r"\frac{A}{1+\exp\!\left(\frac{4\mu_{\max}(\lambda-t)}{A}+2\right)}"
                 )
             st.caption(
-                "Classic S-shaped curve with symmetric inflection point. Most commonly used for microbial growth."
+                "Classic S-shaped curve with symmetric inflection point. Most commonly"
+                " used for microbial growth."
             )
         elif "gompertz" in str(model_type):
             model_name = (
@@ -369,14 +378,18 @@ def _render_method_visualization_upload_style(
                 st.latex(r"\frac{dN}{dt} = \mu\log\!\left(\frac{K}{N}\right)N")
             elif "modified" in str(model_type):
                 st.latex(
-                    r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\exp\!\left[-\exp\!\left(\frac{\mu_{\max}\exp(1)(\lambda-t)}{A}+1\right)\right]+A\exp\!\left(\alpha(t-t_{\mathrm{shift}})\right)"
+                    r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\exp\!\left[-\exp\!"
+                    r"\left(\frac{\mu_{\max}\exp(1)(\lambda-t)}{A}+1\right)\right]"
+                    r"+A\exp\!\left(\alpha(t-t_{\mathrm{shift}})\right)"
                 )
             else:
                 st.latex(
-                    r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\exp\!\left[-\exp\!\left(\frac{\mu_{\max}\exp(1)(\lambda-t)}{A}+1\right)\right]"
+                    r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\exp\!\left[-\exp\!"
+                    r"\left(\frac{\mu_{\max}\exp(1)(\lambda-t)}{A}+1\right)\right]"
                 )
             st.caption(
-                "Modified Gompertz with baseline offset y₀ and amplitude A = K − y₀. Asymmetric S-curve; often fits bacterial growth better than logistic."
+                "Modified Gompertz with baseline offset y₀ and amplitude A = K − y₀. "
+                "Asymmetric S-curve; often fits bacterial growth better than logistic."
             )
         elif "richards" in str(model_type):
             st.markdown("**Richards** (Currently Selected)")
@@ -386,18 +399,22 @@ def _render_method_visualization_upload_style(
                 )
             else:
                 st.latex(
-                    r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\left(1+\nu\exp\!\left(1+\nu+\frac{\mu_{\max}(1+\nu)^{1/\nu}(\lambda-t)}{A}\right)\right)^{-1/\nu}"
+                    r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\left(1+\nu\exp\!"
+                    r"\left(1+\nu+\frac{\mu_{\max}(1+\nu)^{1/\nu}(\lambda-t)}{A}\right)\right)^{-1/\nu}"
                 )
             st.caption(
-                "Generalized logistic with shape parameter ν. Most flexible - use when other models don't fit well."
+                "Generalized logistic with shape parameter ν. Most flexible - use when"
+                " other models don't fit well."
             )
         elif "baranyi" in str(model_type):
             st.markdown("**Baranyi-Roberts** (Currently Selected)")
             st.latex(
-                r"\frac{dN}{dt}=\mu\frac{\exp(\mu t)}{\exp(\lambda)-1+\exp(\mu t)}\left(1-\frac{N}{K}\right)N"
+                r"\frac{dN}{dt}=\mu\frac{\exp(\mu t)}{\exp(\lambda)-1+\exp(\mu t)}"
+                r"\left(1-\frac{N}{K}\right)N"
             )
             st.caption(
-                "Baranyi-Roberts model with physiological lag parameter λ. Mechanistic model accounting for cell adaptation during lag phase."
+                "Baranyi-Roberts model with physiological lag parameter λ. Mechanistic"
+                " model accounting for cell adaptation during lag phase."
             )
 
         return _info_plot_url(f"{model_type}.png")

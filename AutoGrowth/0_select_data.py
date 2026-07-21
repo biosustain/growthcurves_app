@@ -1,7 +1,8 @@
 """Interactive data exclusion page for df_rolling.
 
 Allows per-column lasso/box selection of points to set to NaN in df_rolling.
-Selected points are excluded and the modified df_rolling is stored back in session state.
+Selected points are excluded and the modified df_rolling is stored back in
+session state.
 """
 
 import numpy as np
@@ -105,10 +106,10 @@ t_all = series.index.to_numpy(dtype=float)
 
 # x-axis: elapsed time label or raw index
 if use_elapsed_time and start_time is not None:
-    x_label = "Elapsed time (h)"
+    X_LABEL = "Elapsed time (h)"
     x_values = t_all
 else:
-    x_label = "Time index"
+    X_LABEL = "Time index"
     x_values = t_all
 
 # Split into current (non-NaN) and excluded (NaN introduced vs original)
@@ -143,7 +144,7 @@ fig.add_trace(
 fig.update_layout(
     dragmode="lasso",
     uirevision=f"select_data_{selected_col}",
-    xaxis=dict(title=x_label, showgrid=False),
+    xaxis=dict(title=X_LABEL, showgrid=False),
     yaxis=dict(title="Rolling median OD", showgrid=False),
     plot_bgcolor="white",
     paper_bgcolor="white",

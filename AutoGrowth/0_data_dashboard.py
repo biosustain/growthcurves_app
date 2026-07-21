@@ -1,3 +1,13 @@
+"""Show raw data and processed data
+
+Raw Data:
+ - highlight filtered data points in red
+
+Rolling median data:
+    - show rolling median data in line plot
+
+"""
+
 import plotly.express as px
 import streamlit as st
 from buttons import create_download_button

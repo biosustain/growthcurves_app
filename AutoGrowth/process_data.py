@@ -1,3 +1,5 @@
+"""Data processing related functions for the AutoGrowth app."""
+
 import csv
 from pathlib import Path
 
@@ -143,6 +145,20 @@ def read_pioreactor_csv(file: str, round_time: int = 60):
 
 
 def read_chibio_csv(files: list[Path], round_time: int = 60) -> pd.DataFrame:
+    """Read raw OD data from Chi.Bio export CSV files and round timestamps.
+
+    Parameters
+    ----------
+    files : list[Path]
+        List of Chi.Bio export CSV files containing raw OD data.
+    round_time : int, optional
+        Time in seconds to round timestamps, by default 60
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with rounded timestamps and elapsed time in seconds.
+    """
     dfs = []
     for file in files:
         df = pd.read_csv(file)
@@ -163,11 +179,11 @@ def drop_na_pioreactor_raw_od_data(
     """Drop rows with NA values in core columns and return the number of dropped
     rows.
     """
-    N_before = df_raw_od_data.shape[0]
+    n_before = df_raw_od_data.shape[0]
     df_raw_od_data = df_raw_od_data.dropna(subset=subset)
-    N_after = df_raw_od_data.shape[0]
-    N_dropped = N_before - N_after
-    return df_raw_od_data, N_dropped
+    n_after = df_raw_od_data.shape[0]
+    n_dropped = n_before - n_after
+    return df_raw_od_data, n_dropped
 
 
 def process_chibio_data(
@@ -175,11 +191,14 @@ def process_chibio_data(
     round_time: int = 60,
     keep_core_data: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame, str]:
+    """Process raw OD data from Chi.Bio export CSV files and return both the
+    raw and wide formats of the data, along with a summary message.
+    """
     df, msg = read_chibio_csv(files, round_time)
-    df, N_dropped = drop_na_pioreactor_raw_od_data(
+    df, n_dropped = drop_na_pioreactor_raw_od_data(
         df, subset=REQUIRED_COLUMNS["Chi.Bio"]
     )
-    msg += f"- Dropped {N_dropped:,d} rows with NA values.\n"
+    msg += f"- Dropped {n_dropped:,d} rows with NA values.\n"
     if keep_core_data:
         # core data and added reactor column only
         df = df[
@@ -255,7 +274,8 @@ def process_od_pioreactor(
             n_after = df_raw_od_data.shape[0]
             msg += (
                 "- Aggregated high-frequency raw OD data sampled every "
-                f"{median_interval_seconds:.1f}s to {min_raw_sampling_interval_seconds}s "
+                f"{median_interval_seconds:.1f}s to "
+                f"{min_raw_sampling_interval_seconds}s "
                 f"(rows: {n_before:,d} -> {n_after:,d}).\n"
             )
         elif median_interval_seconds is not None:
@@ -301,10 +321,10 @@ def process_od_pioreactor(
     # wide data of raw data
     # - can be used in plot for visualization,
     # - and in curve fitting (where gaps would be interpolated)
-    df_raw_od_data, N_dropped = drop_na_pioreactor_raw_od_data(df_raw_od_data)
-    if N_dropped > 0:
+    df_raw_od_data, n_dropped = drop_na_pioreactor_raw_od_data(df_raw_od_data)
+    if n_dropped > 0:
         msg += (
-            f"- Dropped {N_dropped:,d} rows with missing values in core columns "
+            f"- Dropped {n_dropped:,d} rows with missing values in core columns "
             "(timestamp_rounded, pioreactor_unit, od_reading).\n"
         )
     try:

@@ -1,3 +1,7 @@
+"""Upload and preprocess bioscattter data for growth curve analysis from
+mini-reactors.
+"""
+
 import growthcurves as gc
 import pandas as pd
 import streamlit as st
@@ -37,6 +41,7 @@ page_header_with_help("Upload Data", UPLOAD_HELP)
 
 
 def callback_clear_raw_data():
+    """Clear session state."""
     st.session_state["df_raw_od_data"] = None
     st.session_state["df_wide_raw_od_data"] = None
     st.session_state["df_wide_raw_od_data_filtered"] = None
@@ -52,6 +57,30 @@ def callback_clear_raw_data():
 def apply_linear_adjustments(
     df_rolling: pd.DataFrame, adjustment_table: pd.DataFrame
 ) -> tuple[pd.DataFrame, list[str]]:
+    """Apply linear transformation of the data based on the adjustments measurements
+    provided
+
+    Parameters
+    ----------
+    df_rolling : pd.DataFrame
+        Dataframe with rolling mean of OD readings, indexed by time and columns
+        as reactors
+    adjustment_table : pd.DataFrame
+        Dataframe with columns `reactor` and `od` containing the target OD values for
+        each reactor. The first and last values for each reactor are used to define
+        the linear transformation.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, list[str]]
+        Adjusted dataframe and a list of warnings encountered during the adjustment
+        process.
+
+    Raises
+    ------
+    KeyError
+        If the adjustment table is missing required columns.
+    """
     required_columns = {"reactor", "od"}
     missing_columns = required_columns - set(adjustment_table.columns)
     if missing_columns:
@@ -211,8 +240,8 @@ with st.container(border=True):
         with st.popover("See an Example", width="stretch"):
             st.markdown("**OD Calibration Table**")
             st.markdown(
-                "- CSV/TXT (`,` or `;`) or Excel file with columns `reactor` and `od`.\n"
-                "- Used to adjust OD readings by reactor based on calibration data."
+                "- CSV/TXT (`,` or `;`) or Excel file with columns `reactor` and `od`."
+                "\n- Used to adjust OD readings by reactor based on calibration data."
             )
             st.divider()
             st.markdown("**Example:**")
@@ -246,7 +275,7 @@ with st.container(border=True):
         with st.popover("See an Example", width="stretch"):
             st.markdown("**Turbidostat Metadata**")
             st.markdown("""
-                If provided, peaks are not autodetected. Only available for 
+                If provided, peaks are not autodetected. Only available for
                 PioReactor datasets.
 
                 - CSV file with columns `timestamp_localtime`, `pioreactor_unit`,
@@ -361,14 +390,15 @@ with st.container(border=True):
             default_negative = st.session_state.get(
                 "negative_handling", negative_options[0]
             )
+            DEFAULT_NEGATIVE_INDEX = 1
             try:
-                default_negative_index = negative_options.index(default_negative)
+                DEFAULT_NEGATIVE_INDEX = negative_options.index(default_negative)
             except ValueError:
-                default_negative_index = 1
+                pass
             negative_handling = st.radio(
                 "How should negative OD readings be handled?",
                 options=negative_options,
-                index=default_negative_index,
+                index=DEFAULT_NEGATIVE_INDEX,
                 help=(
                     "Negative values distort curve fitting. Choose whether to convert "
                     "them to missing values or impute them."
@@ -545,7 +575,6 @@ with st.container(border=True):
 # remember form values for next time page is opened
 st.session_state["keep_core_data"] = keep_core_data
 st.session_state["custom_id"] = custom_id
-# st.session_state["reactors_selected"] = reactors_selected # moved to button pressed section
 st.session_state["remove_negative"] = remove_negative
 st.session_state["negative_handling"] = negative_handling
 st.session_state["fill_na"] = fill_na
@@ -607,20 +636,23 @@ if file:
 
         if missing_files:
             _, _, columns = missing_files[0]
-            other_type = "PioReactor"
-            other_required = REQUIRED_COLUMNS[other_type]
-            wrong_type_hint = (
-                f" The files look like **{other_type}** input — did you select the wrong reactor type?"
-                if not any(column not in columns for column in other_required)
+            OTHER_TYPE = "PioReactor"
+            OTHER_REQUIRED = REQUIRED_COLUMNS[OTHER_TYPE]
+            WRONG_TYPE_HINT = (
+                (
+                    f" The files look like **{OTHER_TYPE}** input — "
+                    "did you select the wrong reactor type?"
+                )
+                if not any(column not in columns for column in OTHER_REQUIRED)
                 else ""
             )
-            details = ", ".join(
+            DETAILS = ", ".join(
                 f"`{name}` is missing {', '.join(f'`{col}`' for col in missing)}"
                 for name, missing, _ in missing_files
             )
             st.error(
-                f"One or more uploaded files are missing required columns for **{reactor_type}**. "
-                f"{details}." + wrong_type_hint
+                "One or more uploaded files are missing required columns "
+                f"for **{reactor_type}**. {DETAILS}." + WRONG_TYPE_HINT
             )
             st.stop()
 
@@ -641,17 +673,20 @@ if file:
             column for column in REQUIRED_COLUMNS[reactor_type] if column not in columns
         ]
         if missing:
-            other_type = "Chi.Bio"
-            other_required = REQUIRED_COLUMNS[other_type]
-            wrong_type_hint = (
-                f" The file looks like **{other_type}** input — did you select the wrong reactor type?"
+            OTHER_TYPE = "Chi.Bio"
+            OTHER_REQUIRED = REQUIRED_COLUMNS[OTHER_TYPE]
+            WRONG_TYPE_HINT = (
+                (
+                    f" The file looks like **{OTHER_TYPE}** input —"
+                    " did you select the wrong reactor type?"
+                )
                 if columns
-                and not any(column not in columns for column in other_required)
+                and not any(column not in columns for column in OTHER_REQUIRED)
                 else ""
             )
             st.error(
-                f"The uploaded file is missing required columns for **{reactor_type}**: "
-                f"{', '.join((f'`{col}`' for col in missing))}." + wrong_type_hint
+                f"The uploaded file is missing required columns for **{reactor_type}**:"
+                f" {', '.join((f'`{col}`' for col in missing))}." + WRONG_TYPE_HINT
             )
             st.stop()
 
@@ -797,18 +832,18 @@ if button_pressed:
         masked = masked | mask_negative
     else:
         mask_negative = df_wide_raw_od_data_filtered < 0
-        window = 31
+        WINDOW = 31  # ! should this be set from the UI?
         # Replace negatives with NaN,
         # then compute centered rolling mean over non-missing values
         temp = df_wide_raw_od_data_filtered.mask(mask_negative)
-        rolling_mean = temp.rolling(window=window, min_periods=1, center=True).mean()
+        rolling_mean = temp.rolling(window=WINDOW, min_periods=1, center=True).mean()
         df_wide_raw_od_data_filtered = df_wide_raw_od_data_filtered.mask(
             mask_negative, rolling_mean
         )
         n_imputed = mask_negative.sum().sum()
         msg += (
             f"- Imputed {n_imputed:,d} negative OD readings using"
-            f" centered rolling mean (window={window}).\n"
+            f" centered rolling mean (window={WINDOW}).\n"
         )
         msg += f"   - in detail: {mask_negative.sum().to_dict()}\n"
         masked = masked | mask_negative
@@ -856,10 +891,10 @@ if button_pressed:
                 df_rolling, df_adjustments
             )
         except KeyError as e:
-            error_text = str(e.args[0]) if e.args else str(e)
+            ERROR_TEXT = str(e.args[0]) if e.args else str(e)
             st.error(
                 "Check that the required header and columns are present. "
-                f"{error_text}"
+                f"{ERROR_TEXT}"
             )
             st.stop()
         st.session_state["is_df_rolling_adjusted"] = True
