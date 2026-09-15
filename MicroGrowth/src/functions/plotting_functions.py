@@ -30,7 +30,6 @@ from plotly.subplots import make_subplots
 from src.functions.common import _iter_wells
 from src.functions.constants import ALL_WELLS
 
-
 # --- fit-quality outlines -----------------------------------------------------
 # Log-space fits report model_rmse as a relative error already; parametric fits
 # report it in OD units, so those are divided by the growth amplitude first.

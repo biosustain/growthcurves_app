@@ -752,7 +752,7 @@ def _ui_model_selection(params0: dict):
 
     # Determine default index
     default_idx = 0
-    for i, (label, code, method) in enumerate(method_options):
+    for i, (_label, code, _method) in enumerate(method_options):
         if stored_method in ["Sliding Window", "Spline"]:
             if code == "sliding_window" and stored_method == "Sliding Window":
                 default_idx = i
