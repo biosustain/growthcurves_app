@@ -13,7 +13,7 @@ from src.ui_functions.ui_components import page_header_with_help
 page_header_with_help(
     "Download Analyzed Data",
     """
-**Workflow Overview — Download Analyzed Data**
+**Workflow Overview - Download Analyzed Data**
 
 Use this page to **export your analysis results** as a ZIP file containing data tables and plots. Check the boxes for the content you want to include, then click the download button at the bottom of the page.
 

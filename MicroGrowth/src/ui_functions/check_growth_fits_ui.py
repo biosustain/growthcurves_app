@@ -679,7 +679,7 @@ def ui_window_fits_well_editor(plates: dict):
         )
 
         with stats_exp_col:
-            with st.popover(f"Growth Statistics — {well}", width="stretch"):
+            with st.popover(f"Growth Statistics - {well}", width="stretch"):
                 stats_df = _format_growth_stats_table(gs)
                 st.dataframe(
                     stats_df,
@@ -689,7 +689,7 @@ def ui_window_fits_well_editor(plates: dict):
                 )
 
         with params_exp_col:
-            with st.popover(f"Analysis Parameters — {well}", width="stretch"):
+            with st.popover(f"Analysis Parameters - {well}", width="stretch"):
                 well_data = (plate.get("processed_data") or {}).get(well)
                 n_total = (
                     len(well_data)

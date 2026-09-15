@@ -23,9 +23,9 @@ dependencies = [
     "scipy",
     "matplotlib",
     "seaborn",
-    # 1.56.0 added st.dataframe(selection_default=...), which Step 1 sample
-    # selection needs to restore ticked rows after page navigation.
-    "streamlit>=1.56.0",
+    # Pinned to match MicroGrowth/requirements.txt and environment.yaml.
+    # Step 1 sample selection needs st.dataframe(selection_default=...).
+    "streamlit==1.59.2",
     "growthcurves",
 ]
 # use requirements.txt instead of pyproject.toml for dependencies
