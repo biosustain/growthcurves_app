@@ -65,7 +65,7 @@ dev = ["black[jupyter]", "ruff", "pytest", "isort", "jupytext", "bump-my-version
 # 1. Enable flake8-bugbear (`B`) rules
 # 2. Enable pycodestyle (`E`) errors and (`W`) warnings
 # 3. Pyflakes (`F`) errors
-extend-select = ["E", "W", "F", "B"]
+select = ["E", "W", "F", "B"]
 # Ignore line length errors:
 ignore = ["E501"]
 
