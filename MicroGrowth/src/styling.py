@@ -1,45 +1,34 @@
 import streamlit as st
 
 
-# styles the selected navbar item with green background
+# styles the top navbar: items spread evenly, green active tab
 def green_navbar():
     return st.markdown(
         """
         <style>
-        /* Top navigation - selected/active page */
-        button[data-testid="stPageLink-NavLink"][aria-current="page"] {
+        /* The nav is an rc-overflow list; .rc-overflow-item is the flex child */
+        .rc-overflow-item {
+            flex: 1 !important;
+        }
+
+        [data-testid="stTopNavLink"] {
+            justify-content: center !important;
+        }
+
+        /* Tab labels, 40% larger */
+        [data-testid="stTopNavLink"] span {
+            font-size: 1.4em !important;
+        }
+
+        [data-testid="stTopNavLink"][aria-current="page"] {
             background-color: rgba(76, 175, 80, 0.25) !important;
             color: #2e7d32 !important;
             font-weight: 600 !important;
             border-bottom: 2px solid #66BB6A !important;
         }
 
-        /* Top navigation - hover effect */
-        button[data-testid="stPageLink-NavLink"]:hover {
+        [data-testid="stTopNavLink"]:hover {
             background-color: rgba(76, 175, 80, 0.12) !important;
-        }
-
-        /* Navigation container styling */
-        [data-testid="stSidebarNav"],
-        [data-testid="stNavigation"] {
-            background-color: transparent !important;
-        }
-
-        /* Alternative selectors for active navigation */
-        ul[role="tablist"] button[aria-selected="true"],
-        div[role="tab"][aria-selected="true"] {
-            background-color: rgba(76, 175, 80, 0.25) !important;
-            color: #2e7d32 !important;
-            font-weight: 600 !important;
-            border-bottom: 2px solid #66BB6A !important;
-        }
-
-        /* Navigation link active state */
-        a[aria-current="page"],
-        a[data-active="true"] {
-            background-color: rgba(76, 175, 80, 0.25) !important;
-            color: #2e7d32 !important;
-            font-weight: 600 !important;
         }
         </style>
         """,

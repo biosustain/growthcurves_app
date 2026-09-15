@@ -23,9 +23,9 @@ dependencies = [
     "scipy",
     "matplotlib",
     "seaborn",
-    # 1.56.0 added st.dataframe(selection_default=...), which Step 1 sample
-    # selection needs to restore ticked rows after page navigation.
-    "streamlit>=1.56.0",
+    # Pinned to match MicroGrowth/requirements.txt and environment.yaml.
+    # Step 1 sample selection needs st.dataframe(selection_default=...).
+    "streamlit==1.59.2",
     "growthcurves",
 ]
 # use requirements.txt instead of pyproject.toml for dependencies
@@ -65,9 +65,9 @@ dev = ["black[jupyter]", "ruff", "pytest", "isort", "jupytext", "bump-my-version
 # 1. Enable flake8-bugbear (`B`) rules
 # 2. Enable pycodestyle (`E`) errors and (`W`) warnings
 # 3. Pyflakes (`F`) errors
-extend-select = ["E", "W", "F", "B"]
+select = ["E", "W", "F", "B"]
 # Ignore line length errors:
-# ignore = ["E501"]
+ignore = ["E501"]
 
 [build-system]
 build-backend = "setuptools.build_meta"

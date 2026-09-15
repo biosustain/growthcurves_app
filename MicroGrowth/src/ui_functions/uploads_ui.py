@@ -42,20 +42,20 @@ def ui_upload_and_analyse_header():
         st.write("")
         with st.popover("Help", width="stretch"):
             st.markdown("""
-**Workflow Overview — Upload & Analyse**
+**Workflow Overview - Upload & Analyse**
 
 This is your starting point. Follow the 6 steps in order to upload your data and run the growth analysis.
 
-**Step 1 — Upload data file**
+**Step 1 - Upload data file**
 Upload your plate reader Excel file. Click "Requirements" to see the expected format and download an example. Your file must have a **Time** column plus one column per well (e.g. A1, A2, ...).
 
-**Step 2 — Upload sample names**
+**Step 2 - Upload sample names**
 Optionally upload a plate map Excel file that assigns sample names to each well. If provided, data column names must be well IDs (A1–H12) and the plate map is used to label each well. If omitted, the data column names are used directly as sample names. Wells with the same name are treated as replicates. Use **BLANK** (or any name starting with BLANK) for blank wells. Click "Requirements" for the expected format and an example download.
 
-**Step 3 — Match samples with names**
+**Step 3 - Match samples with names**
 Click the button to load your file(s). If a plate map is provided it will be matched to the data; otherwise column names are used as sample names directly.
 
-**Step 4 — Select preprocessing parameters**
+**Step 4 - Select preprocessing parameters**
 Configure how the data is processed before analysis:
 - **Time unit**: Set to match the unit in your data file (seconds, minutes, hours, days, or HH:MM:SS)
 - **Pathlength**: Your plate reader's optical path length, used to normalise OD to 1 cm
@@ -64,9 +64,9 @@ Configure how the data is processed before analysis:
 - **Outlier detection**: Optionally detect/remove outliers with a sliding IQR window (window size + threshold)
 - **Exclude wells**: Manually remove specific wells (e.g. contaminated or failed wells)
 
-The plate preview updates live — colored wells are included, and gray wells are not included. Hover any well for details.
+The plate preview updates live - colored wells are included, and gray wells are not included. Hover any well for details.
 
-**Step 5 — Select analysis parameters**
+**Step 5 - Select analysis parameters**
 Choose how growth descriptors are calculated:
 - **Model family & method**: Select a parametric model (mechanistic or phenomenological) or a non-parametric approach (Sliding Window or Spline). The visualisation below the selector shows the shape of the selected model.
 - **Spline fitting mode**: For the Spline method, choose **Fast** (auto-default smoothing with OD weighting) or **Slow** (weighted GCV smoothing).
@@ -75,7 +75,7 @@ Choose how growth descriptors are calculated:
 
 The table at the bottom shows exactly how each growth parameter will be calculated for your selected settings.
 
-**Step 6 — Analyse**
+**Step 6 - Analyse**
 Click the button to run the analysis. Once complete, navigate to the other pages using the top navigation bar to review and download your results.
 """)
 
@@ -348,7 +348,7 @@ def ui_upload_files(ss):
                             )
 
             map_file = st.file_uploader(
-                "Plate map (.xls/.xlsx) — wide or long format (optional)",
+                "Plate map (.xls/.xlsx) - wide or long format (optional)",
                 ["xlsx", "xls"],
                 key="map_up",
             )
@@ -587,7 +587,7 @@ def ui_preprocessing_params(ss):
                 max_value=_max_time_h,
                 value=(_clip_start, _clip_end),
                 step=0.5,
-                help="Time range for analysis — data points outside this window will be excluded",
+                help="Time range for analysis - data points outside this window will be excluded",
             )
 
             # Get default excluded wells from params0
@@ -752,7 +752,7 @@ def _ui_model_selection(params0: dict):
 
     # Determine default index
     default_idx = 0
-    for i, (label, code, method) in enumerate(method_options):
+    for i, (_label, code, _method) in enumerate(method_options):
         if stored_method in ["Sliding Window", "Spline"]:
             if code == "sliding_window" and stored_method == "Sliding Window":
                 default_idx = i

@@ -41,7 +41,7 @@ def plot_growth_data_w_mask(
     df_wide = df_wide.loc[df_mask.index].reset_index()
     df_mask = df_mask.reset_index()
     # grid container (reactive to UI changes)
-    for col, ax in zip(df_columns, axes):
+    for col, ax in zip(df_columns, axes, strict=True):
         mask = df_mask[col]
         # plot kept values in blue
         df_wide.loc[~mask].plot.scatter(
@@ -105,7 +105,7 @@ def plot_growth_data_w_peaks(
     index_name = df_wide.index.name
     # grid container (reactive to UI changes)
     df_wide = df_wide.reset_index()
-    for i, (col, ax) in enumerate(zip(df_columns, axes)):
+    for i, (col, ax) in enumerate(zip(df_columns, axes, strict=True)):
         # plot kept values in blue
         df_wide.plot.scatter(
             x=index_name,
