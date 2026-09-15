@@ -245,7 +245,7 @@ with st.container(border=True):
         with st.popover("See an Example", width="stretch"):
             st.markdown("**Turbidostat Metadata**")
             st.markdown("""
-                If provided, peaks are not autodetected. Only available for 
+                If provided, peaks are not autodetected. Only available for
                 PioReactor datasets.
 
                 - CSV file with columns `timestamp_localtime`, `pioreactor_unit`,
