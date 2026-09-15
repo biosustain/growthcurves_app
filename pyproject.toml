@@ -66,8 +66,7 @@ dev = ["black[jupyter]", "ruff", "pytest", "isort", "jupytext", "bump-my-version
 # 2. Enable pycodestyle (`E`) errors and (`W`) warnings
 # 3. Pyflakes (`F`) errors
 extend-select = ["E", "W", "F", "B"]
-# Ignore line length errors: black already enforces 88 columns on code, and the
-# lines left over are prose, comments and long strings it cannot split.
+# Ignore line length errors:
 ignore = ["E501"]
 
 [build-system]
