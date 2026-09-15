@@ -818,6 +818,30 @@ def plot_single_growth_stat(
 
 
 # --- window fits ----------------------------------------------------------------
+def _empty_grid(fig):
+    """Muted box and label for every well, for plates with nothing to draw."""
+    shapes, labels = [], []
+    for i, w in enumerate(ALL_WELLS, 1):
+        box, label = _well_box(fig, i, w, FIT_COLOR_NONE, muted=True)
+        shapes.append(box)
+        labels.append(label)
+    return shapes, labels
+
+
+def _assemble_grid(fig, traces, shapes, labels):
+    """Apply the batched traces, shapes and labels to the 96-well figure."""
+    if traces:
+        fig.add_traces(traces)
+    fig.update_layout(
+        shapes=shapes,
+        annotations=labels,
+        height=900,
+        showlegend=False,
+        hovermode=False,
+    )
+    return fig
+
+
 def plot_window_plate(plate: dict, time_unit: str = "hours"):
     """Plot a full 96-well plate overview with window-fit overlays.
 
@@ -842,29 +866,10 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
     # which is quadratic over 96 subplots.
     traces, shapes, labels = [], [], []
 
-    def _finish():
-        if traces:
-            fig.add_traces(traces)
-        fig.update_layout(
-            shapes=shapes,
-            annotations=labels,
-            height=900,
-            showlegend=False,
-            hovermode=False,
-        )
-        return fig
-
-    def _outline_empty_grid():
-        for idx, w in enumerate(ALL_WELLS, 1):
-            box, label = _well_box(fig, idx, w, FIT_COLOR_NONE, muted=True)
-            shapes.append(box)
-            labels.append(label)
-
     # Check if there's any data
     if not proc:
-        _outline_empty_grid()
         fig.update_layout(margin=dict(l=60, r=25, t=60, b=55))
-        return _finish()
+        return _assemble_grid(fig, [], *_empty_grid(fig))
 
     # Calculate global ranges
     ts, ys = [], []
@@ -875,9 +880,8 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
         ys.append(d["baseline_corrected"])
 
     if not ts:
-        _outline_empty_grid()
         fig.update_layout(margin=dict(l=60, r=25, t=60, b=55))
-        return _finish()
+        return _assemble_grid(fig, [], *_empty_grid(fig))
 
     x_min, x_max = float(min(t.min() for t in ts)), float(max(t.max() for t in ts))
     x_min_display = convert_hours_to_unit(x_min, time_unit)
@@ -986,7 +990,7 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
     fig.update_xaxes(showgrid=False, range=x_range, matches="x")
     fig.update_yaxes(showgrid=False, range=y_range, matches="y")
 
-    return _finish()
+    return _assemble_grid(fig, traces, shapes, labels)
 
 
 # --- derivative models ---------------------------------------------------------
