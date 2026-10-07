@@ -478,6 +478,10 @@ with st.container(border=True):
             [4, 2, 2], gap="large", vertical_alignment="bottom"
         )
         with rounding_columns[0]:
+            # Older session snapshots allowed rounding intervals below 5 seconds.
+            st.session_state["round_time"] = max(
+                5, st.session_state.get("round_time", 5)
+            )
             round_time = st.slider(
                 "Round time to nearest second (defining timesteps). "
                 "Used to align timeseries "
