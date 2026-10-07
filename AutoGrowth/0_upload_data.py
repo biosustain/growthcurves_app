@@ -6,6 +6,7 @@ from process_data import (
     REQUIRED_COLUMNS_NAME_MAP,
     process_chibio_data,
     process_od_pioreactor,
+    read_od_adjustment_table,
 )
 from ui_components import page_header_with_help
 
@@ -210,7 +211,7 @@ with st.container(border=True):
         with st.popover("See an Example", width="stretch"):
             st.markdown("**OD Calibration Table**")
             st.markdown(
-                "- CSV file with columns `reactor` and `od`.\n"
+                "- CSV/TXT (`,` or `;`) or Excel file with columns `reactor` and `od`.\n"
                 "- Used to adjust OD readings by reactor based on calibration data."
             )
             st.divider()
@@ -236,7 +237,7 @@ with st.container(border=True):
             st.info(f"File previously uploaded: {_file_name}")
         od_adjustment_upload = st.file_uploader(
             "OD adjustment table",
-            type=["csv", "txt"],
+            type=["csv", "txt", "xlsx", "xls"],
             key="upload_page_od_adjustment_table",
         )
     with optional_upload_cols[1]:
@@ -412,6 +413,14 @@ with st.container(border=True):
                 ),
             )
         with filter_columns[1]:
+            apply_smoothing = st.checkbox(
+                "Apply rolling median smoothing",
+                value=st.session_state.get("apply_smoothing", True),
+                help=(
+                    "If checked, a rolling median is applied to smooth the OD data "
+                    "before growth rate estimation."
+                ),
+            )
             quantile_max = st.slider(
                 "Max quantile for maximum removal",
                 0.9,
@@ -422,26 +431,39 @@ with st.container(border=True):
             iqr_range_value = st.slider(
                 "IQR factor for outlier removal",
                 1.0,
-                3.0,
+                5.0,
                 st.session_state.get("iqr_range_value", 1.5),
                 step=0.1,
                 help="Used when outlier method is IQR. Multiplier of the IQR.",
             )
-            rolling_window = st.slider(
-                "Rolling window (of timepoints) for IQR outlier removal",
+            _rw_fallback = st.session_state.get("rolling_window", 21)
+            rolling_window_smoothing = st.slider(
+                "Rolling window (timepoints) for data smoothing",
+                5,
+                141,
+                st.session_state.get("rolling_window_smoothing", _rw_fallback),
+                step=2,
+                disabled=not apply_smoothing,
+                help="Rolling median window size for OD data smoothing.",
+            )
+            rolling_window_iqr = st.slider(
+                "Rolling window (timepoints) for IQR outlier removal",
                 11,
-                61,
-                st.session_state.get("rolling_window", 21),
+                141,
+                st.session_state.get("rolling_window_iqr", _rw_fallback),
                 step=2,
                 help="Used when outlier method is IQR.",
             )
             ecod_factor = st.slider(
                 "ECOD factor for outlier removal",
                 0.5,
-                8.0,
+                12.0,
                 st.session_state.get("ecod_factor", 4.0),
                 step=0.1,
-                help="Used when outlier method is ECOD. Anomaly detection sensitivity.",
+                help=(
+                    "Used when outlier method is ECOD. Lower values are more "
+                    "sensitive; higher values are less sensitive."
+                ),
             )
 
         st.divider()
@@ -456,14 +478,18 @@ with st.container(border=True):
             [4, 2, 2], gap="large", vertical_alignment="bottom"
         )
         with rounding_columns[0]:
+            # Older session snapshots allowed rounding intervals below 5 seconds.
+            st.session_state["round_time"] = max(
+                5, st.session_state.get("round_time", 5)
+            )
             round_time = st.slider(
                 "Round time to nearest second (defining timesteps). "
                 "Used to align timeseries "
                 "with slight time offsets.",
-                1,
+                5,
                 300,
                 st.session_state.get("round_time", 5),
-                step=1,
+                step=5,
                 help=(
                     "Rounding helps pivot the data to wide format from the "
                     "long format. If you have multiple measurements for the same "
@@ -504,6 +530,15 @@ with st.container(border=True):
                     "outliers and therefore the default."
                 ),
             )
+        aggregate_high_frequency_raw_data = st.checkbox(
+            "Aggregate raw OD data when sampled below every 15 seconds (PioReactor)",
+            value=st.session_state.get("aggregate_high_frequency_raw_data", False),
+            disabled=reactor_type != "PioReactor",
+            help=(
+                "If enabled, PioReactor raw OD data sampled faster than every 15 "
+                "seconds is aggregated to 15-second time bins before processing."
+            ),
+        )
         st.divider()
         button_pressed = st.form_submit_button(
             "Apply options to uploaded data", type="primary", width="stretch"
@@ -514,7 +549,6 @@ with st.container(border=True):
 # remember form values for next time page is opened
 st.session_state["keep_core_data"] = keep_core_data
 st.session_state["custom_id"] = custom_id
-# st.session_state["reactors_selected"] = reactors_selected # moved to button pressed section
 st.session_state["remove_negative"] = remove_negative
 st.session_state["negative_handling"] = negative_handling
 st.session_state["fill_na"] = fill_na
@@ -522,7 +556,9 @@ st.session_state["remove_max"] = remove_max
 st.session_state["outlier_method"] = outlier_method
 st.session_state["quantile_max"] = quantile_max
 st.session_state["iqr_range_value"] = iqr_range_value
-st.session_state["rolling_window"] = rolling_window
+st.session_state["apply_smoothing"] = apply_smoothing
+st.session_state["rolling_window_smoothing"] = rolling_window_smoothing
+st.session_state["rolling_window_iqr"] = rolling_window_iqr
 st.session_state["ecod_factor"] = ecod_factor
 st.session_state["round_time"] = round_time
 st.session_state["aggregate_duplicated_rounded_timepoint"] = (
@@ -530,6 +566,9 @@ st.session_state["aggregate_duplicated_rounded_timepoint"] = (
 )
 st.session_state["aggregate_duplicated_rounded_timepoint_method"] = (
     aggregate_duplicated_rounded_timepoint_method
+)
+st.session_state["aggregate_high_frequency_raw_data"] = (
+    aggregate_high_frequency_raw_data
 )
 
 # region: Process files
@@ -574,7 +613,10 @@ if file:
             other_type = "PioReactor"
             other_required = REQUIRED_COLUMNS[other_type]
             wrong_type_hint = (
-                f" The files look like **{other_type}** input — did you select the wrong reactor type?"
+                (
+                    f" The files look like **{other_type}** input — "
+                    "did you select the wrong reactor type?"
+                )
                 if not any(column not in columns for column in other_required)
                 else ""
             )
@@ -583,7 +625,8 @@ if file:
                 for name, missing, _ in missing_files
             )
             st.error(
-                f"One or more uploaded files are missing required columns for **{reactor_type}**. "
+                "One or more uploaded files are missing required columns for "
+                f"**{reactor_type}**. "
                 f"{details}." + wrong_type_hint
             )
             st.stop()
@@ -608,13 +651,17 @@ if file:
             other_type = "Chi.Bio"
             other_required = REQUIRED_COLUMNS[other_type]
             wrong_type_hint = (
-                f" The file looks like **{other_type}** input — did you select the wrong reactor type?"
+                (
+                    f" The file looks like **{other_type}** input — "
+                    "did you select the wrong reactor type?"
+                )
                 if columns
                 and not any(column not in columns for column in other_required)
                 else ""
             )
             st.error(
-                f"The uploaded file is missing required columns for **{reactor_type}**: "
+                "The uploaded file is missing required columns for "
+                f"**{reactor_type}**: "
                 f"{', '.join((f'`{col}`' for col in missing))}." + wrong_type_hint
             )
             st.stop()
@@ -626,6 +673,7 @@ if file:
             keep_core_data=keep_core_data,
             aggregate_duplicated_rounded_timepoint=aggregate_duplicated_rounded_timepoint,
             aggregate_duplicated_rounded_timepoint_method=aggregate_duplicated_rounded_timepoint_method,
+            aggregate_high_frequency_raw_data=aggregate_high_frequency_raw_data,
         )
 
     rerun = st.session_state.get("df_raw_od_data") is None
@@ -700,7 +748,7 @@ if button_pressed:
         kwargs_iqr = {
             "method": "iqr",
             "factor": iqr_range_value,
-            "window_size": rolling_window,
+            "window_size": rolling_window_iqr,
         }
         kwargs = (
             kwargs_iqr
@@ -789,15 +837,22 @@ if button_pressed:
         # ! should I visualize the values differently?
         df_wide_raw_od_data_filtered = df_wide_raw_od_data_filtered.ffill().bfill()
 
-    df_rolling = (
-        df_wide_raw_od_data_filtered.rolling(
-            rolling_window,
-            min_periods=min_periods,
-            center=True,
+    if apply_smoothing:
+        df_rolling = (
+            df_wide_raw_od_data_filtered.rolling(
+                rolling_window_smoothing,
+                min_periods=min_periods,
+                center=True,
+            )
+            .median()
+            .sort_index()
         )
-        .median()
-        .sort_index()
-    )
+        msg += (
+            f"- Applied rolling median smoothing (window={rolling_window_smoothing}).\n"
+        )
+    else:
+        df_rolling = df_wide_raw_od_data_filtered.sort_index()
+        msg += "- Smoothing disabled; using filtered data directly.\n"
 
     # ? Should it not be possible to be run twice in a single session?
     if od_adjustment_upload is not None:
@@ -806,7 +861,7 @@ if button_pressed:
                 "OD adjustments have already been applied. "
                 "Re-applying will overwrite previous adjustments."
             )
-        df_adjustments = pd.read_csv(od_adjustment_upload).convert_dtypes()
+        df_adjustments = read_od_adjustment_table(od_adjustment_upload)
         try:
             df_rolling, adjustment_warnings = apply_linear_adjustments(
                 df_rolling, df_adjustments
@@ -844,7 +899,8 @@ if button_pressed:
 
     st.session_state["df_rolling"] = df_rolling
 
-    st.session_state["rolling_window"] = int(rolling_window)
+    st.session_state["rolling_window_smoothing"] = int(rolling_window_smoothing)
+    st.session_state["rolling_window_iqr"] = int(rolling_window_iqr)
 
     st.session_state["upload_processing_summary_msg"] = msg
     st.write("### Data processing summary:")
@@ -868,7 +924,11 @@ if st.session_state.get("debug_mode", False):
                 "filter_by_iqr_range": st.session_state.get("filter_by_iqr_range"),
                 "quantile_max": st.session_state.get("quantile_max"),
                 "iqr_range_value": st.session_state.get("iqr_range_value"),
-                "rolling_window": st.session_state.get("rolling_window"),
+                "apply_smoothing": st.session_state.get("apply_smoothing"),
+                "rolling_window_smoothing": st.session_state.get(
+                    "rolling_window_smoothing"
+                ),
+                "rolling_window_iqr": st.session_state.get("rolling_window_iqr"),
                 "round_time": st.session_state.get("round_time"),
                 "time_ranges": st.session_state.get("time_ranges"),
                 "update_zero_timepoint": st.session_state.get("update_zero_timepoint"),
