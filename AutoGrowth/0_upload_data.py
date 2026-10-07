@@ -545,7 +545,6 @@ with st.container(border=True):
 # remember form values for next time page is opened
 st.session_state["keep_core_data"] = keep_core_data
 st.session_state["custom_id"] = custom_id
-# st.session_state["reactors_selected"] = reactors_selected # moved to button pressed section
 st.session_state["remove_negative"] = remove_negative
 st.session_state["negative_handling"] = negative_handling
 st.session_state["fill_na"] = fill_na
@@ -610,7 +609,8 @@ if file:
             other_type = "PioReactor"
             other_required = REQUIRED_COLUMNS[other_type]
             wrong_type_hint = (
-                f" The files look like **{other_type}** input — did you select the wrong reactor type?"
+                (f" The files look like **{other_type}** input — "
+                 "did you select the wrong reactor type?")
                 if not any(column not in columns for column in other_required)
                 else ""
             )
@@ -619,7 +619,8 @@ if file:
                 for name, missing, _ in missing_files
             )
             st.error(
-                f"One or more uploaded files are missing required columns for **{reactor_type}**. "
+                "One or more uploaded files are missing required columns for "
+                f"**{reactor_type}**. "
                 f"{details}." + wrong_type_hint
             )
             st.stop()
@@ -644,13 +645,15 @@ if file:
             other_type = "Chi.Bio"
             other_required = REQUIRED_COLUMNS[other_type]
             wrong_type_hint = (
-                f" The file looks like **{other_type}** input — did you select the wrong reactor type?"
+                (f" The file looks like **{other_type}** input — "
+                 "did you select the wrong reactor type?")
                 if columns
                 and not any(column not in columns for column in other_required)
                 else ""
             )
             st.error(
-                f"The uploaded file is missing required columns for **{reactor_type}**: "
+                "The uploaded file is missing required columns for "
+                f"**{reactor_type}**: "
                 f"{', '.join((f'`{col}`' for col in missing))}." + wrong_type_hint
             )
             st.stop()
