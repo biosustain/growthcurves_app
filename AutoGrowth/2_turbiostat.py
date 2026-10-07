@@ -201,7 +201,7 @@ with st.container(border=True):
     # once an analysis has actually been run (see the save below the
     # "Run Analysis" gate), so unrun edits don't linger after navigating away.
     minimum_peak_height = st.session_state.get("turbidostat_min_peak_height")
-    minimum_distance = int(st.session_state.get("turbidostat_min_distance", 300))
+    minimum_distance = int(st.session_state.get("turbidostat_min_distance", 100))
     if use_uploaded_peak_times:
         meta_label = (
             turbidostat_meta_name if turbidostat_meta_name else "uploaded_metadata.csv"
