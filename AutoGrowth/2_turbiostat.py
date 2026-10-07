@@ -42,6 +42,10 @@ def reset_metadata():
     st.session_state["turbidostat_meta_upload_name"] = None
 
 
+def reset_minimum_peak_height():
+    st.session_state["turbidostat_min_peak_height_input"] = None
+
+
 def _build_turbidostat_fit_kwargs(
     model_name: str,
     n_fits: int,
@@ -218,18 +222,14 @@ with st.container(border=True):
                 label="Go to Upload Data",
                 icon=":material/upload:",
             )
-        st.markdown("Automatic peak detection options")
-        minimum_peak_height = st.number_input(
-            label=(
-                "Minimum peak height (in OD units) - used only if no metadata provided."
-                " No value uses adaptive thresholding based on the maximum of an OD "
-                "curve. The default is one-fifth of the maximum OD value in a time "
-                "series."
-            ),
-            min_value=0.0,
-            value=minimum_peak_height,
+        st.markdown("**Automatic peak detection options:**")
+        st.session_state.setdefault(
+            "turbidostat_min_peak_height_input", minimum_peak_height
         )
-        minimum_distance = st.number_input(
+        distance_col, height_col, reset_col = st.columns(
+            [2, 2, 1], gap="small", vertical_alignment="bottom"
+        )
+        minimum_distance = distance_col.number_input(
             label=(
                 "Minimum distance between peaks "
                 "(in number of measurement timepoints)"
@@ -238,6 +238,23 @@ with st.container(border=True):
             value=minimum_distance,
             step=1,
         )
+        minimum_peak_height = height_col.number_input(
+            label=(
+                "Minimum peak height (in OD units) - used only if no metadata provided."
+                " No value uses adaptive thresholding based on the maximum of an OD "
+                "curve. The default is one-fifth of the maximum OD value in a time "
+                "series."
+            ),
+            min_value=0.0,
+            value=None,
+            key="turbidostat_min_peak_height_input",
+        )
+        reset_col.button(
+            "Reset peak height to automatic",
+            on_click=reset_minimum_peak_height,
+            help="Clear the minimum peak height to use adaptive thresholding.",
+        )
+
 
 smoothing_range = get_smoothing_range(len(df_rolling))
 
