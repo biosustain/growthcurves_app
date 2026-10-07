@@ -252,6 +252,9 @@ def process_od_pioreactor(
             )
         )
         if was_aggregated:
+            df_raw_od_data["timestamp_rounded"] = df_raw_od_data[
+                "timestamp_localtime"
+            ].dt.round(f"{round_time}s")
             n_after = df_raw_od_data.shape[0]
             msg += (
                 "- Aggregated high-frequency raw OD data sampled every "
