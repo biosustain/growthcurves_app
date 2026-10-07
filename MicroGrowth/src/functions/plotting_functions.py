@@ -30,6 +30,119 @@ from plotly.subplots import make_subplots
 from src.functions.common import _iter_wells
 from src.functions.constants import ALL_WELLS
 
+# --- fit-quality outlines -----------------------------------------------------
+# Log-space fits report model_rmse as a relative error already; parametric fits
+# report it in OD units, so those are divided by the growth amplitude first.
+RMSE_THRESHOLD = 0.05
+LOG_SPACE_FITS = ("spline", "sliding_window")
+
+FIT_COLOR_PASS = "rgb(76, 175, 80)"
+FIT_COLOR_FAIL = "rgb(211, 47, 47)"
+FIT_COLOR_NONE = "rgb(204, 204, 204)"
+SUBPLOT_BOX_COLOR = "rgb(204, 204, 204)"
+
+
+def fit_quality_color(gs: dict | None) -> str:
+    """Green if the well's fit meets RMSE_THRESHOLD, red if not, grey if unfitted."""
+    if not gs or is_no_growth(gs):
+        return FIT_COLOR_NONE
+
+    rmse = gs.get("model_rmse")
+    if rmse is None or not np.isfinite(rmse):
+        return FIT_COLOR_NONE
+    rmse = float(rmse)
+
+    if not any(k in (gs.get("fit_method") or "") for k in LOG_SPACE_FITS):
+        max_od, n0 = gs.get("max_od"), gs.get("N0")
+        if max_od is None or n0 is None:
+            return FIT_COLOR_NONE
+        if not (np.isfinite(max_od) and np.isfinite(n0)):
+            return FIT_COLOR_NONE
+        amplitude = float(max_od) - float(n0)
+        if amplitude <= 0:
+            return FIT_COLOR_NONE
+        rmse /= amplitude
+
+    return FIT_COLOR_PASS if rmse <= RMSE_THRESHOLD else FIT_COLOR_FAIL
+
+
+def _axis_suffix(i: int) -> str:
+    return "" if i == 1 else str(i)
+
+
+def _retarget(ref: str, suffix: str) -> str:
+    """Point an "x"/"y domain" style ref at subplot `suffix`."""
+    if not suffix or not ref or ref[0] not in "xy":
+        return ref
+    return f"{ref[0]}{suffix}{ref[1:]}"
+
+
+def _base_figure(t, y):
+    """Raw-data trace only, for annotate_plot to fill in.
+
+    Mirrors gc_plot.create_base_plot without the layout it sets, which is
+    discarded here and costs more than the rest of the plot combined.
+    """
+    mask = np.isfinite(t) & np.isfinite(y) & (y > 0)
+    return go.Figure(
+        data=[
+            go.Scatter(
+                x=t[mask],
+                y=y[mask],
+                mode="markers",
+                name="Data",
+                marker=dict(size=5, opacity=0.3, color="gray"),
+                showlegend=False,
+            )
+        ]
+    )
+
+
+def _subplot_bounds(fig, i: int):
+    """Paper-coordinate (x0, x1, y0, y1) of subplot i."""
+    suffix = _axis_suffix(i)
+    x0, x1 = fig.layout[f"xaxis{suffix}"].domain
+    y0, y1 = fig.layout[f"yaxis{suffix}"].domain
+    return x0, x1, y0, y1
+
+
+def _subplot_box(fig, i: int, color: str, width: int = 2) -> dict:
+    """Rectangle outlining subplot i.
+
+    Paper coordinates: a subplot with no traces drops domain-referenced shapes.
+    """
+    x0, x1, y0, y1 = _subplot_bounds(fig, i)
+    return dict(
+        type="rect",
+        xref="paper",
+        yref="paper",
+        x0=x0,
+        x1=x1,
+        y0=y0,
+        y1=y1,
+        line=dict(color=color, width=width),
+        fillcolor="rgba(0,0,0,0)",
+        layer="above",
+    )
+
+
+def _well_box(fig, i: int, well: str, color: str, muted: bool = False):
+    """Return the (shape, annotation) dicts outlining and labelling subplot i."""
+    x0, x1, y0, y1 = _subplot_bounds(fig, i)
+    box = _subplot_box(fig, i, color)
+    label = dict(
+        text=well,
+        xref="paper",
+        yref="paper",
+        x=x0 + 0.05 * (x1 - x0),
+        y=y1 - 0.05 * (y1 - y0),
+        showarrow=False,
+        font=dict(size=9, color="lightgray" if muted else "black"),
+        xanchor="left",
+        yanchor="top",
+    )
+    return box, label
+
 
 def convert_hours_to_unit(hours: float | np.ndarray, time_unit: str = "hours"):
     """Convert time from hours to the specified display unit.
@@ -376,7 +489,7 @@ def plot_replicates_by_sample(plates: dict, time_unit: str = "hours"):
         )
         return fig
 
-    cols = int(np.sqrt(max(1, len(names)))) + 1
+    cols = max(1, int(np.sqrt(max(1, len(names)))))
     rows = (len(names) + cols - 1) // cols
     pos = {n: divmod(i, cols) for i, n in enumerate(names)}
 
@@ -397,6 +510,8 @@ def plot_replicates_by_sample(plates: dict, time_unit: str = "hours"):
     keys = sorted({f"{pid}_{well}" for pid, well, *_ in items})
     cmap = {k: pal[i % len(pal)] for i, k in enumerate(keys)}
 
+    # Batched: add_trace re-validates the whole figure on every call.
+    traces = []
     tmins, tmaxs, ymins, ymaxs = [], [], [], []
     for pid, well, nm, d in items:
         nm = (nm or "").strip()
@@ -408,24 +523,34 @@ def plot_replicates_by_sample(plates: dict, time_unit: str = "hours"):
         # Convert time to display unit
         time_display = convert_hours_to_unit(d["Time"].to_numpy(), time_unit)
 
-        fig.add_trace(
-            go.Scatter(
+        suffix = _axis_suffix(r * cols + c + 1)
+        traces.append(
+            dict(
+                type="scatter",
                 x=time_display,
-                y=d["baseline_corrected"],
+                y=d["baseline_corrected"].to_numpy(),
                 mode="markers",
                 marker=dict(size=3, color=cmap[key]),
                 hovertemplate=f"Sample: {nm}<br>Well: {well}<br>Time: %{{x:.2f}} {time_unit}<br>OD: %{{y:.4f}}<extra></extra><br>Plate: {pid}",
                 showlegend=False,
-            ),
-            row=r + 1,
-            col=c + 1,
+                xaxis=f"x{suffix}",
+                yaxis=f"y{suffix}",
+            )
         )
         tmins.append(float(time_display.min()))
         tmaxs.append(float(time_display.max()))
         ymins.append(float(d["baseline_corrected"].min()))
         ymaxs.append(float(d["baseline_corrected"].max()))
 
-    fig.update_layout(height=750)
+    if traces:
+        fig.add_traces(traces)
+    fig.update_layout(
+        height=1050,
+        shapes=[
+            _subplot_box(fig, i, SUBPLOT_BOX_COLOR, width=1)
+            for i in range(1, len(names) + 1)
+        ],
+    )
     if tmins:
         fig.update_xaxes(showgrid=False, range=[min(tmins), max(tmaxs)])
     else:
@@ -692,50 +817,58 @@ def plot_single_growth_stat(
 
 
 # --- window fits ----------------------------------------------------------------
-def plot_window_plate(
-    plate: dict,
-    time_unit: str = "hours",
-    sharey: bool = True,
-    log_scale: bool = False,
-    show_fitted_curve: bool = True,
-    show_phase_boundaries: bool = True,
-    show_crosshairs: bool = True,
-    show_od_max_line: bool = True,
-    show_n0_line: bool = True,
-    show_tangent: bool = True,
-):
+def _empty_grid(fig):
+    """Muted box and label for every well, for plates with nothing to draw."""
+    shapes, labels = [], []
+    for i, w in enumerate(ALL_WELLS, 1):
+        box, label = _well_box(fig, i, w, FIT_COLOR_NONE, muted=True)
+        shapes.append(box)
+        labels.append(label)
+    return shapes, labels
+
+
+def _assemble_grid(fig, traces, shapes, labels):
+    """Apply the batched traces, shapes and labels to the 96-well figure."""
+    if traces:
+        fig.add_traces(traces)
+    fig.update_layout(
+        shapes=shapes,
+        annotations=labels,
+        height=900,
+        showlegend=False,
+        hovermode=False,
+    )
+    return fig
+
+
+def plot_window_plate(plate: dict, time_unit: str = "hours"):
     """Plot a full 96-well plate overview with window-fit overlays.
 
     Args:
         plate: Plate dictionary containing processed_data, growth_stats, and fit_parameters
         time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
-        sharey: Whether to share y-axes across subplots (default: True)
-        log_scale: Whether to display y-axis on a log scale (default: False)
-        show_fitted_curve: Whether to show the fitted model curve (default: True)
-        show_phase_boundaries: Whether to show exponential phase boundaries (default: True)
-        show_crosshairs: Whether to show crosshairs to umax point (default: True)
-        show_od_max_line: Whether to show horizontal line at maximum OD (default: True)
-        show_n0_line: Whether to show horizontal line at initial OD (default: True)
-        show_tangent: Whether to show tangent line at umax (default: True)
     """
     proc = plate.get("processed_data") or {}
     gs_all = plate.get("growth_stats") or {}
     fit_params = plate.get("fit_parameters") or {}
 
-    # Step 1: Create axis with 96 subplots
     fig = make_subplots(
         rows=8,
         cols=12,
-        horizontal_spacing=0.004,
-        vertical_spacing=0.02,
+        horizontal_spacing=0.008,
+        vertical_spacing=0.025,
         shared_xaxes=True,
-        shared_yaxes=sharey,
+        shared_yaxes=True,
     )
+
+    # Batched: adding one at a time re-validates the whole figure each call,
+    # which is quadratic over 96 subplots.
+    traces, shapes, labels = [], [], []
 
     # Check if there's any data
     if not proc:
-        fig.update_layout(height=900, margin=dict(t=60), showlegend=False)
-        return fig
+        fig.update_layout(margin=dict(l=60, r=25, t=60, b=55))
+        return _assemble_grid(fig, [], *_empty_grid(fig))
 
     # Calculate global ranges
     ts, ys = [], []
@@ -746,8 +879,8 @@ def plot_window_plate(
         ys.append(d["baseline_corrected"])
 
     if not ts:
-        fig.update_layout(height=900, margin=dict(t=60), showlegend=False)
-        return fig
+        fig.update_layout(margin=dict(l=60, r=25, t=60, b=55))
+        return _assemble_grid(fig, [], *_empty_grid(fig))
 
     x_min, x_max = float(min(t.min() for t in ts)), float(max(t.max() for t in ts))
     x_min_display = convert_hours_to_unit(x_min, time_unit)
@@ -755,39 +888,20 @@ def plot_window_plate(
     y_min, y_max = float(min(y.min() for y in ys)), float(max(y.max() for y in ys))
     xr, yr = x_max_display - x_min_display, y_max - y_min
     x_range = [x_min_display - 0.02 * xr, x_max_display + 0.02 * xr]
-    if log_scale:
-        import math
-
-        y_min_log = math.log(max(y_min, 1e-9))
-        y_max_log = math.log(y_max)
-        yr_log = y_max_log - y_min_log
-        y_range = [y_min_log - 0.05 * yr_log, y_max_log + 0.05 * yr_log]
-    else:
-        y_range = [y_min - 0.05 * yr, y_max + 0.05 * yr]
+    y_range = [y_min - 0.05 * yr, y_max + 0.05 * yr]
 
     for i, well in enumerate(ALL_WELLS, 1):
         d = proc.get(well)
         gs = gs_all.get(well) or {}
         fit_result = fit_params.get(well)
 
-        r, c = divmod(i - 1, 12)
-        r, c = r + 1, c + 1
+        # Box first so empty wells are outlined too.
+        empty = d is None or d.empty
+        box, label = _well_box(fig, i, well, fit_quality_color(gs), muted=empty)
+        shapes.append(box)
+        labels.append(label)
 
-        # Skip empty wells
-        if d is None or d.empty:
-            # Add well name annotation even for empty wells
-            axis_suffix = "" if i == 1 else str(i)
-            fig.add_annotation(
-                text=well,
-                xref=f"x{axis_suffix} domain",
-                yref=f"y{axis_suffix} domain",
-                x=0.05,
-                y=0.95,
-                showarrow=False,
-                font=dict(size=9, color="lightgray"),
-                xanchor="left",
-                yanchor="top",
-            )
+        if empty:
             continue
 
         # Get time and data arrays
@@ -802,17 +916,10 @@ def plot_window_plate(
         # Convert time to display unit
         t_display = convert_hours_to_unit(t, time_unit)
 
-        # Step 2: Populate subplot with create_base_plot
-        # Create a temporary base plot to extract its trace
-        scale = "log" if log_scale else "linear"
-        temp_fig = gc_plot.create_base_plot(t_display, y, scale=scale)
+        # Annotate on a small per-well figure, then retarget onto this subplot;
+        # annotate_plot mutates whatever figure it is given.
+        temp_fig = _base_figure(t_display, y)
 
-        # Extract traces from temp_fig and add to main figure
-        for trace in temp_fig.data:
-            trace.showlegend = False
-            fig.add_trace(trace, row=r, col=c)
-
-        # Step 3: Annotate subplot with annotate_plot
         # Prepare annotation parameters from growth stats
         stats_converted = None
         fitted_model = None
@@ -850,48 +957,39 @@ def plot_window_plate(
                         )
                     fitted_model["params"] = params_copy
 
-        # Apply annotations to the subplot
-        fig = gc_plot.annotate_plot(
-            fig=fig,
+        temp_fig = gc_plot.annotate_plot(
+            fig=temp_fig,
             fit_result=fitted_model,
             stats=stats_converted,
-            show_fitted_curve=show_fitted_curve,
-            show_phase_boundaries=show_phase_boundaries,
-            show_crosshairs=show_crosshairs,
-            show_od_max_line=show_od_max_line,
-            show_n0_line=show_n0_line,
-            show_umax_marker=False,  # Don't show green dot for umax
-            show_tangent=show_tangent,
-            scale=scale,
+            show_fitted_curve=True,
+            show_phase_boundaries=True,
+            show_crosshairs=False,
+            show_od_max_line=False,
+            show_n0_line=False,
+            show_umax_marker=False,
+            show_tangent=False,
+            scale="linear",
             fitted_curve_width=3,
-            row=r,
-            col=c,
         )
 
-        # Add well name in top-left corner of each subplot
-        axis_suffix = "" if i == 1 else str(i)
-        fig.add_annotation(
-            text=well,
-            xref=f"x{axis_suffix} domain",
-            yref=f"y{axis_suffix} domain",
-            x=0.05,
-            y=0.95,
-            showarrow=False,
-            font=dict(size=9),
-            xanchor="left",
-            yanchor="top",
-        )
+        suffix = _axis_suffix(i)
+        for trace in temp_fig.data:
+            d_trace = trace.to_plotly_json()
+            d_trace["showlegend"] = False
+            d_trace["xaxis"] = f"x{suffix}"
+            d_trace["yaxis"] = f"y{suffix}"
+            traces.append(d_trace)
+        for shape in temp_fig.layout.shapes:
+            d_shape = shape.to_plotly_json()
+            d_shape["xref"] = _retarget(d_shape.get("xref", "x"), suffix)
+            d_shape["yref"] = _retarget(d_shape.get("yref", "y"), suffix)
+            shapes.append(d_shape)
 
-    fig.update_layout(height=900, margin=dict(t=20), showlegend=False)
+    fig.update_layout(margin=dict(l=60, r=25, t=20, b=55))
     fig.update_xaxes(showgrid=False, range=x_range, matches="x")
+    fig.update_yaxes(showgrid=False, range=y_range, matches="y")
 
-    # Only apply shared y-axis range and matching if sharey is True
-    if sharey:
-        fig.update_yaxes(showgrid=False, range=y_range, matches="y")
-    else:
-        fig.update_yaxes(showgrid=False)
-
-    return fig
+    return _assemble_grid(fig, traces, shapes, labels)
 
 
 # --- derivative models ---------------------------------------------------------
@@ -1168,104 +1266,4 @@ def plot_derivative_metric(
     )
     fig.update_xaxes(showgrid=False, title=f"Time ({time_unit})", range=x_range)
     fig.update_yaxes(showgrid=False, title=y_axis_title)
-    return fig
-
-
-def plot_rmse_heatmap(plate: dict):
-    """
-    Plot a 96-well plate heatmap of RMSE values.
-
-    The heatmap is centered on 0 (green) with red indicating higher RMSE values.
-    Applicable for both sliding window and model-based fits.
-
-    Args:
-        plate: Plate dictionary containing growth_stats
-
-    Returns:
-        Plotly figure with RMSE heatmap
-    """
-    growth_stats = plate.get("growth_stats") or {}
-
-    # Create a 8x12 grid for the plate layout
-    rows = "ABCDEFGH"
-    cols = range(1, 13)
-
-    # Extract RMSE values and organize into plate layout
-    rmse_matrix = []
-    hover_text = []
-    well_labels = []
-
-    for row in rows:
-        rmse_row = []
-        hover_row = []
-        label_row = []
-        for col in cols:
-            well = f"{row}{col}"
-            gs = growth_stats.get(well, {})
-            rmse = gs.get("model_rmse", np.nan)
-
-            rmse_row.append(rmse if pd.notna(rmse) else np.nan)
-            hover_row.append(
-                f"Well: {well}<br>RMSE: {rmse:.5f}"
-                if pd.notna(rmse)
-                else f"Well: {well}<br>RMSE: N/A"
-            )
-            label_row.append(well)
-
-        rmse_matrix.append(rmse_row)
-        hover_text.append(hover_row)
-        well_labels.append(label_row)
-
-    # Convert to numpy array for easier manipulation
-    rmse_matrix = np.array(rmse_matrix)
-
-    # Find the maximum absolute RMSE for symmetric color scale
-    finite_rmse = rmse_matrix[np.isfinite(rmse_matrix)]
-    if len(finite_rmse) == 0:
-        max_rmse = 0.1
-    else:
-        max_rmse = np.max(np.abs(finite_rmse))
-
-    # Create the heatmap with app theme colors
-    # Using green-white-red scale matching the app's color scheme
-    fig = go.Figure(
-        data=go.Heatmap(
-            z=rmse_matrix,
-            x=[str(c) for c in cols],
-            y=list(rows),
-            colorscale=[
-                [0.0, "rgb(76, 175, 80)"],  # Green (#66BB6A) at 0 (good fit)
-                [0.5, "rgb(245, 247, 250)"],  # Light gray (#F5F7FA) at midpoint
-                [1.0, "rgb(211, 47, 47)"],  # Red (#d32f2f) at max (poor fit)
-            ],
-            zmid=0,  # Center the color scale at 0
-            zmin=0,
-            zmax=max_rmse if max_rmse > 0 else 0.1,
-            text=well_labels,
-            texttemplate="%{text}",
-            textfont=dict(size=10, color="black"),
-            hovertext=hover_text,
-            hovertemplate="%{hovertext}<extra></extra>",
-            showscale=False,  # Remove the colorbar legend
-            xgap=1,  # Add gap between cells (creates black outline effect)
-            ygap=1,
-        )
-    )
-
-    fig.update_layout(
-        title="Model Fit Quality (RMSE)",
-        xaxis=dict(
-            visible=False,  # Hide x-axis
-        ),
-        yaxis=dict(
-            visible=False,  # Hide y-axis
-            autorange="reversed",  # Reverse y-axis so A1 is at top left
-        ),
-        width=800,
-        height=500,
-        margin=dict(l=20, r=20, t=60, b=20),
-        plot_bgcolor="white",  # White background
-        paper_bgcolor="white",  # White paper background
-    )
-
     return fig
