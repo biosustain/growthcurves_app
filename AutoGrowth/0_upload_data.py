@@ -613,8 +613,10 @@ if file:
             other_type = "PioReactor"
             other_required = REQUIRED_COLUMNS[other_type]
             wrong_type_hint = (
-                (f" The files look like **{other_type}** input — "
-                 "did you select the wrong reactor type?")
+                (
+                    f" The files look like **{other_type}** input — "
+                    "did you select the wrong reactor type?"
+                )
                 if not any(column not in columns for column in other_required)
                 else ""
             )
@@ -649,8 +651,10 @@ if file:
             other_type = "Chi.Bio"
             other_required = REQUIRED_COLUMNS[other_type]
             wrong_type_hint = (
-                (f" The file looks like **{other_type}** input — "
-                 "did you select the wrong reactor type?")
+                (
+                    f" The file looks like **{other_type}** input — "
+                    "did you select the wrong reactor type?"
+                )
                 if columns
                 and not any(column not in columns for column in other_required)
                 else ""
