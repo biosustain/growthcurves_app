@@ -25,7 +25,7 @@ dependencies = [
     "seaborn",
     # Pinned to match MicroGrowth/requirements.txt and environment.yaml.
     # Step 1 sample selection needs st.dataframe(selection_default=...).
-    "streamlit==1.59.2",
+    "streamlit>=1.59.2",
     "growthcurves",
 ]
 # use requirements.txt instead of pyproject.toml for dependencies
