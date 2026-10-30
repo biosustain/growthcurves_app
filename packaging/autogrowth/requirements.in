@@ -1,0 +1,10 @@
+# AutoGrowth runtime only; keep Excel engines used by uploads/downloads.
+streamlit>=1.59.2
+numpy
+pandas
+scipy
+matplotlib
+plotly
+growthcurves
+openpyxl
+xlrd
