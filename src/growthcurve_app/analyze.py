@@ -3,6 +3,7 @@
 import inspect
 import logging
 import time
+from pathlib import Path
 
 import growthcurves as gc
 import numpy as np
@@ -51,7 +52,7 @@ def get_timestamps_from_elapsed_hours(
 def load_method_notes_markdown() -> str:
     """Load method notes markdown shown in the Help popover."""
     try:
-        with open("app/markdowns/curve_fitting.md", "r", encoding="utf-8") as f:
+        with (Path(__file__).resolve().parents[2] / "AutoGrowth/markdowns/curve_fitting.md").open(encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
         return "_Method notes file not found._"
