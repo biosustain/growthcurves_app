@@ -168,8 +168,10 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
                     plate_idx = 0
 
                 st.caption(
-                    "Click a well to toggle it for including in the zip file; click a second well to select a rectangle. "
-                    "Green = included · red = excluded · dark grey = no sample."
+                    "Drag across wells to choose which go in the zip file: starting on an included "
+                    "well excludes the wells covered, starting on an excluded well includes them. "
+                    "Click a row letter or column number for a whole row or column. "
+                    "Green = included · red = excluded · grey = no sample."
                 )
 
             with map_col:

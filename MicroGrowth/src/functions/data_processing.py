@@ -202,8 +202,13 @@ def analyse_plate(record: dict):
     blank_group_map = _normalize_blank_group_map(
         p.get("blank_group_assignments", False)
     )
+    # Blank wells: named BLANK in the plate map, or marked as blanks on the plate map
+    painted_blanks = {str(w).strip().upper() for w in (p.get("blank_wells") or [])}
+    is_blank = long["name"].astype(str).str.upper().str.startswith("BLANK") | long[
+        "well"
+    ].str.upper().isin(painted_blanks)
     if p.get("blank", True):
-        blanks_long = long[long["name"].str.upper().str.startswith("BLANK")].copy()
+        blanks_long = long[is_blank].copy()
 
         # one column per blank well (values are Mean), indexed by Time
         blanks_wide = blanks_long.pivot_table(
@@ -234,7 +239,9 @@ def analyse_plate(record: dict):
             cols = ["Mean"] + [c for c in baseline.columns if c != "Mean"]
             baseline = baseline[cols]
 
-        long = long[~long["name"].str.upper().str.startswith("BLANK")].copy()
+    # Blank wells are never analysed as samples (so they appear in no lists),
+    # whether or not blank subtraction is on
+    long = long[~is_blank].copy()
 
     # Blank subtraction using growthcurves preprocessing function
     if not baseline.empty:

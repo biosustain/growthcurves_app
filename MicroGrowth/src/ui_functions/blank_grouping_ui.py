@@ -5,17 +5,14 @@ from __future__ import annotations
 import re
 from typing import Any
 
-import pandas as pd
 import streamlit as st
 from src.functions.constants import COLS, ROWS
-
-try:
-    from st_selectable_grid import st_selectable_grid
-except ImportError:  # pragma: no cover - optional dependency
-    st_selectable_grid = None
-
+from src.ui_functions.plate_painter import plate_painter
 
 DEFAULT_GROUP = "Group 1"
+# Permanent selector entry: painting with it marks wells as blanks (they keep their group)
+BLANK_OPTION = "Blank"
+BLANK_SWATCH = "#6b7280"
 GROUP_PALETTE = [
     "#ccebc5",
     "#8dd3c7",
@@ -147,8 +144,10 @@ def build_cells(
     present_wells: set[str] | None = None,
     remove_wells: list[str] | set[str] | bool = False,
     blank_enabled: bool = True,
+    painted_blanks: set[str] | None = None,
 ) -> list[list[dict[str, Any]]]:
     name_by_well = name_by_well or {}
+    painted_blanks = painted_blanks or set()
     present_lookup = (
         {str(w).strip().upper() for w in present_wells}
         if present_wells is not None
@@ -165,7 +164,7 @@ def build_cells(
         for x, group in enumerate(row):
             well = f"{ROWS[y]}{COLS[x]}"
             sample = str(name_by_well.get(well, "")).strip()
-            is_blank = sample.upper().startswith("BLANK")
+            is_blank = sample.upper().startswith("BLANK") or well in painted_blanks
             has_sample = sample not in {"", "False"} and not sample.upper().startswith(
                 "BLANK"
             )
@@ -222,15 +221,86 @@ def build_cells(
     return rows
 
 
-def _reset_pending_selection(prefix: str):
-    ss = st.session_state
-    ss[_state_key(prefix, "first_corner")] = None
-    ss[_state_key(prefix, "awaiting_second")] = False
-    ss[_state_key(prefix, "pending_clear_mode")] = None
+def _painter_cells(
+    assignments: list[list[str]],
+    styled: list[list[dict[str, Any]]],
+    name_by_well: dict[str, str] | None,
+    painted_blanks: set[str],
+) -> list[list[dict[str, Any]]]:
+    """Cells for the drag-to-paint plate map, from build_cells styling."""
+    out = []
+    for y, row in enumerate(styled):
+        out_row = []
+        for x, cell in enumerate(row):
+            label = str(cell["label"])
+            blank = "<b>" in label
+            included = cell["cell_color"] != "#e5e7eb"
+            tooltip = str(cell["tooltip"])
+            well = f"{ROWS[y]}{COLS[x]}"
+            fixed = str((name_by_well or {}).get(well, "")).strip().upper().startswith("BLANK")
+            out_row.append(
+                {
+                    "label": re.sub(r"<[^>]+>", "", label),
+                    "color": cell["cell_color"],
+                    "border": cell.get("cell_border_color"),
+                    "tooltip": tooltip,
+                    # Tooltip without the trailing group, so the browser can relabel
+                    "tooltip_base": (
+                        tooltip.rsplit(" · ", 1)[0].replace(" · BLANK well", "")
+                        if included
+                        else tooltip
+                    ),
+                    "group": assignments[y][x],
+                    "blank": blank and included,
+                    "fixed_blank": fixed,
+                    "painted": well in painted_blanks,
+                    "included": included,
+                }
+            )
+        out.append(out_row)
+    return out
 
 
-def _init_state(prefix: str, initial_group_map: dict[str, str] | None):
+def _apply_paint(prefix: str, painter_key: str) -> None:
+    """Assign the wells of a finished drag stroke (runs before the script body)."""
     ss = st.session_state
+    stroke = getattr(ss.get(painter_key), "painted", None)
+    if not stroke:
+        return
+    rows = range(int(stroke["r0"]), int(stroke["r1"]) + 1)
+    cols = range(int(stroke["c0"]), int(stroke["c1"]) + 1)
+    if ss[_state_key(prefix, "active_group")] == BLANK_OPTION:
+        bk = _state_key(prefix, "painted_blanks")
+        wells = {f"{ROWS[y]}{COLS[x]}" for y in rows for x in cols}
+        ss[bk] = sorted(set(ss[bk]) - wells if stroke.get("erase") else set(ss[bk]) | wells)
+        return
+    ak = _state_key(prefix, "assignments")
+    value = DEFAULT_GROUP if stroke.get("erase") else ss[_state_key(prefix, "active_group")]
+    ss[ak] = fill_rect(
+        ss[ak],
+        {"x": int(stroke["c0"]), "y": int(stroke["r0"])},
+        {"x": int(stroke["c1"]), "y": int(stroke["r1"])},
+        value,
+    )
+
+
+def painted_blank_wells(plate_id: str, default: list[str] | None = None) -> list[str]:
+    """Wells the user painted as blanks for a plate (default before first render)."""
+    key = _state_key(f"blank_groups::{plate_id}", "painted_blanks")
+    if key in st.session_state:
+        return list(st.session_state[key])
+    return sorted({str(w).strip().upper() for w in (default or [])})
+
+
+def _init_state(
+    prefix: str,
+    initial_group_map: dict[str, str] | None,
+    initial_blank_wells: list[str] | None = None,
+):
+    ss = st.session_state
+    bk = _state_key(prefix, "painted_blanks")
+    if bk not in ss:
+        ss[bk] = sorted({str(w).strip().upper() for w in (initial_blank_wells or [])})
     ak = _state_key(prefix, "assignments")
     gk = _state_key(prefix, "groups")
     ck = _state_key(prefix, "group_colors")
@@ -240,61 +310,42 @@ def _init_state(prefix: str, initial_group_map: dict[str, str] | None):
         ss[ak] = _assignments_from_map(initial_group_map)
     if gk not in ss or not ss[gk]:
         ss[gk] = _group_names_from_assignments(ss[ak]) or [DEFAULT_GROUP]
-    if actk not in ss or ss[actk] not in ss[gk]:
+    if actk not in ss or (ss[actk] not in ss[gk] and ss[actk] != BLANK_OPTION):
         ss[actk] = DEFAULT_GROUP if DEFAULT_GROUP in ss[gk] else ss[gk][0]
 
     current_active = str(ss[actk]).strip() or DEFAULT_GROUP
     ss[ak], ss[gk], rename_map = _normalize_group_labels(ss[ak], ss[gk])
     ss[ck] = {g: color_for_group(g) for g in ss[gk]}
-    ss[actk] = rename_map.get(current_active, DEFAULT_GROUP)
+    ss[actk] = (
+        BLANK_OPTION
+        if current_active == BLANK_OPTION
+        else rename_map.get(current_active, DEFAULT_GROUP)
+    )
 
-    ss.setdefault(_state_key(prefix, "first_corner"), None)
-    ss.setdefault(_state_key(prefix, "awaiting_second"), False)
-    ss.setdefault(_state_key(prefix, "pending_clear_mode"), None)
-    ss.setdefault(_state_key(prefix, "last_processed_click"), None)
 
 
-def _render_fallback_assigner(prefix: str, grid_height: int = 350):
+def _add_group(prefix: str) -> None:
+    """Add a group and select it (button callback)."""
     ss = st.session_state
-    ak = _state_key(prefix, "assignments")
-    actk = _state_key(prefix, "active_group")
+    gk, ck = _state_key(prefix, "groups"), _state_key(prefix, "group_colors")
+    new_group = next_group_name(ss[gk])
+    ss[gk].append(new_group)
+    ss[ck][new_group] = color_for_group(new_group)
+    ss[_state_key(prefix, "active_group")] = new_group
+    ss[_state_key(prefix, "assigned_group_select")] = new_group
 
-    st.caption(
-        "`st_selectable_grid` is not installed. Using range controls for group assignment."
-    )
 
-    all_wells = [f"{r}{c}" for r in ROWS for c in COLS]
-    c1, c2 = st.columns(2)
-    p1 = _well_to_point(
-        c1.selectbox("Start well", all_wells, key=_state_key(prefix, "range_start"))
-    ) or {"x": 0, "y": 0}
-    p2 = _well_to_point(
-        c2.selectbox("End well", all_wells, key=_state_key(prefix, "range_end"))
-    ) or {"x": 0, "y": 0}
-
-    a, b = st.columns(2)
-    if a.button(
-        "Assign range",
-        type="primary",
-        width="stretch",
-        key=_state_key(prefix, "assign_range"),
-    ):
-        ss[ak] = fill_rect(ss[ak], p1, p2, ss[actk])
-        st.rerun()
-    if b.button(
-        "Clear range",
-        type="primary",
-        width="stretch",
-        key=_state_key(prefix, "clear_range"),
-    ):
-        ss[ak] = fill_rect(ss[ak], p1, p2, DEFAULT_GROUP)
-        st.rerun()
-
-    st.dataframe(
-        pd.DataFrame(ss[ak], index=ROWS, columns=COLS),
-        width="stretch",
-        height=grid_height,
-    )
+def _remove_group(prefix: str) -> None:
+    """Remove the selected group; its wells return to the default group (button callback)."""
+    ss = st.session_state
+    gk, ck = _state_key(prefix, "groups"), _state_key(prefix, "group_colors")
+    ak, actk = _state_key(prefix, "assignments"), _state_key(prefix, "active_group")
+    old = ss[actk]
+    ss[gk].remove(old)
+    ss[ak] = [[DEFAULT_GROUP if c == old else c for c in row] for row in ss[ak]]
+    ss[ck].pop(old, None)
+    ss[actk] = max(ss[gk], key=_group_sort_key) if ss[gk] else DEFAULT_GROUP
+    ss[_state_key(prefix, "assigned_group_select")] = ss[actk]
 
 
 def ui_blank_group_assigner(
@@ -305,6 +356,7 @@ def ui_blank_group_assigner(
     present_wells: set[str] | None = None,
     remove_wells: list[str] | set[str] | bool = False,
     blank_enabled: bool = True,
+    initial_blank_wells: list[str] | None = None,
     show_caption: bool = True,
     show_controls: bool = True,
     controls_disabled: bool = False,
@@ -314,22 +366,20 @@ def ui_blank_group_assigner(
 ) -> dict[str, str]:
     """Render the analysis-group assignment UI and return well->group mapping."""
     prefix = f"blank_groups::{plate_id}"
-    _init_state(prefix, initial_group_map)
+    _init_state(prefix, initial_group_map, initial_blank_wells)
     ss = st.session_state
 
     gk = _state_key(prefix, "groups")
     ck = _state_key(prefix, "group_colors")
     ak = _state_key(prefix, "assignments")
     actk = _state_key(prefix, "active_group")
-    await_k = _state_key(prefix, "awaiting_second")
-    first_k = _state_key(prefix, "first_corner")
-    clear_k = _state_key(prefix, "pending_clear_mode")
-    last_click_k = _state_key(prefix, "last_processed_click")
 
     help_caption = (
         "When you have more than one blank, you may want to subtract certain blanks from only "
-        "certain wells on the plate. Click the table to link blanks and sample wells by assigning"
-        " them the same colour group. "
+        "certain wells on the plate. Click and drag across the plate map to link blanks and "
+        "sample wells by assigning them the same colour group (click a row letter or column "
+        "number to select a whole row or column; start on a well already in the selected group "
+        "to remove wells from it). "
         "Blanks are then subtracted from samples in the same colour group. "
         "Note: plate groups are independent, meaning blanks and samples "
         "on different plates are never linked. Multiple blanks in the same group will be "
@@ -353,22 +403,27 @@ def ui_blank_group_assigner(
         group_col, color_col, add_col, remove_col = st.columns(
             [2.5, 0.75, 1.5, 1.5], vertical_alignment="bottom"
         )
+        select_key = _state_key(prefix, "assigned_group_select")
+        options = [*ss[gk], BLANK_OPTION]
+        if ss.get(select_key) not in options:
+            ss[select_key] = ss[actk]
         selected_group = group_col.selectbox(
             "Blank group",
-            ss[gk],
-            index=ss[gk].index(ss[actk]),
-            key=_state_key(prefix, "assigned_group_select"),
-            disabled=controls_disabled,
+            options,
+            key=select_key,
+            help=(
+                "Pick a group and drag across the plate map to assign wells to it. "
+                f'Pick "{BLANK_OPTION}" to mark wells as blanks; they keep their group.'
+            ),
         )
         if selected_group != ss[actk]:
             ss[actk] = selected_group
-            _reset_pending_selection(prefix)
 
         with color_col:
             st.markdown(
                 "<button type='button' onclick='return false;' "
                 "style='display:block;width:35px;height:35px;margin:0 auto;"
-                f"background:{ss[ck][ss[actk]]};border:1px solid #999;"
+                f"background:{ss[ck].get(ss[actk], BLANK_SWATCH)};border:1px solid #999;"
                 "border-radius:4px;cursor:default;'></button>",
                 unsafe_allow_html=True,
             )
@@ -378,94 +433,59 @@ def ui_blank_group_assigner(
             if controls_disabled
             else None
         )
-        add_clicked = add_col.button(
-            "Add",
+        add_col.button(
+            "Add group",
             type="primary",
             width="stretch",
             key=_state_key(prefix, "add_group"),
             disabled=controls_disabled,
             help=_disabled_help,
+            on_click=_add_group,
+            args=(prefix,),
         )
-        remove_clicked = remove_col.button(
+        remove_col.button(
             "Remove",
             type="primary",
             width="stretch",
             key=_state_key(prefix, "remove_group"),
-            disabled=controls_disabled or ss[actk] == DEFAULT_GROUP,
+            disabled=controls_disabled or ss[actk] in (DEFAULT_GROUP, BLANK_OPTION),
             help=_disabled_help,
+            on_click=_remove_group,
+            args=(prefix,),
         )
 
-        if add_clicked:
-            _reset_pending_selection(prefix)
-            new_group = next_group_name(ss[gk])
-            ss[gk].append(new_group)
-            ss[ck][new_group] = color_for_group(new_group)
-            ss[actk] = new_group
-            st.rerun()
-
-        if remove_clicked:
-            _reset_pending_selection(prefix)
-            old = ss[actk]
-            ss[gk].remove(old)
-            ss[ak] = [[DEFAULT_GROUP if c == old else c for c in row] for row in ss[ak]]
-            ss[ck].pop(old, None)
-            ss[actk] = max(ss[gk], key=_group_sort_key) if ss[gk] else DEFAULT_GROUP
-            st.rerun()
-
     if show_grid:
-        if st_selectable_grid is None:
-            _render_fallback_assigner(prefix, grid_height=grid_height)
-        else:
-            selection = st_selectable_grid(
-                cells=build_cells(
-                    ss[ak],
-                    ss[ck],
-                    name_by_well,
-                    present_wells=present_wells,
-                    remove_wells=remove_wells,
-                    blank_enabled=blank_enabled,
-                ),
-                header=[str(c) for c in COLS],
-                index=ROWS,
-                aspect_ratio=grid_aspect_ratio,
-                allow_secondary_selection=False,
-                allow_header_selection=False,
-                resize=True,
-                height=grid_height,
-                primary_selection_color="#2563eb",
-                key=_state_key(prefix, "well_grid"),
+        styled = build_cells(
+            ss[ak],
+            ss[ck],
+            name_by_well,
+            present_wells=present_wells,
+            remove_wells=remove_wells,
+            blank_enabled=blank_enabled,
+            painted_blanks=set(ss[_state_key(prefix, "painted_blanks")]),
+        )
+        painter_key = _state_key(prefix, "plate_painter")
+        plate_painter(
+            rows=ROWS,
+            cols=COLS,
+            cells=_painter_cells(
+                ss[ak], styled, name_by_well, set(ss[_state_key(prefix, "painted_blanks")])
+            ),
+            group_colors=ss[ck],
+            active_group=ss[actk],
+            default_group=DEFAULT_GROUP,
+            blank_option=BLANK_OPTION,
+            key=painter_key,
+            on_paint=lambda: _apply_paint(prefix, painter_key),
+            aspect_ratio=grid_aspect_ratio,
+        )
+        if ss[actk] == BLANK_OPTION:
+            st.caption(
+                "Drag across wells to mark them as **blanks** (shown darker; they keep "
+                "their colour group). Start on a blank you marked to unmark wells. "
+                "Blanks named BLANK in the plate map always stay blanks."
             )
 
-            current_click = (selection or {}).get("primary")
-            current_click_key = (
-                (current_click["x"], current_click["y"]) if current_click else None
-            )
-
-            if current_click_key is None and not ss[await_k]:
-                # Allows re-using the same well as the next "first click" after deselection.
-                ss[last_click_k] = None
-
-            if not ss[await_k]:
-                if current_click and current_click_key != ss[last_click_k]:
-                    x, y = current_click["x"], current_click["y"]
-                    ss[clear_k] = ss[ak][y][x] == ss[actk]
-                    ss[first_k] = current_click
-                    ss[await_k] = True
-                    ss[last_click_k] = current_click_key
-            else:
-                first_corner = ss[first_k]
-                if current_click is None:
-                    # Allow 1x1 rectangles: second click can deselect the first-corner cell.
-                    value = DEFAULT_GROUP if ss[clear_k] else ss[actk]
-                    ss[ak] = fill_rect(ss[ak], first_corner, first_corner, value)
-                    _reset_pending_selection(prefix)
-                    st.rerun()
-                elif current_click_key != ss[last_click_k]:
-                    value = DEFAULT_GROUP if ss[clear_k] else ss[actk]
-                    ss[ak] = fill_rect(ss[ak], first_corner, current_click, value)
-                    _reset_pending_selection(prefix)
-                    ss[last_click_k] = current_click_key
-                    st.rerun()
     return assignments_to_map(ss[ak])
 
 
@@ -492,10 +512,6 @@ def _init_well_selector_state(prefix: str, available_set: set[str]) -> None:
             ]
             for y in range(len(ROWS))
         ]
-    ss.setdefault(_state_key(prefix, "first_corner"), None)
-    ss.setdefault(_state_key(prefix, "awaiting_second"), False)
-    ss.setdefault(_state_key(prefix, "pending_clear_mode"), None)
-    ss.setdefault(_state_key(prefix, "last_processed_click"), None)
 
 
 def _build_well_selector_cells(
@@ -522,12 +538,6 @@ def _build_well_selector_cells(
                     "label": well,
                     "cell_color": "#fb8072",
                     "tooltip": f"{well} · excluded",
-                }
-            elif is_blank:
-                cell = {
-                    "label": well,
-                    "cell_color": "#80b1d3",
-                    "tooltip": f"{well} · blank · included",
                 }
             else:
                 cell = {
@@ -558,6 +568,22 @@ def _fill_rect_available(
     return out
 
 
+def _apply_well_selector_paint(prefix: str, painter_key: str, available_set: set[str]):
+    """Include/exclude the wells of a finished drag stroke (runs before the script body)."""
+    ss = st.session_state
+    stroke = getattr(ss.get(painter_key), "painted", None)
+    if not stroke:
+        return
+    ak = _state_key(prefix, "grid")
+    ss[ak] = _fill_rect_available(
+        ss[ak],
+        {"x": int(stroke["c0"]), "y": int(stroke["r0"])},
+        {"x": int(stroke["c1"]), "y": int(stroke["r1"])},
+        _WELL_SEL_EXCLUDED if stroke.get("erase") else _WELL_SEL_INCLUDED,
+        available_set,
+    )
+
+
 def ui_well_selector(
     *,
     plate_id: str,
@@ -566,78 +592,50 @@ def ui_well_selector(
     grid_height: int = 400,
     grid_aspect_ratio: float = 0.75,
 ) -> list[str]:
-    """Render a single-group well selector and return the list of included wells.
+    """Render a drag-to-paint well selector and return the list of included wells.
 
-    Green = included · blue = blank (included) · red = excluded · dark grey = no data.
-    Click once to start a selection, click again to finish a rectangle.
+    Green = included · red = excluded · grey = no data. Dragging from an included
+    well excludes the wells covered; dragging from an excluded well includes them.
     """
     prefix = f"well_selector::{plate_id}"
     available_set = {str(w).strip().upper() for w in available_wells}
     _init_well_selector_state(prefix, available_set)
     ss = st.session_state
-
     ak = _state_key(prefix, "grid")
-    await_k = _state_key(prefix, "awaiting_second")
-    first_k = _state_key(prefix, "first_corner")
-    clear_k = _state_key(prefix, "pending_clear_mode")
-    last_click_k = _state_key(prefix, "last_processed_click")
 
-    if st_selectable_grid is None:
-        st.caption(
-            "`st_selectable_grid` is not installed – using multiselect fallback."
-        )
-        return st.multiselect(
-            "Wells to include",
-            options=sorted(available_set),
-            default=sorted(available_set),
-            key=_state_key(prefix, "fallback"),
-        )
-
-    selection = st_selectable_grid(
-        cells=_build_well_selector_cells(ss[ak], available_set, name_by_well),
-        header=[str(c) for c in COLS],
-        index=ROWS,
+    styled = _build_well_selector_cells(ss[ak], available_set, name_by_well)
+    cells = [
+        [
+            {
+                "label": cell["label"],
+                "color": cell["cell_color"],
+                "border": None,
+                "tooltip": cell["tooltip"],
+                "tooltip_base": cell["tooltip"].split(" · ")[0],
+                "group": ss[ak][y][x],
+                "blank": False,
+                "fixed_blank": False,
+                "painted": False,
+                # Wells without data cannot be changed
+                "included": f"{ROWS[y]}{COLS[x]}" in available_set,
+            }
+            for x, cell in enumerate(row)
+        ]
+        for y, row in enumerate(styled)
+    ]
+    painter_key = _state_key(prefix, "plate_painter")
+    plate_painter(
+        rows=ROWS,
+        cols=COLS,
+        cells=cells,
+        group_colors={_WELL_SEL_INCLUDED: "#ccebc5", _WELL_SEL_EXCLUDED: "#fb8072"},
+        active_group=_WELL_SEL_INCLUDED,
+        default_group=_WELL_SEL_EXCLUDED,
+        blank_option="__none__",
+        key=painter_key,
+        on_paint=lambda: _apply_well_selector_paint(prefix, painter_key, available_set),
         aspect_ratio=grid_aspect_ratio,
-        allow_secondary_selection=False,
-        allow_header_selection=False,
-        resize=True,
-        height=grid_height,
-        primary_selection_color="#2563eb",
-        key=_state_key(prefix, "well_grid"),
     )
-
-    current_click = (selection or {}).get("primary")
-    current_click_key = (
-        (current_click["x"], current_click["y"]) if current_click else None
-    )
-
-    if current_click_key is None and not ss[await_k]:
-        ss[last_click_k] = None
-
-    if not ss[await_k]:
-        if current_click and current_click_key != ss[last_click_k]:
-            x, y = current_click["x"], current_click["y"]
-            ss[clear_k] = ss[ak][y][x] == _WELL_SEL_INCLUDED
-            ss[first_k] = current_click
-            ss[await_k] = True
-            ss[last_click_k] = current_click_key
-    else:
-        first_corner = ss[first_k]
-        if current_click is None:
-            value = _WELL_SEL_EXCLUDED if ss[clear_k] else _WELL_SEL_INCLUDED
-            ss[ak] = _fill_rect_available(
-                ss[ak], first_corner, first_corner, value, available_set
-            )
-            _reset_pending_selection(prefix)
-            st.rerun()
-        elif current_click_key != ss[last_click_k]:
-            value = _WELL_SEL_EXCLUDED if ss[clear_k] else _WELL_SEL_INCLUDED
-            ss[ak] = _fill_rect_available(
-                ss[ak], first_corner, current_click, value, available_set
-            )
-            _reset_pending_selection(prefix)
-            ss[last_click_k] = current_click_key
-            st.rerun()
 
     return [
         f"{ROWS[y]}{COLS[x]}"

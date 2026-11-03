@@ -114,8 +114,10 @@ def phase_wash(ax, t0, t1):
     ax.axvspan(t0, t1, color=PHASE, alpha=0.13, lw=0, zorder=0)
 
 
-def save(fig, name):
-    fig.savefig(OUT / f"{name}.png", dpi=DPI, bbox_inches="tight", pad_inches=0.2)
+def save(fig, name, transparent=False):
+    """Save as PNG; transparent=True lets the app's container background show through."""
+    fig.savefig(OUT / f"{name}.png", dpi=DPI, bbox_inches="tight", pad_inches=0.2,
+                transparent=transparent)
     plt.close(fig)
     print("wrote", name)
 
@@ -143,8 +145,8 @@ def max_slope(t, y):
 # calculated (as in growthcurves.inference). Drawn in ln(N), where the tangent at
 # μmax is a straight line. Phase boundaries always use the tangent method.
 # =============================================================================
-START_TANGENT = f"Start: tangent to the growth\ncurve at {MU} meets baseline OD"
-END_TANGENT = f"End: tangent to the growth\ncurve at {MU} meets max OD"
+START_TANGENT = f"Start = tangent to the growth\ncurve at {MU} meets baseline OD"
+END_TANGENT = f"End = tangent to the growth\ncurve at {MU} meets max OD"
 
 
 def method_figure(name, *, tm, ym, slope, base, top, mu_text, start_text, end_text, max_text,
@@ -193,7 +195,8 @@ def method_figure(name, *, tm, ym, slope, base, top, mu_text, start_text, end_te
     if mu_text:
         label(ax, mu_text, xy=(tm, ym), xytext=frac(*pos["mu"]), rad=-0.25)
     label(ax, start_text, xy=(t_start, base), xytext=frac(*pos["start"]), rad=0.2)
-    save(fig, name)
+    # Shown inside the tinted Step 3 container, so no white background
+    save(fig, name, transparent=True)
 
 
 def sliding_window():
@@ -240,48 +243,14 @@ def _model_figure(name, t, y, *, top, mu_text, start_text, end_text, max_text, f
     )
 
 
-def shape_variants(t, curves, symbol, main, note_xy):
-    """Dashed curves for other shape-parameter values, plus a note.
-
-    curves: (value, y, height fraction, side) per variant; main: (value, y, fraction, side).
-    Each label sits at that fraction of the curve's rise, to the given side of it.
-    """
-
-    def tag(ax, value, y, f, side, color):
-        k = np.searchsorted(y, y.min() + f * np.ptp(y))
-        dx, ha = (0.35, "left") if side == "right" else (-0.35, "right")
-        ax.text(t[k] + dx, y[k], rf"${symbol} = {value:g}$", fontsize=FS_LABEL - 1, color=color,
-                ha=ha, va="center", zorder=7,
-                bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.85))
-
-    def draw(ax):
-        y_lo, y_hi = ax.get_ylim()
-        x_lo, x_hi = ax.get_xlim()
-        for (value, y, f, side), ls in zip(curves, ((0, (2, 2)), (0, (6, 3)))):
-            ax.plot(t, y, color=CURVE, lw=1.6, ls=ls, alpha=0.55, zorder=3)
-            tag(ax, value, y, f, side, INK_2)
-        tag(ax, *main, INK)
-        note = f"shape parameter ${symbol}$ changes\nthe curve's symmetry"
-        label(ax, note, xy=(0, 0),
-              xytext=(x_lo + note_xy[0] * (x_hi - x_lo), y_lo + note_xy[1] * (y_hi - y_lo)),
-              arrow=False)
-
-    return draw
-
-
 def mech_models():
     t = np.linspace(0, 24, 500)
     K, n0, mu = 1.0, 0.02, 0.55
-    common = dict(top=np.log(K), end_text=f"End: tangent to the growth\ncurve at {MU} meets K", max_text="Max OD =\nK (fitted)")
-    ln_r = {b: np.log(models.mech_richards_model(t, mu, K, n0, b)) for b in (0.3, 1.0, 4.0)}
-    richards = shape_variants(
-        t, [(0.3, ln_r[0.3], 0.55, "right"), (4.0, ln_r[4.0], 0.9, "left")], r"\beta",
-        (1.0, ln_r[1.0], 0.72, "right"), (0.84, 0.47),
-    )
+    common = dict(top=np.log(K), end_text=f"End = tangent to the growth\ncurve at {MU} meets K", max_text="Max OD =\nK (fitted)")
     for name, y, extra in (
         ("mech_logistic", models.mech_logistic_model(t, mu, K, n0), None),
         ("mech_gompertz", models.mech_gompertz_model(t, 0.3, K, n0), None),
-        ("mech_richards", np.exp(ln_r[1.0]), richards),
+        ("mech_richards", models.mech_richards_model(t, mu, K, n0, 1.0), None),
     ):
         # No lag phase: ln N is steepest at the first time point
         _model_figure(
@@ -310,13 +279,10 @@ def phenom_models():
         end_text=END_TANGENT,
         max_text="Max OD = max\nof fitted curve",
     )
-    # Solid curve labelled with its ν, plus the note (no dashed variants)
-    ln_r = {2.0: np.log(n0) + models.phenom_richards_model_ln(t, A, mu, lam, 2.0)}
-    richards = shape_variants(t, [], r"\nu", (2.0, ln_r[2.0], 0.8, "left"), (0.84, 0.47))
     for name, y, extra in (
         ("phenom_logistic", models.phenom_logistic_model_ln(t, A, mu, lam), None),
         ("phenom_gompertz", models.phenom_gompertz_model_ln(t, A, mu, lam), None),
-        ("phenom_richards", models.phenom_richards_model_ln(t, A, mu, lam, 2.0), richards),
+        ("phenom_richards", models.phenom_richards_model_ln(t, A, mu, lam, 2.0), None),
     ):
         ln_n = np.log(n0) + y
         _model_figure(name, t, ln_n, top=ln_n.max(), extra=extra,
@@ -417,14 +383,19 @@ def _two_option_figure(name, left, right, size=(12, 4.0)):
     ax.set_xlim(0, 12)
     ax.set_ylim(0.55, 4.6)
     ax.axis("off")
-    for (title, subtitle, table_kw), x0 in ((left, 0.3), (right, 6.4)):
+    # Centre each option (titles and table) in its half; the divider is at x = 6.05
+    for (title, subtitle, table_kw), (lo, hi) in ((left, (0.0, 6.05)), (right, (6.05, 12.0))):
         width = len(table_kw["headers"]) * table_kw.get("col_w", 1.0)
-        cx = x0 + width / 2
+        cx = (lo + hi) / 2
+        # Centre the table including its "…" continuation column, if any
+        x0 = cx - (width + (0.44 if table_kw.get("more_cols") else 0.0)) / 2
         ax.text(cx, 4.45, title, ha="center", va="top", fontsize=16, weight="bold", color=INK)
         ax.text(cx, 3.98, subtitle, ha="center", va="top", fontsize=13, color=INK_2,
                 linespacing=1.35)
         draw_table(ax, x0, 3.05, **table_kw)
     ax.plot([6.05, 6.05], [0.65, 4.4], color=GRID, lw=1)
+    # Invisible frame over the full width so the tight crop keeps both halves equal
+    ax.add_patch(Rectangle((0, 0.55), 12, 4.05, fill=False, ec="none"))
     save(fig, name)
 
 
