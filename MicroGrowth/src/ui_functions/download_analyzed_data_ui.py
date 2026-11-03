@@ -40,7 +40,7 @@ def _render_tabulated_data_container():
 
 
 def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
-    with st.container(border=True):
+    with st.container(border=True, key="card_download_analyzed_data_1"):
         title_col, cb_col = st.columns(
             [1, 4],
             vertical_alignment="center",

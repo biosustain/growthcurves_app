@@ -36,6 +36,32 @@ def green_navbar():
     )
 
 
+# light tint on bordered section containers (st.container(key="card_..."))
+def card_containers():
+    return st.markdown(
+        """
+        <style>
+        [class*="st-key-card_"] {
+            background-color: #F8F9FB;
+        }
+        /* Inputs inside a tinted container stay white so they stand out */
+        [class*="st-key-card_"] [data-baseweb="select"] > div,
+        [class*="st-key-card_"] [data-baseweb="input"],
+        [class*="st-key-card_"] [data-baseweb="base-input"],
+        [class*="st-key-card_"] [data-baseweb="textarea"],
+        [class*="st-key-card_"] [data-testid="stNumberInputContainer"],
+        [class*="st-key-card_"] [data-testid="stNumberInputStepDown"],
+        [class*="st-key-card_"] [data-testid="stNumberInputStepUp"],
+        [class*="st-key-card_"] [data-testid="stFileUploaderDropzone"],
+        [class*="st-key-card_"] [data-testid="stSelectbox"] div:has(> input) {
+            background-color: #FFFFFF !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # adds a green gradient background at the top of the page
 def green_gradient():
     return st.markdown(

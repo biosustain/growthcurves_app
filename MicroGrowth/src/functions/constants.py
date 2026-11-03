@@ -15,8 +15,6 @@ DEFAULT_PARAMS = {
     "outlier_detection": False,
     "outlier_threshold": 3.5,
     "window_points": 5,
-    "lag_cutoff": 0.5,
-    "exp_cutoff": 0.5,
     "sg_window": 15,
     "sg_poly": 2,
     "min_data_points": 5,

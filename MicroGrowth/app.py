@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import streamlit as st
-from src.styling import green_gradient, green_navbar, red_buttons
+from src.styling import card_containers, green_gradient, green_navbar, red_buttons
 
 APP_VERSION = Path(__file__).with_name("VERSION").read_text(encoding="utf-8").strip()
 
@@ -42,5 +42,6 @@ nav = st.navigation(
 red_buttons()
 green_gradient()
 green_navbar()
+card_containers()
 
 nav.run()

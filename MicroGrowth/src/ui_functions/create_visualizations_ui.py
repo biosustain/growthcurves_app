@@ -80,7 +80,7 @@ def ui_growth_selection_container(plates: dict) -> dict:
     # -----------------------------
     # UI: Step 1 selection (outside form so grid changes rerun)
     # -----------------------------
-    with st.container(border=True):
+    with st.container(border=True, key="card_create_visualizations_1"):
         st.header("Step 1. Select Samples for Visualization")
 
         data_grid_style()
@@ -129,7 +129,7 @@ def ui_growth_selection_container(plates: dict) -> dict:
 @st.fragment
 def ui_growth_stats_controls_container(has_split: bool, sel_opt: pd.DataFrame) -> dict:
     """Render growth stats controls and return form selections."""
-    with st.container(border=True):
+    with st.container(border=True, key="card_create_visualizations_2"):
         st.header("Step 2. option a) Plot Growth Statistics")
 
         x_choices = ["Sample Name"]
@@ -181,7 +181,7 @@ def ui_growth_curves_controls_container(
     max_t: float, sel_sample_names: list[str]
 ) -> dict:
     """Render growth curves controls and return form selections."""
-    with st.container(border=True):
+    with st.container(border=True, key="card_create_visualizations_3"):
         st.header("Step 2. option b) Plot Growth Curves")
 
         # Persist across navigation via a plain key; re-seed widget when absent.

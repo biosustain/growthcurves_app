@@ -1,5 +1,6 @@
 """UI fragments for the Upload and Analyze page."""
 
+import html
 import io
 import re
 from typing import Any
@@ -29,7 +30,6 @@ from src.ui_functions.blank_grouping_ui import (
 )
 from src.ui_functions.ui_components import (
     ui_method_visualization,
-    ui_phase_boundary_visualization,
 )
 
 
@@ -250,7 +250,7 @@ def ui_upload_files(ss):
     """Fragment for file upload controls."""
     u1, u2 = st.columns(2)
     with u1:
-        with st.container(border=True):
+        with st.container(border=True, key="card_uploads_1"):
             # Header row with requirements in top right
             header_col, req_col = st.columns([3, 1])
             with header_col:
@@ -287,7 +287,7 @@ def ui_upload_files(ss):
                 "Plate reader Excel (.xlsx/.xls)", ["xlsx", "xls"], key="data_up"
             )
     with u2:
-        with st.container(border=True):
+        with st.container(border=True, key="card_uploads_2"):
             # Header row with requirements in top right
             header_col, req_col = st.columns([3, 1])
             with header_col:
@@ -353,7 +353,7 @@ def ui_upload_files(ss):
                 key="map_up",
             )
 
-    with st.container(border=True):
+    with st.container(border=True, key="card_uploads_3"):
         st.header("Step 3. Match samples with names")
         if st.button(
             "Match samples with names",
@@ -437,22 +437,12 @@ def ui_preprocessing_params(ss):
     has_blank_wells = False
     blank_well_count = 0
 
-    with st.container(border=True):
+    with st.container(border=True, key="card_uploads_4"):
         st.header("Step 4. Select plate and preprocessing parameters")
 
-        selector_col, plate_name_col = st.columns(
-            [1.0, 1.35], vertical_alignment="bottom"
-        )
+        selector_col, _ = st.columns([1.0, 1.35])
         with selector_col:
             plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
-        with plate_name_col:
-            if plate_id:
-                st.markdown(
-                    f"<h3 style='text-align:center; margin:0; font-size:2rem;'>{plate_id}</h3>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.write("")
         params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
         outlier_detection = bool(params0.get("outlier_detection", False))
         try:
@@ -479,7 +469,8 @@ def ui_preprocessing_params(ss):
 
         controls_col, plate_col = st.columns([1.0, 1.35], gap="large")
         plate_grid_height = 380
-        plate_grid_aspect_ratio = 0.65
+        # Wider, shorter cells so the plate map fills the column width
+        plate_grid_aspect_ratio = 0.58
         initial_group_map: dict[str, str] | None = None
 
         with controls_col:
@@ -628,6 +619,15 @@ def ui_preprocessing_params(ss):
             )
 
         with plate_col:
+            # Name of the plate shown in the map, in a highlight box
+            st.markdown(
+                "<div style='background:rgba(102,187,106,0.15);"
+                "border:1px solid rgba(102,187,106,0.55);border-radius:0.5rem;"
+                "padding:0.45rem 1rem;text-align:center;font-size:1.35rem;"
+                f"font-weight:600;color:{'#262730' if plate_id else '#8a8d93'};'>"
+                f"{html.escape(str(plate_id)) if plate_id else 'No plate selected'}</div>",
+                unsafe_allow_html=True,
+            )
             if plate_id and plate_map is not None:
                 blank_group_assignments = ui_blank_group_assigner(
                     plate_id=plate_id,
@@ -849,51 +849,10 @@ def ui_qc_filters(params0: dict):
     return min_data_points, min_signal_to_noise, min_od_increase, min_growth_rate
 
 
-def ui_phase_boundaries(params0: dict):
-    """Render phase boundary method selection UI."""
-    st.caption(
-        "Phase boundaries define when the lag phase ends and when the exponential phase ends."
-    )
-    phase_boundary_method = st.selectbox(
-        "Phase boundary calculation",
-        options=["threshold", "tangent"],
-        index=(
-            0 if params0.get("phase_boundary_method", "tangent") == "threshold" else 1
-        ),
-        format_func=lambda v: v.capitalize(),
-        help="Threshold uses fractions of μ_max; tangent uses the tangent at μ_max to estimate exponential phase bounds.",
-    )
-    lag_cutoff = st.number_input(
-        "Lag phase cutoff",
-        0.01,
-        0.5,
-        float(params0.get("lag_cutoff", 0.5)),
-        0.01,
-        format="%.2f",
-        disabled=phase_boundary_method == "tangent",
-        help="Fraction of maximum growth rate used to define lag phase end (threshold mode).",
-    )
-    exp_cutoff = st.number_input(
-        "Exponential phase cutoff",
-        0.01,
-        0.5,
-        float(params0.get("exp_cutoff", 0.5)),
-        0.01,
-        format="%.2f",
-        disabled=phase_boundary_method == "tangent",
-        help="Fraction of maximum growth rate used to define exponential phase end (threshold mode).",
-    )
-
-    return phase_boundary_method, lag_cutoff, exp_cutoff
-
-
 def ui_calculation_table(
     growth_method: str,
     model_type: str,
     model_family: str,
-    phase_boundary_method: str,
-    lag_cutoff: float,
-    exp_cutoff: float,
     window_points: int,
 ):
     """Render the growth parameter calculations table."""
@@ -915,14 +874,9 @@ def ui_calculation_table(
     else:
         intrinsic_calc = "N.a."
 
-    if phase_boundary_method == "threshold":
-        boundary_calc = f"Time at instantaneous μ > {lag_cutoff:.0%} μ<sub>max</sub>"
-        exp_phase_end_calc = (
-            f"Time at instantaneous μ < {exp_cutoff:.0%} μ<sub>max</sub>"
-        )
-    else:
-        boundary_calc = "μ<sub>max</sub> tangent intersect with OD baseline"
-        exp_phase_end_calc = "μ<sub>max</sub> tangent intersec with OD(max)"
+    # Phase boundaries always use the tangent to the growth curve at μmax
+    boundary_calc = "Tangent to the growth curve at μ<sub>max</sub> meets baseline OD"
+    exp_phase_end_calc = "Tangent to the growth curve at μ<sub>max</sub> meets OD(max)"
 
     if growth_method == "Model Fitting" and model_type in {
         "mech_baranyi",
@@ -977,11 +931,11 @@ def ui_analysis_params(ss):
     clip_time_series = step3_params.get("clip_time_series", (None, None))
     remove_wells = step3_params.get("remove_wells", False)
 
-    with st.container(border=True):
+    with st.container(border=True, key="card_uploads_5"):
         st.header("Step 5. Select the analysis parameters")
 
-        # Two columns: Model options | Phase boundary options
-        model_col, boundary_col = st.columns(2, gap="large")
+        # Two columns: model options | how the selected method calculates parameters
+        model_col, help_col = st.columns(2, gap="large")
 
         with model_col:
             # Model selection
@@ -1002,36 +956,15 @@ def ui_analysis_params(ss):
                 ui_qc_filters(params0)
             )
 
+            # Equation and description of the selected method
             st.write("")
-
-        with boundary_col:
-            # Phase boundary selection
-            phase_boundary_method, lag_cutoff, exp_cutoff = ui_phase_boundaries(params0)
-            st.write("")
-
-        st.write("")
-
-        # Visualization columns
-        help_model_col, help_boundary_col = st.columns(2, gap="large")
-
-        with help_model_col:
             model_fig = ui_method_visualization(growth_method, model_type)
 
-        with help_boundary_col:
-            boundary_image = ui_phase_boundary_visualization(phase_boundary_method)
-
-        # Render the visualizations
-        graph_col_model, graph_col_boundary = st.columns(2, gap="large")
-
-        with graph_col_model:
+        with help_col:
             if isinstance(model_fig, str):
                 st.image(model_fig, width="stretch")
             elif model_fig is not None:
                 st.plotly_chart(model_fig, width="stretch", config={"staticPlot": True})
-
-        with graph_col_boundary:
-            if boundary_image is not None:
-                st.image(boundary_image, width="stretch")
 
     # Build final params dict
     params = dict(
@@ -1044,8 +977,6 @@ def ui_analysis_params(ss):
         outlier_detection=bool(outlier_detection),
         outlier_threshold=float(outlier_threshold),
         window_points=int(window_points),
-        lag_cutoff=float(lag_cutoff),
-        exp_cutoff=float(exp_cutoff),
         sg_window=int(params0.get("sg_window", 15)),
         sg_poly=int(params0.get("sg_poly", 2)),
         min_data_points=int(min_data_points),
@@ -1055,20 +986,17 @@ def ui_analysis_params(ss):
         growth_method=str(growth_method),
         model_family=str(model_family),
         model_type=str(model_type),
-        phase_boundary_method=str(phase_boundary_method),
+        phase_boundary_method="tangent",
         smooth=str(smooth),
     )
 
-    with st.container(border=True):
+    with st.container(border=True, key="card_uploads_6"):
         st.header("Step 6. Click analyse")
 
         ui_calculation_table(
             growth_method,
             model_type,
             model_family,
-            phase_boundary_method,
-            lag_cutoff,
-            exp_cutoff,
             window_points,
         )
 
@@ -1104,8 +1032,6 @@ def ui_analysis_params(ss):
     # Store analysis parameters in session state
     ss.setdefault("step4_params", {})
     ss["step4_params"]["window_points"] = window_points
-    ss["step4_params"]["lag_cutoff"] = lag_cutoff
-    ss["step4_params"]["exp_cutoff"] = exp_cutoff
     ss["step4_params"]["min_data_points"] = min_data_points
     ss["step4_params"]["min_signal_to_noise"] = min_signal_to_noise
     ss["step4_params"]["min_od_increase"] = min_od_increase
@@ -1113,5 +1039,5 @@ def ui_analysis_params(ss):
     ss["step4_params"]["growth_method"] = growth_method
     ss["step4_params"]["model_family"] = model_family
     ss["step4_params"]["model_type"] = model_type
-    ss["step4_params"]["phase_boundary_method"] = phase_boundary_method
+    ss["step4_params"]["phase_boundary_method"] = "tangent"
     ss["step4_params"]["smooth"] = smooth

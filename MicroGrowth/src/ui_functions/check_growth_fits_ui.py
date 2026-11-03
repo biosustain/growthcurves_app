@@ -544,7 +544,7 @@ def ui_window_fits_well_editor(plates: dict):
 
     col1, col2 = st.columns(2, gap="large")
     with col1:
-        with st.container(border=True):
+        with st.container(border=True, key="card_check_growth_fits_1"):
             plate_col, popover_col, toggle_col1 = st.columns(
                 [2, 0.9, 0.9], vertical_alignment="bottom", gap="small"
             )
@@ -621,7 +621,7 @@ def ui_window_fits_well_editor(plates: dict):
                 )
 
     with col2:
-        with st.container(border=True):
+        with st.container(border=True, key="card_check_growth_fits_2"):
             plate = plates[plate_id]
             key = f"{plate_id}_{well}"
 

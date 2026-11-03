@@ -26,9 +26,9 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
         (fit_stats_dict, fit_result_dict | None)
     """
     growth_method = params.get("growth_method", "Sliding Window")
-    lag_frac = float(params.get("lag_cutoff", 0.15))
-    exp_frac = float(params.get("exp_cutoff", 0.15))
-    phase_boundary_method = str(params.get("phase_boundary_method", "tangent")).lower()
+    # Phase boundaries always use the tangent at μmax (models with a fitted lag
+    # time use it as the exponential phase start)
+    phase_boundary_method = "tangent"
 
     fit_result = None
 
@@ -42,8 +42,6 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
                 fit_result,
                 t_arr,
                 y_arr,
-                lag_frac=lag_frac,
-                exp_frac=exp_frac,
                 phase_boundary_method=phase_boundary_method,
             )
             # Store model parameters
@@ -72,8 +70,6 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
                 fit_result,
                 t_arr,
                 y_arr,
-                lag_frac=lag_frac,
-                exp_frac=exp_frac,
                 phase_boundary_method=phase_boundary_method,
             )
             actual_params = fit_result.get("params") or {}
@@ -95,8 +91,6 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
                 fit_result,
                 t_arr,
                 y_arr,
-                lag_frac=lag_frac,
-                exp_frac=exp_frac,
                 phase_boundary_method=phase_boundary_method,
             )
             fit["window_points"] = int(params.get("window_points", 5))

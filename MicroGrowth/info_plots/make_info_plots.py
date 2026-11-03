@@ -139,269 +139,203 @@ def max_slope(t, y):
 
 
 # =============================================================================
-# Growth descriptor methods
+# One figure per growth method: how μmax, the exponential phase and max OD are
+# calculated (as in growthcurves.inference). Drawn in ln(N), where the tangent at
+# μmax is a straight line. Phase boundaries always use the tangent method.
 # =============================================================================
+START_TANGENT = f"Start: tangent to the growth\ncurve at {MU} meets baseline OD"
+END_TANGENT = f"End: tangent to the growth\ncurve at {MU} meets max OD"
+
+
+def method_figure(name, *, tm, ym, slope, base, top, mu_text, start_text, end_text, max_text,
+                  curve=None, data=None, fitted_lag=None, extra=None, t_max=24, pos=None):
+    """Curve/data, μmax point and tangent, baseline and max OD, exponential phase."""
+    t_end = tm + (top - ym) / slope
+    t_start = fitted_lag if fitted_lag is not None else tm + (base - ym) / slope
+    fig, ax = schematic_axes()
+    span = top - base
+    ax.set_xlim(-0.5, t_max + 1)
+    ax.set_ylim(base - 0.12 * span, top + 0.16 * span)
+    x_lo, x_hi = ax.get_xlim()
+    y_lo, y_hi = ax.get_ylim()
+
+    def frac(fx, fy):
+        return x_lo + fx * (x_hi - x_lo), y_lo + fy * (y_hi - y_lo)
+
+    phase_wash(ax, t_start, t_end)
+    hline(ax, top)
+    hline(ax, base)
+    if extra:
+        extra(ax)
+    if data is not None:
+        ax.plot(*data, "o", ms=5.5, color=POINTS, zorder=3)
+    if curve is not None:
+        ax.plot(*curve, color=CURVE, lw=3, zorder=4)
+    # Tangent at μmax; with a fitted lag only the part setting the end is drawn
+    tt = np.linspace(tm if fitted_lag is not None else t_start, t_end, 10)
+    ax.plot(tt, ym + slope * (tt - tm), color=ACCENT, lw=2.5, zorder=5)
+    if fitted_lag is not None:
+        ax.plot([t_start, t_start], [y_lo, top + 0.04 * span], color=INK_2, lw=2, zorder=3)
+    if not np.isclose(t_start, tm):  # no lag: start and μmax are the same point
+        dot(ax, t_start, base, color=INK_2, size=9)
+    dot(ax, tm, ym)
+    dot(ax, t_end, top, color=INK_2, size=9)
+    x_txt, ha = 0.5 * (t_start + t_end), "center"
+    if x_txt < frac(0.12, 0)[0]:  # narrow phase near the axis: start the text at the phase
+        x_txt, ha = t_start + 0.15, "left"
+    ax.text(x_txt, top + 0.07 * span, "Exponential phase", ha=ha, fontsize=FS_LABEL, color=INK)
+
+    pos = {"max": (0.87, 0.72), "end": (0.62, 0.56), "mu": (0.7, 0.3), "start": (0.14, 0.5),
+           **(pos or {})}
+    label(ax, max_text, xy=(frac(0.87, 0)[0], top), xytext=frac(*pos["max"]),
+          rad=0 if pos["max"][0] == 0.87 else 0.2)
+    label(ax, end_text, xy=(t_end, top), xytext=frac(*pos["end"]), rad=0.25)
+    if mu_text:
+        label(ax, mu_text, xy=(tm, ym), xytext=frac(*pos["mu"]), rad=-0.25)
+    label(ax, start_text, xy=(t_start, base), xytext=frac(*pos["start"]), rad=0.2)
+    save(fig, name)
+
+
 def sliding_window():
     t, n = noisy_data()
-    fit = fit_sliding_window(t, n, window_points=5)["params"]
-    fig, ax = schematic_axes()
-    ax.plot(T, LN_CURVE, color=CURVE, lw=1.4, alpha=0.35, zorder=1)
-    ax.plot(t, np.log(n), "o", ms=6, color=POINTS, zorder=3)
-    ax.set_xlim(-0.5, 25)
-    lo, hi = fit["fit_t_min"], fit["fit_t_max"]
-    ax.axvspan(lo, hi, color=ACCENT, alpha=0.09, lw=0, zorder=0)
-    tt = np.linspace(lo - 0.6, hi + 0.6, 10)
-    ax.plot(tt, fit["slope"] * tt + fit["intercept"], color=ACCENT, lw=3, zorder=5)
-    xm = 0.5 * (lo + hi)
-    label(
-        ax,
-        f"{MU} = slope of the window with\nthe steepest reliable fit",
-        xy=(xm, fit["slope"] * xm + fit["intercept"]),
-        xytext=(4.2, np.log(N0) + 3.3),
-        rad=-0.3,
+    p = fit_sliding_window(t, n, window_points=5)["params"]
+    tm = p["time_at_umax"]
+
+    def window(ax):
+        w = (t >= p["fit_t_min"]) & (t <= p["fit_t_max"])
+        ax.plot(t[w], np.log(n[w]), "o", ms=7, color=INK, mec="white", mew=1, zorder=6)
+
+    method_figure(
+        "sliding_window", tm=tm, ym=p["slope"] * tm + p["intercept"], slope=p["slope"],
+        base=np.log(n).min(), top=np.log(n).max(), data=(t, np.log(n)), extra=window,
+        mu_text=f"{MU} = slope of the best\nsliding window (dark points)",
+        start_text=START_TANGENT, end_text=END_TANGENT, max_text="Max OD =\nmax of data",
+        pos={"start": (0.47, 0.14)},
     )
-    save(fig, "sliding_window")
 
 
 def spline():
     t, n = noisy_data()
     p = fit_spline(t, n)["params"]
     s = models.spline_from_params(p)
-    fig, ax = schematic_axes()
-    ax.plot(t, np.log(n), "o", ms=6, color=POINTS, zorder=3)
     ts = np.linspace(p["fit_t_min"], p["fit_t_max"], 400)
-    ax.plot(ts, s(ts), color=CURVE, lw=3, zorder=4)
-    ax.set_xlim(-0.5, 25)
     tm = p["time_at_umax"]
-    ym = float(s(tm))
-    tt = np.linspace(tm - 2.2, tm + 2.2, 10)
-    ax.plot(tt, ym + p["mu_max"] * (tt - tm), color=ACCENT, lw=2.5, zorder=5)
-    dot(ax, tm, ym)
-    label(
-        ax,
-        "Smoothing spline fitted to ln(N)",
-        xy=(16, float(s(16))),
-        xytext=(17.5, np.log(N0) + 2.4),
-        rad=0.25,
+    method_figure(
+        "spline", tm=tm, ym=float(s(tm)), slope=p["mu_max"], base=np.log(n).min(),
+        top=np.log(n).max(), data=(t, np.log(n)), curve=(ts, s(ts)),
+        mu_text=f"{MU} = steepest slope\nof the spline",
+        start_text=START_TANGENT, end_text=END_TANGENT, max_text="Max OD =\nmax of data",
+        pos={"start": (0.47, 0.14)},
     )
-    label(
-        ax,
-        f"{MU} = steepest slope\nof the spline",
-        xy=(tm, ym),
-        xytext=(3.6, np.log(N0) + 3.0),
-        rad=-0.3,
-    )
-    save(fig, "spline")
 
 
-# =============================================================================
-# Parametric models
-# =============================================================================
-def _mechanistic(name, y, t, K, N0_, extra=None, lag=None, n0_text=None):
-    fig, ax = schematic_axes(ylabel="N")
-    ax.plot(t, y, color=CURVE, lw=3, zorder=4)
-    ax.set_xlim(-0.5, t[-1] + 1)
-    ax.set_ylim(-0.04 * K, 1.12 * K)
-    hline(ax, K)
-    label(ax, "K  (carrying capacity)", xy=None or (t[-1] * 0.8, K), xytext=(t[-1] * 0.8, 0.85 * K), rad=0)
-    dot(ax, t[0], N0_)
-    label(ax, r"$N_0$  (initial population)", xy=(t[0], N0_),
-          xytext=n0_text or (t[-1] * 0.2, 0.3 * K), rad=0.25)
+def _model_figure(name, t, y, *, top, mu_text, start_text, end_text, max_text, fitted_lag=None,
+                  extra=None, pos=None):
+    """Parametric model: μmax at the steepest point of ln N, baseline = min of the fit."""
     i = max_slope(t, y)
-    label(
-        ax,
-        r"$\mu$  (intrinsic growth rate)" + "\nsets the steepness",
-        xy=(t[i], y[i]),
-        xytext=(t[-1] * 0.78, 0.4 * K),
-        rad=-0.25,
+    method_figure(
+        name, tm=t[i], ym=y[i], slope=np.gradient(y, t)[i], base=y.min(), top=top,
+        curve=(t, y), fitted_lag=fitted_lag, extra=extra, t_max=t[-1], pos=pos,
+        mu_text=mu_text, start_text=start_text, end_text=end_text, max_text=max_text,
     )
-    if lag is not None:
-        ax.plot([lag, lag], [0, 0.5 * K], color=REF, lw=1.4, ls=(0, (5, 4)), zorder=2)
-        ax.annotate("", xy=(0, 0.46 * K), xytext=(lag, 0.46 * K),
-                    arrowprops=dict(arrowstyle="<|-|>,head_length=0.5,head_width=0.22",
-                                    color=ACCENT, lw=1.8, shrinkA=0, shrinkB=0))
-        ax.text(lag / 2, 0.5 * K, r"lag  $\lambda = h_0/\mu$", ha="center", va="bottom",
-                fontsize=FS_LABEL, color=INK)
-    if extra:
-        extra(ax)
-    save(fig, name)
+
+
+def shape_variants(t, curves, symbol, main, note_xy):
+    """Dashed curves for other shape-parameter values, plus a note.
+
+    curves: (value, y, height fraction, side) per variant; main: (value, y, fraction, side).
+    Each label sits at that fraction of the curve's rise, to the given side of it.
+    """
+
+    def tag(ax, value, y, f, side, color):
+        k = np.searchsorted(y, y.min() + f * np.ptp(y))
+        dx, ha = (0.35, "left") if side == "right" else (-0.35, "right")
+        ax.text(t[k] + dx, y[k], rf"${symbol} = {value:g}$", fontsize=FS_LABEL - 1, color=color,
+                ha=ha, va="center", zorder=7,
+                bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.85))
+
+    def draw(ax):
+        y_lo, y_hi = ax.get_ylim()
+        x_lo, x_hi = ax.get_xlim()
+        for (value, y, f, side), ls in zip(curves, ((0, (2, 2)), (0, (6, 3)))):
+            ax.plot(t, y, color=CURVE, lw=1.6, ls=ls, alpha=0.55, zorder=3)
+            tag(ax, value, y, f, side, INK_2)
+        tag(ax, *main, INK)
+        note = f"shape parameter ${symbol}$ changes\nthe curve's symmetry"
+        label(ax, note, xy=(0, 0),
+              xytext=(x_lo + note_xy[0] * (x_hi - x_lo), y_lo + note_xy[1] * (y_hi - y_lo)),
+              arrow=False)
+
+    return draw
 
 
 def mech_models():
-    t = np.linspace(0, 24, 400)
+    t = np.linspace(0, 24, 500)
     K, n0, mu = 1.0, 0.02, 0.55
-    _mechanistic("mech_logistic", models.mech_logistic_model(t, mu, K, n0), t, K, n0)
-    _mechanistic("mech_gompertz", models.mech_gompertz_model(t, 0.3, K, n0), t, K, n0)
-
-    def richards_variants(ax):
-        for beta, ls in ((0.3, (0, (2, 2))), (3.0, (0, (6, 3)))):
-            yv = models.mech_richards_model(t, mu, K, n0, beta)
-            ax.plot(t, yv, color=CURVE, lw=1.6, ls=ls, alpha=0.55, zorder=3)
-        y03 = float(np.interp(21.0, t, models.mech_richards_model(t, mu, K, n0, 0.3)))
-        ax.text(21.0, y03 - 0.07 * K, r"$\beta = 0.3$", ha="center", va="top",
-                fontsize=FS_LABEL - 1, color=INK_2)
-        ax.text(5.3, 0.62 * K, r"$\beta = 3$", fontsize=FS_LABEL - 1, color=INK_2)
-        ax.text(9.6, 0.72 * K, r"$\beta = 1$", fontsize=FS_LABEL - 1, color=INK)
-        label(ax, r"shape parameter $\beta$" + "\nchanges the curve's symmetry",
-              xy=(0, 0), xytext=(19.3, 0.1 * K), arrow=False)
-
-    _mechanistic(
-        "mech_richards",
-        models.mech_richards_model(t, mu, K, n0, 1.0),
-        t,
-        K,
-        n0,
-        extra=richards_variants,
+    common = dict(top=np.log(K), end_text=f"End: tangent to the growth\ncurve at {MU} meets K", max_text="Max OD =\nK (fitted)")
+    ln_r = {b: np.log(models.mech_richards_model(t, mu, K, n0, b)) for b in (0.3, 1.0, 4.0)}
+    richards = shape_variants(
+        t, [(0.3, ln_r[0.3], 0.55, "right"), (4.0, ln_r[4.0], 0.9, "left")], r"\beta",
+        (1.0, ln_r[1.0], 0.72, "right"), (0.84, 0.47),
     )
-    h0 = 4.0
-    _mechanistic(
-        "mech_baranyi",
-        models.mech_baranyi_model(t, 0.8, K, n0, h0),
-        t,
-        K,
-        n0,
-        lag=h0 / 0.8,
-        n0_text=(3.6, 0.27 * K),
+    for name, y, extra in (
+        ("mech_logistic", models.mech_logistic_model(t, mu, K, n0), None),
+        ("mech_gompertz", models.mech_gompertz_model(t, 0.3, K, n0), None),
+        ("mech_richards", np.exp(ln_r[1.0]), richards),
+    ):
+        # No lag phase: ln N is steepest at the first time point
+        _model_figure(
+            name, t, np.log(y), mu_text=None, extra=extra,
+            pos={"start": (0.6, 0.25), **({"end": (0.62, 0.68)} if extra else {})},
+            start_text=f"{MU} and start at t = 0: steepest slope\n"
+            "of the fitted curve (this model has no lag phase)",
+            **common,
+        )
+    h0, mu_b = 4.0, 0.8
+    _model_figure(
+        "mech_baranyi", t, np.log(models.mech_baranyi_model(t, mu_b, K, n0, h0)),
+        fitted_lag=h0 / mu_b, start_text="Start = fitted lag\n" + r"$h_0/\mu$",
+        mu_text=f"{MU} = steepest slope of the\nfitted curve (from μ, K, " + r"$N_0$, $h_0$)",
+        **common,
     )
-
-
-def _phenomenological(name, y, t, A, lam, mu_max, extra=None, ymax=None, first_phase=None):
-    fig, ax = schematic_axes(ylabel=r"$\ln(N_t / N_0)$")
-    ax.plot(t, y, color=CURVE, lw=3, zorder=4)
-    ax.set_xlim(-0.5, t[-1] + 1)
-    top = ymax or 1.12 * A
-    ax.set_ylim(-0.06 * top, top)
-    hline(ax, A)
-    hline(ax, 0)
-    label(ax, "A  (maximum ln increase)", xy=(t[-1] * 0.8, A), xytext=(t[-1] * 0.8, 0.83 * A), rad=0)
-
-    # Tangent at the inflection point: slope μmax, crosses 0 at λ by construction
-    m = t <= first_phase if first_phase else slice(None)
-    i = max_slope(t[m], y[m])
-    t_i, y_i = t[i], y[i]
-    t_end = t_i + (A - y_i) / mu_max
-    tt = np.linspace(lam, t_end, 10)
-    ax.plot(tt, y_i + mu_max * (tt - t_i), color=ACCENT, lw=2.5, zorder=5)
-    dot(ax, t_i, y_i)
-    dot(ax, lam, 0, color=INK_2, size=9)
-    label(ax, f"slope = {MU}", xy=(t_i, y_i), xytext=(t_i + 6.5, 0.32 * A), rad=-0.25)
-    label(ax, r"$\lambda$  (lag time)", xy=(lam, 0), xytext=(lam + 4.5, 0.08 * A), rad=0.2)
-    if extra:
-        extra(ax)
-    save(fig, name)
 
 
 def phenom_models():
-    t = np.linspace(0, 24, 400)
-    A, mu, lam = 4.0, 0.7, 4.0
-    _phenomenological(
-        "phenom_logistic", models.phenom_logistic_model_ln(t, A, mu, lam), t, A, lam, mu
+    t = np.linspace(0, 24, 500)
+    A, mu, lam, n0 = 4.0, 0.7, 4.0, 0.02
+    common = dict(
+        fitted_lag=lam,
+        mu_text=f"{MU} = fitted parameter",
+        start_text="Start = fitted\nlag " + r"$\lambda$",
+        end_text=END_TANGENT,
+        max_text="Max OD = max\nof fitted curve",
     )
-    _phenomenological(
-        "phenom_gompertz", models.phenom_gompertz_model_ln(t, A, mu, lam), t, A, lam, mu
-    )
-    _phenomenological(
-        "phenom_richards",
-        models.phenom_richards_model_ln(t, A, mu, lam, 2.0),
-        t,
-        A,
-        lam,
-        mu,
-    )
+    # Solid curve labelled with its ν, plus the note (no dashed variants)
+    ln_r = {2.0: np.log(n0) + models.phenom_richards_model_ln(t, A, mu, lam, 2.0)}
+    richards = shape_variants(t, [], r"\nu", (2.0, ln_r[2.0], 0.8, "left"), (0.84, 0.47))
+    for name, y, extra in (
+        ("phenom_logistic", models.phenom_logistic_model_ln(t, A, mu, lam), None),
+        ("phenom_gompertz", models.phenom_gompertz_model_ln(t, A, mu, lam), None),
+        ("phenom_richards", models.phenom_richards_model_ln(t, A, mu, lam, 2.0), richards),
+    ):
+        ln_n = np.log(n0) + y
+        _model_figure(name, t, ln_n, top=ln_n.max(), extra=extra,
+                      pos={"end": (0.62, 0.68)} if extra else None, **common)
 
-    tm = np.linspace(0, 32, 500)
-    alpha, t_shift = 0.3, 32.0
-    y = models.phenom_gompertz_modified_model_ln(tm, A, mu, lam, alpha, t_shift)
+    # Biphasic: the second phase stays slower than μmax so μmax is the first phase
+    tm = np.linspace(0, 30, 600)
+    ln_n = np.log(n0) + models.phenom_gompertz_modified_model_ln(tm, A, mu, lam, 0.12, 30.0)
 
     def second_phase(ax):
-        i = np.searchsorted(tm, 28.5)
-        label(
-            ax,
-            "second growth phase\n" + r"(rate $\alpha$, onset $t_{\mathrm{shift}}$)",
-            xy=(tm[i], y[i]),
-            xytext=(22.5, 1.75 * A),
-            rad=-0.25,
-        )
+        x_lo, x_hi = ax.get_xlim()
+        y_lo, y_hi = ax.get_ylim()
+        i = np.searchsorted(tm, 26.0)
+        label(ax, "second growth phase\n" + r"(rate $\alpha$, onset $t_{\mathrm{shift}}$)",
+              xy=(tm[i], ln_n[i]),
+              xytext=(x_lo + 0.86 * (x_hi - x_lo), y_lo + 0.42 * (y_hi - y_lo)), rad=0.25)
 
-    _phenomenological(
-        "phenom_gompertz_modified", y, tm, A, lam, mu, extra=second_phase, ymax=2.15 * A,
-        first_phase=14.0,
-    )
-
-
-# =============================================================================
-# Phase boundary methods
-# =============================================================================
-def threshold_demo():
-    mu_t = np.gradient(LN_CURVE, T)
-    i = int(np.argmax(mu_t))
-    mu_max = mu_t[i]
-    frac = 0.5
-    above = np.where(mu_t >= frac * mu_max)[0]
-    t0, t1 = T[above[0]], T[above[-1]]
-    fig, ax = schematic_axes(ylabel=r"Specific growth rate  $\mu$")
-    ax.set_xlim(-0.5, 25)
-    ax.set_ylim(-0.04, 1.2 * mu_max)
-    phase_wash(ax, t0, t1)
-    hline(ax, mu_max)
-    hline(ax, frac * mu_max)
-    ax.plot(T, mu_t, color=CURVE, lw=3, zorder=4)
-    dot(ax, T[i], mu_max)
-    dot(ax, t0, frac * mu_max, color=INK_2, size=9)
-    dot(ax, t1, frac * mu_max, color=INK_2, size=9)
-    label(ax, MU, xy=(T[i], mu_max), xytext=(T[i] + 6, 1.1 * mu_max), rad=0.2)
-    label(
-        ax,
-        "cutoff × " + MU + "\n(lag / exponential phase cutoff)",
-        xy=(21.5, frac * mu_max),
-        xytext=(19, 0.34 * mu_max),
-        rad=0.0,
-    )
-    ax.text(0.5 * (t0 + t1), 0.12 * mu_max, "Exponential phase", ha="center",
-            fontsize=FS_LABEL, color=INK)
-    label(
-        ax,
-        "Phase boundaries: where μ\ncrosses the cutoff",
-        xy=(t1, frac * mu_max),
-        xytext=(18.3, 0.78 * mu_max),
-        rad=0.15,
-        arrow=True,
-    )
-    save(fig, "threshold_demo")
-
-
-def tangent_demo():
-    y = LN_CURVE
-    i = max_slope(T, y)
-    mu_max = np.gradient(y, T)[i]
-    base, top = y.min(), y.max()
-    t0 = T[i] + (base - y[i]) / mu_max
-    t1 = T[i] + (top - y[i]) / mu_max
-    fig, ax = schematic_axes()
-    ax.set_xlim(-0.5, 25)
-    ax.set_ylim(base - 0.35, top + 0.5)
-    phase_wash(ax, t0, t1)
-    hline(ax, base)
-    hline(ax, top)
-    tt = np.linspace(t0, t1, 10)
-    ax.plot(tt, y[i] + mu_max * (tt - T[i]), color=ACCENT, lw=2.5, zorder=5)
-    ax.plot(T, y, color=CURVE, lw=3, zorder=4)
-    dot(ax, T[i], y[i])
-    dot(ax, t0, base, color=INK_2, size=9)
-    dot(ax, t1, top, color=INK_2, size=9)
-    label(ax, "Max OD", xy=(21.5, top), xytext=(21.5, top - 0.6), rad=0)
-    label(ax, "Baseline OD", xy=(21.5, base), xytext=(21.5, base + 0.6), rad=0)
-    label(ax, f"Tangent at {MU}", xy=(T[i], y[i]), xytext=(T[i] + 5.5, y[i] - 0.9), rad=-0.25)
-    label(
-        ax,
-        "Phase boundaries: where the\ntangent meets baseline and max OD",
-        xy=(t1, top),
-        xytext=(16.8, top - 1.9),
-        rad=0.25,
-    )
-    ax.text(0.5 * (t0 + t1), top + 0.22, "Exponential phase", ha="center",
-            fontsize=FS_LABEL, color=INK)
-    save(fig, "tangent_demo")
+    _model_figure("phenom_gompertz_modified", tm, ln_n, top=ln_n.max(), extra=second_phase,
+                  pos={"max": (0.72, 0.95), "end": (0.61, 0.74)}, **common)
 
 
 def annotations():
@@ -540,23 +474,47 @@ def naming_upload():
 
 
 def naming_convention():
-    fig = plt.figure(figsize=(10, 5.5))
-    # Name split into its two parts
-    top = fig.add_axes([0, 0.74, 1, 0.26])
+    fig = plt.figure(figsize=(10, 6.0))
+    # A sample name, as typed in the plate map, split at its first underscore
+    top = fig.add_axes([0, 0.6, 1, 0.4])
     top.set_xlim(0, 10)
     top.set_ylim(0, 1)
     top.axis("off")
-    parts = [("Strain1", 3.05, CURVE), ("_", 4.32, None), ("Condition1", 5.75, INK_2)]
-    for text, x, ec in parts:
-        if ec is None:
-            top.text(x, 0.62, text, ha="center", va="center", fontsize=24, color=INK)
-            continue
-        top.text(x, 0.62, text, ha="center", va="center", fontsize=24, color=INK, weight="bold",
-                 bbox=dict(boxstyle="round,pad=0.35,rounding_size=0.4", fc="white", ec=ec, lw=2.2))
-    top.text(3.05, 0.12, "strain → bar colour (legend)", ha="center", fontsize=FS_LABEL, color=INK_2)
-    top.text(5.75, 0.12, "condition → x-axis group", ha="center", fontsize=FS_LABEL, color=INK_2)
+    name, sep = "Strain1_Condition1", "Strain1_Condition1".index("_")
+    y_txt = 0.56
+    txt = top.text(5.4, y_txt, name, ha="center", va="center", fontsize=26, color=INK,
+                   fontfamily="Menlo", zorder=3)
+    fig.canvas.draw()
+    inv = top.transData.inverted()
+    x0, x1 = (inv.transform(p)[0] for p in txt.get_window_extent().get_points())
+    char = (x1 - x0) / len(name)  # monospace: every character has the same width
+    split = x0 + sep * char
 
-    ax = fig.add_axes([0.12, 0.1, 0.78, 0.58])
+    # Spreadsheet-style cell holding the name, with a field label to its left
+    pad, cell_lo, cell_hi = 0.3, y_txt - 0.14, y_txt + 0.14
+    top.add_patch(Rectangle((x0 - pad, cell_lo), x1 - x0 + 2 * pad, cell_hi - cell_lo,
+                            fc="white", ec=GRID, lw=1.2))
+    top.text(x0 - pad - 0.2, y_txt, "Sample name", ha="right", va="center", fontsize=FS_LABEL,
+             weight="bold", color=INK)
+    top.add_patch(Rectangle((split, cell_lo + 0.03), char, cell_hi - cell_lo - 0.06,
+                            fc=ACCENT, alpha=0.18, lw=0, zorder=2))
+    label(top, "split at the first underscore", xy=(split + char / 2, cell_hi - 0.01),
+          xytext=(split + char / 2 + 2.4, 0.93), rad=0.25)
+
+    # Brackets under each part, labelled with what it becomes in plots
+    yb = cell_lo - 0.06
+    for a, b, color, text in (
+        (x0, split, CURVE, "strain\n→ bar colour (legend)"),
+        (split + char, x1, INK_2, "condition\n→ x-axis group"),
+    ):
+        a, b = a + 0.04, b - 0.04
+        top.plot([a, a, b, b], [yb + 0.04, yb, yb, yb + 0.04], color=color, lw=2,
+                 solid_capstyle="round", solid_joinstyle="round")
+        top.plot([(a + b) / 2] * 2, [yb, yb - 0.05], color=color, lw=2, solid_capstyle="round")
+        top.text((a + b) / 2, yb - 0.08, text, ha="center", va="top", fontsize=FS_LABEL,
+                 color=INK, linespacing=1.3)
+
+    ax = fig.add_axes([0.12, 0.08, 0.78, 0.47])
     conds = ["Condition1", "Condition2", "Condition3"]
     # Three replicates per sample; bars are their mean, error bars their SD
     reps1 = np.array([[0.47, 0.55, 0.62], [0.99, 0.91, 0.84], [0.72, 0.80, 0.86]])
@@ -627,8 +585,6 @@ if __name__ == "__main__":
     spline()
     mech_models()
     phenom_models()
-    threshold_demo()
-    tangent_demo()
     annotations()
     data_upload()
     naming_upload()
