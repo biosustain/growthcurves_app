@@ -91,7 +91,7 @@ def _format_analysis_params_table(
     # Use stored custom params if present, otherwise fall back to plate defaults
     analysis_params = gs.get("_analysis_params") or {}
     used_fit_times = gs.get("_used_fit_times")
-    growth_method = plate_params.get("growth_method", "Spline")
+    growth_method = plate_params.get("growth_method", "Sliding Window")
 
     n_selected = len(used_fit_times) if used_fit_times else n_total
     total_str = str(n_total) if n_total is not None else "?"
@@ -109,7 +109,7 @@ def _format_analysis_params_table(
     method_params = []
     if growth_method == "Sliding Window":
         method_params = [
-            ("window_points", "Window size (points)", lambda x: str(int(x)))
+            ("window_points", "Minimum window size (points)", lambda x: str(int(x)))
         ]
     elif growth_method == "Spline":
         method_params = [("smooth", "Spline mode", lambda v: str(v).capitalize())]
@@ -166,7 +166,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
     growth_stats = (plate.get("growth_stats") or {}).setdefault(well, {})
     plate_params = (plate or {}).get("params") or {}
-    growth_method = plate_params.get("growth_method", "Spline")
+    growth_method = plate_params.get("growth_method", "Sliding Window")
 
     ss_key = f"phase__{key}"
     maxod_key = f"maxod__{key}"
@@ -215,17 +215,8 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             plate_params.get("min_signal_to_noise", 1.0)
         )
         st.session_state[_rp_min_dp_key] = int(plate_params.get("min_data_points", 5))
-        st.session_state[_rp_window_key] = int(plate_params.get("window_points", 15))
-        smooth_default = (
-            str(plate_params.get("smooth", plate_params.get("spline_s", "fast")))
-            .strip()
-            .lower()
-        )
-        st.session_state[_rp_smooth_key] = (
-            "slow"
-            if smooth_default == "auto"
-            else smooth_default if smooth_default in {"fast", "slow"} else "fast"
-        )
+        st.session_state[_rp_window_key] = int(plate_params.get("window_points", 5))
+        st.session_state[_rp_smooth_key] = "auto"
         st.session_state[_rp_spline_s_key] = None
 
     # Initialise re-analysis params the first time this well is shown
@@ -312,17 +303,17 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         if growth_method == "Sliding Window":
             params_override["window_points"] = int(
                 st.session_state.get(
-                    _rp_window_key, plate_params.get("window_points", 15)
+                    _rp_window_key, plate_params.get("window_points", 5)
                 )
             )
         elif growth_method == "Spline":
-            smooth_mode = st.session_state.get(_rp_smooth_key, "fast")
+            smooth_mode = st.session_state.get(_rp_smooth_key, "auto")
             if smooth_mode == "manual":
                 params_override["smooth"] = float(
                     st.session_state.get(_rp_spline_s_key) or 0.0
                 )
             else:
-                params_override["smooth"] = smooth_mode
+                params_override["smooth"] = "auto"
 
         effective_p = dict(plate_params)
         effective_p.update(params_override)
@@ -365,18 +356,9 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         if growth_method == "Sliding Window":
             analysis_params["window_points"] = effective_p.get("window_points")
         elif growth_method == "Spline":
-            _sv = (
-                str(
-                    growth_stats.get(
-                        "smooth",
-                        effective_p.get("smooth", effective_p.get("spline_s", "fast")),
-                    )
-                )
-                .strip()
-                .lower()
-            )
+            _sv = growth_stats.get("smooth", effective_p.get("smooth", "auto"))
             analysis_params["smooth"] = (
-                "slow" if _sv == "auto" else _sv if _sv in {"fast", "slow"} else "fast"
+                _sv if isinstance(_sv, (int, float)) and _sv > 0 else "auto"
             )
         growth_stats["_analysis_params"] = analysis_params
 
@@ -460,22 +442,21 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             )
             if growth_method == "Sliding Window":
                 st.number_input(
-                    "Window size (points)",
+                    "Minimum window size (points)",
                     min_value=3,
                     step=1,
                     key=_rp_window_key,
-                    help="Number of data points in each sliding window used to estimate growth rate.",
+                    help="Minimum number of data points per sliding window; the window length adapts to the noise in the data.",
                 )
             elif growth_method == "Spline":
                 st.radio(
                     "Spline fitting mode",
-                    options=["fast", "slow", "manual"],
+                    options=["auto", "manual"],
                     key=_rp_smooth_key,
                     horizontal=True,
                     format_func=lambda v: v.capitalize(),
                     help=(
-                        "Fast uses auto-default smoothing with OD weights. "
-                        "Slow uses weighted GCV smoothing and is typically slower. "
+                        "Auto chooses the smoothing by REML. "
                         "Manual lets you set the smoothing factor (λ) directly."
                     ),
                 )
@@ -488,8 +469,9 @@ def _phase_controls(plate: dict, well: str, *, key: str):
                         format="%.4f",
                         key=_rp_spline_s_key,
                         help=(
-                            "Spline smoothing factor λ. "
-                            "Larger values produce a smoother (less wiggly) spline."
+                            "Spline smoothing factor λ, relative to the data. "
+                            "Larger values produce a smoother (less wiggly) spline. "
+                            "0 uses Auto."
                         ),
                     )
             btn_col, restore_col = st.columns(2)

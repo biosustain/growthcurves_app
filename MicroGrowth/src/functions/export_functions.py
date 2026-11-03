@@ -110,7 +110,7 @@ def _analysis_params_df(p: dict) -> pd.DataFrame:
         "model_family": "Parametric model type",
         "model_type": "Growth model",
         "phase_boundary_method": "Phase boundary calculation",
-        "window_points": "Window size (points)",
+        "window_points": "Minimum window size (points)",
         "lag_cutoff": "Lag phase cutoff (fraction of μ_max)",
         "exp_cutoff": "Exponential phase cutoff (fraction of μ_max)",
         "min_data_points": "Minimum data points",

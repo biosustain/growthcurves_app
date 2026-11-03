@@ -693,7 +693,7 @@ def _get_model_display_name(model_code: str) -> str:
 
 def _ui_model_selection(params0: dict):
     """Render model family and growth method selection UI."""
-    stored_method = params0.get("growth_method", "Spline")
+    stored_method = params0.get("growth_method", "Sliding Window")
     stored_model_family = params0.get("model_family", "mechanistic")
     stored_model_type = params0.get("model_type", "mech_logistic")
 
@@ -788,39 +788,20 @@ def _ui_model_selection(params0: dict):
 
 def ui_model_params(growth_method: str, params0: dict, step4_prev: dict, param_col):
     """Render method-specific parameters (window size or spline mode)."""
-    smooth_default = (
-        str(step4_prev.get("smooth", params0.get("smooth", "fast"))).strip().lower()
-    )
-    if smooth_default not in {"fast", "slow"}:
-        smooth_default = "fast"
+    smooth = "auto"
 
     with param_col:
         if growth_method == "Sliding Window":
             window_points = st.number_input(
-                "Window size (points)",
+                "Minimum window size (points)",
                 5,
                 200,
                 int(params0["window_points"]),
                 1,
-                help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
+                help="Minimum number of consecutive data points per sliding window; the window length adapts to the noise in the data",
             )
-            smooth = smooth_default
-        elif growth_method == "Spline":
+        else:  # Spline or Model Fitting
             window_points = int(params0["window_points"])
-            smooth = st.radio(
-                "Spline fitting mode",
-                options=["fast", "slow"],
-                index=0 if smooth_default == "fast" else 1,
-                horizontal=True,
-                format_func=lambda v: v.capitalize(),
-                help=(
-                    "Fast uses auto-default smoothing with OD weights. "
-                    "Slow uses weighted GCV smoothing and is typically slower."
-                ),
-            )
-        else:  # Model Fitting
-            window_points = int(params0["window_points"])
-            smooth = smooth_default
 
     return window_points, smooth
 

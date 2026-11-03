@@ -16,14 +16,8 @@ from growthcurves.inference import (
 )
 from growthcurves.models import (
     MODEL_REGISTRY,
-    mech_baranyi_model,
-    mech_gompertz_model,
-    mech_logistic_model,
-    mech_richards_model,
-    phenom_gompertz_model,
-    phenom_gompertz_modified_model,
-    phenom_logistic_model,
-    phenom_richards_model,
+    evaluate_parametric_model,
+    log_to_linear,
     spline_from_params,
 )
 from plotly.subplots import make_subplots
@@ -1163,33 +1157,16 @@ def plot_derivative_metric(
                 MODEL_REGISTRY["mechanistic"] + MODEL_REGISTRY["phenomenological"]
             ):
                 # For parametric models, compute metric from the model
-                model_func = {
-                    "mech_logistic": mech_logistic_model,
-                    "mech_gompertz": mech_gompertz_model,
-                    "mech_richards": mech_richards_model,
-                    "mech_baranyi": mech_baranyi_model,
-                    "phenom_logistic": phenom_logistic_model,
-                    "phenom_gompertz": phenom_gompertz_model,
-                    "phenom_gompertz_modified": phenom_gompertz_modified_model,
-                    "phenom_richards": phenom_richards_model,
-                }.get(model_type)
+                y_model = evaluate_parametric_model(t_model, model_type, params)
+                # Phenomenological models return ln(N/N0), so convert to OD
+                if model_type in MODEL_REGISTRY["phenomenological"]:
+                    y_model = log_to_linear(y_model, params["N0"])
 
-                if model_func is not None:
-                    # Handle parameter name mismatches and filter metadata
-                    model_params = params.copy()
-                    if "mu_max_param" in model_params:
-                        model_params["mu_max"] = model_params.pop("mu_max_param")
-                    model_params.pop("fit_t_min", None)
-                    model_params.pop("fit_t_max", None)
-
-                    # Evaluate the model on fitted range
-                    y_model = model_func(t_model, **model_params)
-
-                    # Compute metric from model
-                    if metric == "dndt":
-                        _, metric_model = compute_first_derivative(t_model, y_model)
-                    else:  # mu
-                        _, metric_model = compute_instantaneous_mu(t_model, y_model)
+                # Compute metric from model
+                if metric == "dndt":
+                    _, metric_model = compute_first_derivative(t_model, y_model)
+                else:  # mu
+                    _, metric_model = compute_instantaneous_mu(t_model, y_model)
 
             elif model_type == "spline":
                 # For spline model, reconstruct the spline and evaluate
