@@ -103,7 +103,7 @@ def ui_method_visualization(growth_method: str, model_type: str = None):
         "Parameters: N₀ = initial OD (fitted), A = maximum increase in ln(N) (amplitude), "
         "μ_max = maximum specific growth rate (h⁻¹), λ = lag time (h)"
     )
-    if "logistic" in str(model_type):
+    if model_type == "phenom_logistic":
         st.markdown("**Logistic** (Currently Selected)")
         _equation(
             r"\ln N(t) = \ln N_0 + \frac{A}{1+\exp\!\left(\frac{4\mu_{\max}}{A}(\lambda-t)+2\right)}"
@@ -114,8 +114,8 @@ def ui_method_visualization(growth_method: str, model_type: str = None):
             + ". "
             + figure_note
         )
-    elif "gompertz" in str(model_type):
-        if "modified" in str(model_type):
+    elif model_type in ("phenom_gompertz", "phenom_gompertz_modified"):
+        if model_type == "phenom_gompertz_modified":
             st.markdown("**Modified Gompertz** (Currently Selected)")
             _equation(
                 r"\ln N(t) = \ln N_0 + A\exp\!\left[-\exp\!\left(\frac{\mu_{\max}\,e\,(\lambda-t)}{A}+1\right)\right]+A\exp\!\left(\alpha(t-t_{\mathrm{shift}})\right)"
@@ -133,7 +133,7 @@ def ui_method_visualization(growth_method: str, model_type: str = None):
                 r"\ln N(t) = \ln N_0 + A\exp\!\left[-\exp\!\left(\frac{\mu_{\max}\,e\,(\lambda-t)}{A}+1\right)\right]"
             )
             st.caption("Gompertz asymmetric S-curve. " + phenom_params + ". " + figure_note)
-    elif "richards" in str(model_type):
+    elif model_type == "phenom_richards":
         st.markdown("**Richards** (Currently Selected)")
         _equation(
             r"\ln N(t) = \ln N_0 + A\left(1+\nu\exp\!\left(1+\nu+\frac{\mu_{\max}(1+\nu)^{1+1/\nu}(\lambda-t)}{A}\right)\right)^{-1/\nu}"

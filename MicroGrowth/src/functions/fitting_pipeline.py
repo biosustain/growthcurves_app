@@ -72,8 +72,6 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
                 y_arr,
                 phase_boundary_method=phase_boundary_method,
             )
-            actual_params = fit_result.get("params") or {}
-            fit["spline_s"] = actual_params.get("spline_s")
             fit["smooth"] = smooth
         else:
             fit = bad_fit_stats()

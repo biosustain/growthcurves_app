@@ -30,7 +30,7 @@ def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
 
     # Define metrics to display with nice labels and formatting
     metrics = [
-        ("fit_method", "Fit Method", lambda x: str(x) if x else "sliding_window"),
+        ("fit_method", "Fit Method", lambda x: str(x) if x else "--"),
         ("model_rmse", "RMSE", lambda x: f"{float(x):.5f}" if pd.notna(x) else "--"),
         ("max_od", "Maximum OD", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
         (
@@ -126,8 +126,6 @@ def _format_analysis_params_table(
                 value = gs.get("smooth")
             if value is None:
                 value = plate_params.get(param_name)
-            if value is None:
-                value = plate_params.get("spline_s")
         else:
             value = (
                 analysis_params.get(param_name)
