@@ -153,6 +153,106 @@ def convert_hours_to_unit(hours: float | np.ndarray, time_unit: str = "hours"):
         return hours
 
 
+# --- info-plot style ----------------------------------------------------------
+# Palette of the explanatory figures (info_plots/make_info_plots.py).
+INFO_INK = "#262730"
+INFO_INK_2 = "#5F6368"
+INFO_AXIS = "#9AA0A6"
+INFO_REF = "#6B7280"
+INFO_CURVE = "#2B7BB9"
+INFO_ACCENT = "#E4572E"
+INFO_PHASE = "#66BB6A"
+INFO_POINTS = "#A7ADB4"
+INFO_FADED = "#D9DCE1"
+
+# Sample colours, led by a soft version of the app's green; fixed order,
+# validated for colour-blind separation on white and the grey cards. Some sit
+# just under 3:1 contrast, so multi-sample plots rely on their legend.
+APP_PALETTE = [
+    "#66A86B",  # green (app primary family)
+    "#5B8FC7",  # blue
+    "#E07B5F",  # coral
+    "#8C7BD1",  # lavender
+    "#22A6A8",  # teal
+    "#D19A3C",  # amber
+    "#D57A9C",  # rose
+]
+
+# Trace name -> (colour, line width or marker size)
+_INFO_TRACES = {
+    "Fitted curve": (INFO_CURVE, 3),
+    "umax tangent": (INFO_ACCENT, 2),
+    "Raw": (INFO_FADED, 3),
+    "Smoothed": (INFO_INK_2, 3),
+    "Fitted": (INFO_CURVE, 3),
+}
+
+
+def style_like_info_plots(fig: go.Figure, fit_window=None) -> go.Figure:
+    """Restyle a single-well plot to match the explanatory figures on the Upload
+    page: their palette for the traces, plus style_info_axes.
+
+    As in the sliding-window figure, points used in the fit (lasso-selected and
+    inside fit_window, a (t_min, t_max) pair) are dark grey; all others are light grey.
+    """
+    for tr in fig.data:
+        if tr.name == "Data":  # every point; shows grey where not used
+            tr.marker.update(color=INFO_POINTS, size=6, opacity=1)
+        elif tr.name == "Selected":
+            t0, t1 = (np.nan if v is None else float(v) for v in fit_window or (None, None))
+            x = np.asarray(tr.x, dtype=float)
+            used = (x >= t0) & (x <= t1)
+            tr.update(x=x[used], y=np.asarray(tr.y, dtype=float)[used])
+            tr.marker.update(color=INFO_INK_2, size=7, line=dict(width=0))
+        elif tr.name in _INFO_TRACES:
+            color, width = _INFO_TRACES[tr.name]
+            if tr.mode == "markers":
+                tr.marker.color = color
+            else:
+                tr.line.color = color
+                tr.line.width = width
+        elif tr.mode == "markers":  # μmax marker
+            tr.marker.update(color=INFO_ACCENT, line=dict(color="white", width=2))
+    for s in fig.layout.shapes:  # below the traces, so the fit line stays on top
+        if s.type == "rect":  # exponential phase
+            s.update(fillcolor=INFO_PHASE, opacity=0.13, layer="below")
+        else:  # reference lines
+            s.update(line_color=INFO_REF, line_dash="dash", opacity=1, layer="below")
+    # Draw order: grey points, used points, other lines, fit line, μmax marker
+    rank = {"Data": 0, "Selected": 1, "Fitted curve": 3, "Fitted": 3}
+    fig.data = sorted(
+        fig.data, key=lambda tr: rank.get(tr.name, 2 if tr.mode == "lines" else 4)
+    )
+    return style_info_axes(fig)
+
+
+def style_info_axes(fig: go.Figure) -> go.Figure:
+    """Transparent background and grey axis lines, as in the explanatory figures.
+
+    Leaves trace colours alone, so per-sample colours are kept.
+    """
+    axis = dict(
+        showline=True,
+        linecolor=INFO_AXIS,
+        linewidth=1.5,
+        showgrid=False,
+        zeroline=False,
+        ticks="",
+        tickfont=dict(color=INFO_INK_2),
+        title_font=dict(size=16, color=INFO_INK),
+    )
+    fig.update_xaxes(**axis)
+    fig.update_yaxes(**axis)
+    fig.update_layout(
+        font=dict(family="Arial, sans-serif", color=INFO_INK_2),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    if fig.layout.title.text:
+        fig.update_layout(title_font=dict(color=INFO_INK))
+    return fig
+
+
 # --- helpers ------------------------------------------------------------------
 def _finite_sorted_xy(time_s, y_s):
     """Return finite x/y arrays sorted by x."""
@@ -326,7 +426,7 @@ def _order_and_colors(d: pd.DataFrame, sample_order: list[str] | None):
     ordered = list(dict.fromkeys([n for n in (sample_order or []) if n]))
     seen = list(pd.unique(d["Sample Name"]))
     names = ordered + [n for n in seen if n not in ordered]
-    palette = px.colors.qualitative.Plotly
+    palette = APP_PALETTE
     color_map = {n: palette[i % len(palette)] for i, n in enumerate(names)}
     return names, color_map
 
@@ -684,7 +784,7 @@ def plot_single_growth_stat(
             if gs not in groups:
                 groups.append(gs)
 
-        base_colors = px.colors.qualitative.Plotly
+        base_colors = APP_PALETTE
         color_map = {g: base_colors[i % len(base_colors)] for i, g in enumerate(groups)}
 
     # ---- aggregate ----
@@ -708,11 +808,11 @@ def plot_single_growth_stat(
             go.Bar(
                 x=agg["_x"],
                 y=agg["mean"],
-                error_y=dict(type="data", array=agg["sd"], visible=True),
+                error_y=dict(type="data", array=agg["sd"], visible=True, color=INFO_INK),
                 name="",
                 showlegend=False,
                 hovertemplate=f"{x_col}=%{{x}}<br>Mean=%{{y:.4f}}<extra></extra>",
-                marker=dict(line=dict(color="black", width=1.5)),
+                marker=dict(color=APP_PALETTE[0], line=dict(color=INFO_INK, width=1)),
             )
         )
 
@@ -727,7 +827,7 @@ def plot_single_growth_stat(
                 pointpos=0,
                 fillcolor="rgba(0,0,0,0)",
                 line=dict(width=0),
-                marker=dict(size=6, opacity=0.8),
+                marker=dict(color=INFO_INK, size=6, opacity=0.6),
                 text=(df["plate"].astype(str) + " " + df["well"].astype(str)).tolist(),
                 hovertemplate="Well=%{text}<br>Value=%{y:.4f}<extra></extra>",
             )
@@ -744,7 +844,9 @@ def plot_single_growth_stat(
                 go.Bar(
                     x=a_g["_x"],
                     y=a_g["mean"],
-                    error_y=dict(type="data", array=a_g["sd"], visible=True),
+                    error_y=dict(
+                        type="data", array=a_g["sd"], visible=True, color=INFO_INK
+                    ),
                     name=g,
                     legendgroup=g,
                     offsetgroup=g,
@@ -756,7 +858,7 @@ def plot_single_growth_stat(
                     ),
                     marker=dict(
                         color=color_map[g],
-                        line=dict(color="black", width=1.5),
+                        line=dict(color=INFO_INK, width=1),
                     ),
                 )
             )
@@ -775,9 +877,9 @@ def plot_single_growth_stat(
                     fillcolor="rgba(0,0,0,0)",
                     line=dict(width=0),
                     marker=dict(
-                        color="black",
+                        color=INFO_INK,
                         size=6,
-                        opacity=0.8,
+                        opacity=0.6,
                     ),
                     text=(
                         p_g["plate"].astype(str) + " " + p_g["well"].astype(str)
@@ -793,7 +895,7 @@ def plot_single_growth_stat(
         categoryarray=list(x_order),
         title_text=x_col,
     )
-    fig.update_yaxes(showgrid=False, range=[0, None], title_text=y_axis_label)
+    fig.update_yaxes(showgrid=False, rangemode="nonnegative", title_text=y_axis_label)
 
     fig.update_layout(
         title=display_title,
@@ -1242,5 +1344,13 @@ def plot_derivative_metric(
         margin=dict(l=40, r=20, t=60, b=40),
     )
     fig.update_xaxes(showgrid=False, title=f"Time ({time_unit})", range=x_range)
-    fig.update_yaxes(showgrid=False, title=y_axis_title)
+    # y range from the smoothed curve, so raw-derivative spikes don't flatten it
+    finite = np.asarray(metric_smooth, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    y_range = None
+    if finite.size:
+        lo, hi = float(finite.min()), float(finite.max())
+        pad = 0.05 * (hi - lo) or 0.05 * abs(hi) or 0.05
+        y_range = [lo - pad, hi + pad]
+    fig.update_yaxes(showgrid=False, title=y_axis_title, range=y_range)
     return fig

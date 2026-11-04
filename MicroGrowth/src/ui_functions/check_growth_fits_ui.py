@@ -17,7 +17,11 @@ from src.functions.check_growth_fits import (
     update_growth_stats_from_lasso,
 )
 from src.functions.common import toast_once
-from src.functions.plotting_functions import _finite_sorted_xy, plot_derivative_metric
+from src.functions.plotting_functions import (
+    _finite_sorted_xy,
+    plot_derivative_metric,
+    style_like_info_plots,
+)
 
 
 def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
@@ -766,25 +770,29 @@ def ui_window_fits_well_editor(plates: dict):
                 uirevision="keep",
                 dragmode="lasso",
                 showlegend=False,
-                plot_bgcolor="white",
-                paper_bgcolor="white",
-                margin=dict(l=20, r=20, t=20, b=20),
+                title=f"Fitted growth curve – {well}",
+                margin=dict(l=20, r=20, t=60, b=20),
                 height=600,
+            )
+            style_like_info_plots(
+                fig_main, fit_window=(gs.get("fit_t_min"), gs.get("fit_t_max"))
             )
         else:
             fig_main = go.Figure()
     else:
         fig_main = go.Figure()
 
-    st.plotly_chart(
-        fig_main,
-        key=chart_key,
-        selection_mode="lasso",
-        on_select=lambda: update_growth_stats_from_lasso(
-            plates, plate_id, well, chart_key
-        ),
-        width="stretch",
-    )
+    # Grey cards with transparent plot backgrounds, as on the Upload & Analyse page
+    with st.container(border=True, key="card_check_growth_fits_3"):
+        st.plotly_chart(
+            fig_main,
+            key=chart_key,
+            selection_mode="lasso",
+            on_select=lambda: update_growth_stats_from_lasso(
+                plates, plate_id, well, chart_key
+            ),
+            width="stretch",
+        )
 
     # Show derivative plots
     fig_dndt = plot_derivative_metric(
@@ -793,5 +801,7 @@ def ui_window_fits_well_editor(plates: dict):
     fig_mu = plot_derivative_metric(
         plate, well, metric="mu", sg_window=sg_w, sg_poly=sg_p, gs=gs
     )
-    st.plotly_chart(fig_dndt, width="stretch")
-    st.plotly_chart(fig_mu, width="stretch")
+    for i, fig in enumerate((fig_dndt, fig_mu), start=4):
+        style_like_info_plots(fig)
+        with st.container(border=True, key=f"card_check_growth_fits_{i}"):
+            st.plotly_chart(fig, width="stretch")

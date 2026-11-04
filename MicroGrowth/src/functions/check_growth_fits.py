@@ -136,6 +136,7 @@ def _add_lasso_selected_points(
             x=t_sel,
             y=y_plot,
             mode="markers",
+            name="Selected",
             marker=dict(size=8, color="#ef5350", symbol="circle"),
             showlegend=False,
         ),
