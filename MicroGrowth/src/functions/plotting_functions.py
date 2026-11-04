@@ -25,10 +25,8 @@ from src.functions.common import _iter_wells
 from src.functions.constants import ALL_WELLS
 
 # --- fit-quality outlines -----------------------------------------------------
-# Log-space fits report model_rmse as a relative error already; parametric fits
-# report it in OD units, so those are divided by the growth amplitude first.
+# model_rmse is in OD units, so it is divided by the growth amplitude first.
 RMSE_THRESHOLD = 0.05
-LOG_SPACE_FITS = ("spline", "sliding_window")
 
 FIT_COLOR_PASS = "rgb(76, 175, 80)"
 FIT_COLOR_FAIL = "rgb(211, 47, 47)"
@@ -46,16 +44,15 @@ def fit_quality_color(gs: dict | None) -> str:
         return FIT_COLOR_NONE
     rmse = float(rmse)
 
-    if not any(k in (gs.get("fit_method") or "") for k in LOG_SPACE_FITS):
-        max_od, n0 = gs.get("max_od"), gs.get("N0")
-        if max_od is None or n0 is None:
-            return FIT_COLOR_NONE
-        if not (np.isfinite(max_od) and np.isfinite(n0)):
-            return FIT_COLOR_NONE
-        amplitude = float(max_od) - float(n0)
-        if amplitude <= 0:
-            return FIT_COLOR_NONE
-        rmse /= amplitude
+    max_od, n0 = gs.get("max_od"), gs.get("N0")
+    if max_od is None or n0 is None:
+        return FIT_COLOR_NONE
+    if not (np.isfinite(max_od) and np.isfinite(n0)):
+        return FIT_COLOR_NONE
+    amplitude = float(max_od) - float(n0)
+    if amplitude <= 0:
+        return FIT_COLOR_NONE
+    rmse /= amplitude
 
     return FIT_COLOR_PASS if rmse <= RMSE_THRESHOLD else FIT_COLOR_FAIL
 

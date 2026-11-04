@@ -854,7 +854,6 @@ def ui_calculation_table(
     growth_method: str,
     model_type: str,
     model_family: str,
-    window_points: int,
 ):
     """Render the growth parameter calculations table."""
     if growth_method == "Model Fitting":
@@ -865,10 +864,10 @@ def ui_calculation_table(
         max_od_calc = "Maximum raw OD"
         if growth_method == "Sliding Window":
             mu_max_calc = "b"
-            model_rmse_calc = f"RMSE over {window_points} point sliding-window"
+            model_rmse_calc = "RMSE (OD) of the μ<sub>max</sub> window line"
         else:
             mu_max_calc = "Max spline derivative"
-            model_rmse_calc = "RMSE over spline fit window (log phase)"
+            model_rmse_calc = "RMSE (OD) over the spline fit range"
 
     if growth_method == "Model Fitting" and model_family == "mechanistic":
         intrinsic_calc = "Fitted intrinsic μ"
@@ -1017,12 +1016,7 @@ def ui_analysis_params(ss):
     with st.container(border=True, key="card_uploads_6"):
         st.header("Step 4. Click analyse")
 
-        ui_calculation_table(
-            growth_method,
-            model_type,
-            model_family,
-            window_points,
-        )
+        ui_calculation_table(growth_method, model_type, model_family)
 
         st.write("")
         clicked = st.button(
