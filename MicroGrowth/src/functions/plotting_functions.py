@@ -34,8 +34,8 @@ FIT_COLOR_NONE = "rgb(204, 204, 204)"
 SUBPLOT_BOX_COLOR = "rgb(204, 204, 204)"
 
 
-def fit_quality_color(gs: dict | None) -> str:
-    """Green if the well's fit meets RMSE_THRESHOLD, red if not, grey if unfitted."""
+def fit_quality_color(gs: dict | None, threshold: float = RMSE_THRESHOLD) -> str:
+    """Green if the well's fit meets threshold, red if not, grey if unfitted."""
     if not gs or is_no_growth(gs):
         return FIT_COLOR_NONE
 
@@ -54,7 +54,7 @@ def fit_quality_color(gs: dict | None) -> str:
         return FIT_COLOR_NONE
     rmse /= amplitude
 
-    return FIT_COLOR_PASS if rmse <= RMSE_THRESHOLD else FIT_COLOR_FAIL
+    return FIT_COLOR_PASS if rmse <= threshold else FIT_COLOR_FAIL
 
 
 def _axis_suffix(i: int) -> str:
@@ -842,6 +842,9 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
     proc = plate.get("processed_data") or {}
     gs_all = plate.get("growth_stats") or {}
     fit_params = plate.get("fit_parameters") or {}
+    threshold = float(
+        (plate.get("params") or {}).get("rmse_threshold", RMSE_THRESHOLD)
+    )
 
     fig = make_subplots(
         rows=8,
@@ -888,7 +891,7 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
 
         # Box first so empty wells are outlined too.
         empty = d is None or d.empty
-        box, label = _well_box(fig, i, well, fit_quality_color(gs), muted=empty)
+        box, label = _well_box(fig, i, well, fit_quality_color(gs, threshold), muted=empty)
         shapes.append(box)
         labels.append(label)
 

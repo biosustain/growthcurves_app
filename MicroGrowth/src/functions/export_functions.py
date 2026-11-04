@@ -114,6 +114,7 @@ def _analysis_params_df(p: dict) -> pd.DataFrame:
         "window_points": "Minimum window size (points)",
         "min_data_points": "Minimum data points",
         "min_signal_to_noise": "Minimum signal-to-noise ratio",
+        "rmse_threshold": "Fit flag threshold (RMSE / OD increase)",
     }
 
     for key, label in param_mapping.items():
