@@ -140,6 +140,29 @@ def plate_table_style():
     )
 
 
+# makes the Delete plate button as tall as the plate name box beside it
+def plate_title_row_style():
+    return st.markdown(
+        """
+        <style>
+        .st-key-plate_title_row [data-testid="stHorizontalBlock"] {
+            align-items: stretch;
+        }
+        .st-key-plate_title_row [data-testid="stColumn"] > [data-testid="stVerticalBlock"],
+        .st-key-delete_plate,
+        .st-key-delete_plate .stButton,
+        .st-key-delete_plate .stButton > div,
+        .st-key-delete_plate .stTooltipIcon,
+        .st-key-delete_plate .stTooltipHoverTarget,
+        .st-key-delete_plate button {
+            height: 100%;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # styles growth parameter calculations table
 def growth_param_table_style():
     return st.markdown(

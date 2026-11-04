@@ -19,7 +19,7 @@ from src.functions.upload_functions import (
     validate_long_plate_map_file,
     validate_plate_map_file,
 )
-from src.styling import growth_param_table_style
+from src.styling import growth_param_table_style, plate_title_row_style
 from src.ui_functions.blank_grouping_ui import (
     DEFAULT_GROUP,
     color_for_group,
@@ -451,8 +451,9 @@ def ui_preprocessing_params(ss):
         )
         with selector_col:
             plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
-        with plate_name_col:
-            title_col, delete_col = st.columns([4, 1], vertical_alignment="center")
+        with plate_name_col, st.container(key="plate_title_row"):
+            plate_title_row_style()
+            title_col, delete_col = st.columns([4, 1])
             with title_col:
                 # Escape Markdown so names such as example_data are shown literally
                 name = re.sub(r"([\\`*_{}\[\]()#+\-.!|~>])", r"\\\1", str(plate_id)) if plate_id else ""
@@ -463,6 +464,7 @@ def ui_preprocessing_params(ss):
             with delete_col:
                 if st.button(
                     "Delete",
+                    key="delete_plate",
                     type="tertiary",
                     width="stretch",
                     disabled=not plate_id,
@@ -700,7 +702,7 @@ def _ui_model_selection(params0: dict):
 
     st.caption("Select the model family and growth descriptor method:")
 
-    family_col, method_col, param_col = st.columns(3)
+    family_col, method_col, param_col = st.columns([0.8, 0.8, 1.4])
 
     # Determine default family index from stored state
     if stored_method in ["Sliding Window", "Spline"]:
@@ -809,7 +811,8 @@ def ui_model_params(growth_method: str, params0: dict, step4_prev: dict, param_c
             window_points = int(params0["window_points"])
 
         if growth_method == "Spline":
-            mode = st.radio(
+            mode_col, smooth_col = st.columns(2)
+            mode = mode_col.radio(
                 "Spline fitting mode",
                 options=["auto", "manual"],
                 index=1 if manual_smooth > 0 else 0,
@@ -821,7 +824,7 @@ def ui_model_params(growth_method: str, params0: dict, step4_prev: dict, param_c
                 ),
             )
             if mode == "manual":
-                smooth = st.number_input(
+                smooth = smooth_col.number_input(
                     "Smoothing factor (λ)",
                     min_value=0.0,
                     value=manual_smooth if manual_smooth > 0 else 1.0,
