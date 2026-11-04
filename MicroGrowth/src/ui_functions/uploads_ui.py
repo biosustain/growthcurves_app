@@ -951,6 +951,21 @@ def ui_calculation_table(
     )
 
 
+# Step 2 preprocessing params that belong to an individual plate; batch analysis
+# keeps each plate's stored values for these and shares everything else.
+_PLATE_SPECIFIC_KEYS = frozenset(
+    {
+        "time_unit",
+        "pathlength_cm_",
+        "clip_time_series",
+        "remove_wells",
+        "blank",
+        "blank_group_assignments",
+        "blank_wells",
+    }
+)
+
+
 @st.fragment
 def ui_analysis_params(ss):
     """Fragment for analysis parameters and the analyse button."""
@@ -973,7 +988,7 @@ def ui_analysis_params(ss):
     remove_wells = step3_params.get("remove_wells", False)
 
     with st.container(border=True, key="card_uploads_5"):
-        st.header("Step 3. Select the analysis parameters")
+        st.header("Step 3. Select the curve fitting parameters")
 
         # Two columns: model options | how the selected method calculates parameters
         model_col, help_col = st.columns(2, gap="large")
@@ -1077,12 +1092,49 @@ def ui_analysis_params(ss):
         ui_calculation_table(growth_method, model_type, model_family)
 
         st.write("")
-        clicked = st.button(
-            "Update parameters and analyse selected plate",
+        plate_label = (
+            re.sub(r"([\\`*_{}\[\]()#+\-.!|~>])", r"\\\1", str(plate_id))
+            if plate_id
+            else "selected plate"
+        )
+        analyse_col, batch_col = st.columns(2)
+        clicked = analyse_col.button(
+            f"Update parameters and analyse **{plate_label}**",
             type="primary",
             width="stretch",
             disabled=not plate_id,
         )
+        batch_clicked = batch_col.button(
+            "Batch analyse all plates",
+            type="secondary",
+            width="stretch",
+            disabled=not ss.get("plates"),
+            help="Step 2 settings are plate-specific; Step 3 settings apply to all plates.",
+        )
+        if batch_clicked:
+            shared = {k: v for k, v in params.items() if k not in _PLATE_SPECIFIC_KEYS}
+            targets = [pid for pid, r in ss.plates.items() if (r or {}).get("uploads")]
+            if not targets:
+                st.toast("No uploads found for any plate.", duration="infinite")
+            else:
+                progress = st.progress(0.0, text="Analysing plates...")
+                failed: list[str] = []
+                for i, pid in enumerate(targets):
+                    rec = ss.plates[pid]
+                    if pid == plate_id:
+                        rec["params"] = dict(params)
+                    else:
+                        rec["params"] = {**plate_params(ss, pid), **shared}
+                    progress.progress(i / len(targets), text=f"Analysing {pid}...")
+                    try:
+                        ss.plates[pid] = analyse_plate(rec)
+                    except Exception as e:  # keep going if one plate fails
+                        failed.append(f"{pid} ({e})")
+                progress.empty()
+                done = len(targets) - len(failed)
+                st.toast(f"Analysed {done}/{len(targets)} plates", duration="infinite")
+                if failed:
+                    st.error("Failed to analyse: " + "; ".join(failed))
         if clicked:
             rec = ss.plates.get(plate_id, {})
             if not rec.get("uploads"):
