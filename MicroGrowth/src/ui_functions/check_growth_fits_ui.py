@@ -17,6 +17,7 @@ from src.functions.check_growth_fits import (
     update_growth_stats_from_lasso,
 )
 from src.functions.common import toast_once
+from src.functions.constants import plate_format
 from src.functions.plotting_functions import (
     _finite_sorted_xy,
     plot_derivative_metric,
@@ -523,8 +524,8 @@ def ui_window_fits_well_editor(plates: dict):
     current_plate = plates.get(current_plate_id, {})
     processed_data = current_plate.get("processed_data") or {}
 
-    # Get available wells and sort them in A1-H12 order
-    all_standard_wells = [f"{r}{c}" for r in "ABCDEFGH" for c in range(1, 13)]
+    # Get available wells and sort them in plate order (A1, A2, ...)
+    all_standard_wells = list(plate_format(current_plate).wells)
     wells = [w for w in all_standard_wells if w in processed_data]
 
     # If no wells with data, fall back to standard ordering

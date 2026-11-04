@@ -1,4 +1,5 @@
 import streamlit as st
+from src.functions.constants import plate_format
 from src.functions.export_functions import build_export_zip
 from src.ui_functions.blank_grouping_ui import get_well_selector_wells, ui_well_selector
 
@@ -182,6 +183,7 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
                     available_wells = sorted(processed.keys())
                     wells_by_plate[pid] = ui_well_selector(
                         plate_id=pid,
+                        fmt=plate_format(plate_data),
                         available_wells=available_wells,
                         name_by_well=plate_data.get("name") or {},
                     )
@@ -189,11 +191,12 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
                     # otherwise fall back to all wells (plate never visited)
                     for other_pid in selected_plate_ids:
                         if other_pid not in wells_by_plate:
-                            other_processed = (plates.get(other_pid) or {}).get(
-                                "processed_data"
-                            ) or {}
+                            other_plate = plates.get(other_pid) or {}
+                            other_processed = other_plate.get("processed_data") or {}
                             available = sorted(other_processed.keys())
-                            stored = get_well_selector_wells(other_pid, available)
+                            stored = get_well_selector_wells(
+                                other_pid, available, plate_format(other_plate)
+                            )
                             wells_by_plate[other_pid] = (
                                 stored if stored is not None else available
                             )
@@ -245,7 +248,7 @@ def _render_global_plots_container():
     with cb_col:
         c_plate = st.checkbox("Plate view", value=False, key="plate_checkbox")
     with desc_col:
-        st.caption("96-well plate overview showing all wells with fitted growth curves")
+        st.caption("Plate overview showing all wells with fitted growth curves")
 
     cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
     with cb_col:

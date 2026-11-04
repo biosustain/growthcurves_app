@@ -7,7 +7,12 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 from growthcurves.models import MODEL_REGISTRY
-from src.functions.constants import ALL_WELLS, COLS, DEFAULT_PARAMS, ROWS
+from src.functions.constants import (
+    DEFAULT_PARAMS,
+    PLATE_96,
+    PlateFormat,
+    plate_format,
+)
 from src.functions.data_processing import analyse_plate, load_plate
 from src.functions.upload_functions import (
     detect_plate_map_format,
@@ -48,7 +53,7 @@ This is your starting point. Follow the 4 steps in order to upload your data and
 
 **Step 1 - Upload data and names**
 - **Plate reader data**: Upload your plate reader Excel file. Click "Requirements" to see the expected format and download an example. Your file must have a **Time** column plus one column per well (e.g. A1, A2, ...).
-- **Sample names** (optional): Upload a plate map Excel file that assigns sample names to each well. If provided, data column names must be well IDs (A1–H12) and the plate map is used to label each well. If omitted, the data column names are used directly as sample names. Wells with the same name are treated as replicates. Use **BLANK** (or any name starting with BLANK) for blank wells. Click "Requirements" for the expected format and an example download.
+- **Sample names** (optional): Upload a plate map Excel file that assigns sample names to each well. If provided, data column names must be well IDs (A1–H12, or A1–P24 for 384-well plates) and the plate map is used to label each well. If omitted, the data column names are used directly as sample names. Wells with the same name are treated as replicates. Use **BLANK** (or any name starting with BLANK) for blank wells. Click "Requirements" for the expected format and an example download.
 - Click **Import data** to load your file(s). If a plate map is provided it is matched to the data; otherwise column names are used as sample names directly.
 
 **Step 2 - Select preprocessing parameters**
@@ -78,6 +83,7 @@ Click the button to run the analysis. Once complete, navigate to the other pages
 
 def _build_plate_preview_cells(
     *,
+    fmt: PlateFormat,
     plate_map: pd.DataFrame | None,
     present: set[str],
     remove_wells: list[str] | bool,
@@ -97,9 +103,9 @@ def _build_plate_preview_cells(
     )
 
     cells: list[list[dict[str, Any]]] = []
-    for row in ROWS:
+    for row in fmt.rows:
         rendered_row: list[dict[str, Any]] = []
-        for col in COLS:
+        for col in fmt.cols:
             well = f"{row}{col}"
             group_name = group_map.get(well, DEFAULT_GROUP)
 
@@ -177,6 +183,7 @@ def render_plate_table(
     *,
     key: str,
     plate_map: pd.DataFrame | None,
+    fmt: PlateFormat = PLATE_96,
     present: set[str] | None = None,
     remove_wells: list[str] | bool = False,
     blank: bool = True,
@@ -186,6 +193,7 @@ def render_plate_table(
 ):
     """Render plate preview with the blank-linker style table."""
     cells = _build_plate_preview_cells(
+        fmt=fmt,
         plate_map=plate_map,
         present=present or set(),
         remove_wells=remove_wells,
@@ -195,8 +203,8 @@ def render_plate_table(
 
     # Read-only version of the shared drag-to-paint plate map
     plate_painter(
-        rows=ROWS,
-        cols=COLS,
+        rows=fmt.rows,
+        cols=fmt.cols,
         cells=[
             [
                 {
@@ -227,7 +235,9 @@ def render_plate_table(
 
 def _plate_cell_name(plate_map: pd.DataFrame, row: str, col: int) -> str:
     """Return normalized sample name at a plate position."""
-    if col in plate_map.columns:
+    if row not in plate_map.index:
+        value = "False"
+    elif col in plate_map.columns:
         value = plate_map.loc[row, col]
     elif str(col) in plate_map.columns:
         value = plate_map.loc[row, str(col)]
@@ -236,12 +246,14 @@ def _plate_cell_name(plate_map: pd.DataFrame, row: str, col: int) -> str:
     return str(value).strip()
 
 
-def _name_by_well_from_plate_map(plate_map: pd.DataFrame) -> dict[str, str]:
+def _name_by_well_from_plate_map(
+    plate_map: pd.DataFrame, fmt: PlateFormat
+) -> dict[str, str]:
     """Return well->sample-name mapping from a preview plate map."""
     return {
         f"{row}{col}": _plate_cell_name(plate_map, row, col)
-        for row in ROWS
-        for col in COLS
+        for row in fmt.rows
+        for col in fmt.cols
     }
 
 
@@ -300,7 +312,8 @@ def ui_upload_files(ss):
                 with st.popover("Requirements", width="stretch"):
                     st.caption(
                         "The plate map assigns sample names to each well. "
-                        "If provided, data column names must be well IDs (A1–H12) and the "
+                        "If provided, data column names must be well IDs (A1–H12, or "
+                        "A1–P24 for 384-well plates) and the "
                         "plate map is used to label each well. If omitted, the data "
                         "column names are used directly as sample names. Wells with the same "
                         "name are treated as replicates in the app. Use BLANK (or any name "
@@ -442,6 +455,7 @@ def ui_preprocessing_params(ss):
     blank_well_count = 0
     painted_blanks: list[str] = []
     blank_wells_all: set[str] = set()  # named BLANK in the plate map or painted
+    fmt = PLATE_96
 
     with st.container(border=True, key="card_uploads_4"):
         st.header("Step 2. Select plate and preprocessing parameters")
@@ -476,6 +490,7 @@ def ui_preprocessing_params(ss):
 
         if plate_id:
             rec = ss.plates.get(plate_id, {})
+            fmt = plate_format(rec)
             if rec.get("uploads"):
                 uploads = rec["uploads"]
                 plate_map, present = get_plate_preview_data(
@@ -483,7 +498,7 @@ def ui_preprocessing_params(ss):
                     data_bytes=uploads["data_bytes"],
                 )
                 if plate_map is not None:
-                    name_by_well = _name_by_well_from_plate_map(plate_map)
+                    name_by_well = _name_by_well_from_plate_map(plate_map, fmt)
                     # Blanks: BLANK names in the plate map plus wells painted as blanks
                     # (only wells that are in the plate map and the data file)
                     painted_blanks = [
@@ -594,7 +609,7 @@ def ui_preprocessing_params(ss):
 
             # Get default excluded wells from params0
             # Blank wells are offered too: excluding one drops it from blank subtraction
-            exclude_options = ALL_WELLS
+            exclude_options = list(fmt.wells)
             default_excluded = params0.get("remove_wells", [])
             if default_excluded is False or not default_excluded:
                 default_excluded = []
@@ -619,6 +634,7 @@ def ui_preprocessing_params(ss):
 
             ui_blank_group_assigner(
                 plate_id=plate_id or "placeholder",
+                fmt=fmt,
                 initial_group_map=initial_group_map,
                 name_by_well=name_by_well,
                 present_wells=present,
@@ -637,6 +653,7 @@ def ui_preprocessing_params(ss):
             if plate_id and plate_map is not None:
                 blank_group_assignments = ui_blank_group_assigner(
                     plate_id=plate_id,
+                    fmt=fmt,
                     initial_group_map=initial_group_map,
                     name_by_well=name_by_well,
                     present_wells=present,

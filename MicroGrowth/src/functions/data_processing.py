@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from growthcurves.preprocessing import blank_subtraction, detect_outliers, path_correct
 
-from .constants import COLS, ROWS
+from .constants import VALID_WELLS, detect_plate_format
 from .fitting_pipeline import fit_growth_series
 
 DEFAULT_BLANK_GROUP = "Group 1"
@@ -16,7 +16,11 @@ DEFAULT_BLANK_GROUP = "Group 1"
 def _plate_name_map(plate_bytes):
     """Return (plate_df, well_name_map) from a plate map Excel file."""
     plate = pd.read_excel(io.BytesIO(plate_bytes)).fillna("False").set_index("rows")
-    return plate, {f"{r}{c}": str(plate.loc[r, c]).strip() for r in ROWS for c in COLS}
+    names = {
+        f"{str(r).strip().upper()}{str(c).strip()}": str(v).strip()
+        for (r, c), v in plate.stack().items()
+    }
+    return plate, {w: n for w, n in names.items() if w in VALID_WELLS}
 
 
 def _read_table(
@@ -27,7 +31,7 @@ def _read_table(
     Args:
         data_bytes: Excel file bytes
         time_unit: Unit of time in the data file ("seconds", "minutes", "hours", "days", or "HH:MM:SS")
-        filter_to_wells: If True, keep only valid well columns (A1–H12) and uppercase them.
+        filter_to_wells: If True, keep only valid well columns (A1–P24) and uppercase them.
                          If False, keep all non-Time columns with their original names.
 
     Returns:
@@ -69,8 +73,7 @@ def _read_table(
             t_hours = t
 
     if filter_to_wells:
-        valid_wells = {f"{r}{c}" for r in ROWS for c in COLS}
-        well_cols = [c for c in df.columns if str(c).strip().upper() in valid_wells]
+        well_cols = [c for c in df.columns if str(c).strip().upper() in VALID_WELLS]
         df = df[well_cols].copy()
         df.columns = [str(c).strip().upper() for c in df.columns]
 
@@ -99,9 +102,19 @@ def load_plate(
     plate_bytes: bytes | None,
     params: dict,
 ):
-    """Store uploads and params for a plate and return the record."""
+    """Store uploads and params for a plate and return the record.
+
+    The plate format (96 or 384 wells) is detected here, once, from the data
+    column names and the named wells of the plate map.
+    """
+    wells = set(pd.read_excel(io.BytesIO(data_bytes), nrows=0).columns)
+    if plate_bytes is not None:
+        _, name_map = _plate_name_map(plate_bytes)
+        wells |= {w for w, n in name_map.items() if n not in {"", "False"}}
+
     rec = plates.setdefault(plate_id, {})
     rec["uploads"] = {"data_bytes": data_bytes, "plate_bytes": plate_bytes}
+    rec["n_wells"] = detect_plate_format(wells).n_wells
     rec["params"] = params
     return rec
 

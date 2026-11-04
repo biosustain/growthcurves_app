@@ -22,7 +22,7 @@ from growthcurves.models import (
 )
 from plotly.subplots import make_subplots
 from src.functions.common import _iter_wells
-from src.functions.constants import ALL_WELLS
+from src.functions.constants import PlateFormat, plate_format
 
 # --- fit-quality outlines -----------------------------------------------------
 # model_rmse is in OD units, so it is divided by the growth amplitude first.
@@ -910,24 +910,24 @@ def plot_single_growth_stat(
 
 
 # --- window fits ----------------------------------------------------------------
-def _empty_grid(fig):
+def _empty_grid(fig, fmt: PlateFormat):
     """Muted box and label for every well, for plates with nothing to draw."""
     shapes, labels = [], []
-    for i, w in enumerate(ALL_WELLS, 1):
+    for i, w in enumerate(fmt.wells, 1):
         box, label = _well_box(fig, i, w, FIT_COLOR_NONE, muted=True)
         shapes.append(box)
         labels.append(label)
     return shapes, labels
 
 
-def _assemble_grid(fig, traces, shapes, labels):
-    """Apply the batched traces, shapes and labels to the 96-well figure."""
+def _assemble_grid(fig, traces, shapes, labels, fmt: PlateFormat):
+    """Apply the batched traces, shapes and labels to the plate figure."""
     if traces:
         fig.add_traces(traces)
     fig.update_layout(
         shapes=shapes,
         annotations=labels,
-        height=900,
+        height=round(112.5 * len(fmt.rows)),  # 900 px for a 96-well plate
         showlegend=False,
         hovermode=False,
     )
@@ -935,7 +935,7 @@ def _assemble_grid(fig, traces, shapes, labels):
 
 
 def plot_window_plate(plate: dict, time_unit: str = "hours"):
-    """Plot a full 96-well plate overview with window-fit overlays.
+    """Plot a full plate overview (96 or 384 wells) with window-fit overlays.
 
     Args:
         plate: Plate dictionary containing processed_data, growth_stats, and fit_parameters
@@ -948,23 +948,25 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
         (plate.get("params") or {}).get("rmse_threshold", RMSE_THRESHOLD)
     )
 
+    fmt = plate_format(plate)
+    # Spacing is a fraction of the figure, so scale it to keep gaps constant
     fig = make_subplots(
-        rows=8,
-        cols=12,
-        horizontal_spacing=0.008,
-        vertical_spacing=0.025,
+        rows=len(fmt.rows),
+        cols=len(fmt.cols),
+        horizontal_spacing=0.096 / len(fmt.cols),
+        vertical_spacing=0.2 / len(fmt.rows),
         shared_xaxes=True,
         shared_yaxes=True,
     )
 
     # Batched: adding one at a time re-validates the whole figure each call,
-    # which is quadratic over 96 subplots.
+    # which is quadratic in the number of subplots.
     traces, shapes, labels = [], [], []
 
     # Check if there's any data
     if not proc:
         fig.update_layout(margin=dict(l=60, r=25, t=60, b=55))
-        return _assemble_grid(fig, [], *_empty_grid(fig))
+        return _assemble_grid(fig, [], *_empty_grid(fig, fmt), fmt)
 
     # Calculate global ranges
     ts, ys = [], []
@@ -976,7 +978,7 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
 
     if not ts:
         fig.update_layout(margin=dict(l=60, r=25, t=60, b=55))
-        return _assemble_grid(fig, [], *_empty_grid(fig))
+        return _assemble_grid(fig, [], *_empty_grid(fig, fmt), fmt)
 
     x_min, x_max = float(min(t.min() for t in ts)), float(max(t.max() for t in ts))
     x_min_display = convert_hours_to_unit(x_min, time_unit)
@@ -986,7 +988,7 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
     x_range = [x_min_display - 0.02 * xr, x_max_display + 0.02 * xr]
     y_range = [y_min - 0.05 * yr, y_max + 0.05 * yr]
 
-    for i, well in enumerate(ALL_WELLS, 1):
+    for i, well in enumerate(fmt.wells, 1):
         d = proc.get(well)
         gs = gs_all.get(well) or {}
         fit_result = fit_params.get(well)
@@ -1085,7 +1087,7 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
     fig.update_xaxes(showgrid=False, range=x_range, matches="x")
     fig.update_yaxes(showgrid=False, range=y_range, matches="y")
 
-    return _assemble_grid(fig, traces, shapes, labels)
+    return _assemble_grid(fig, traces, shapes, labels, fmt)
 
 
 # --- derivative models ---------------------------------------------------------
