@@ -370,7 +370,7 @@ def ui_upload_files(ss):
             is_valid_data, data_error = validate_data_file(data_file.getvalue())
             if not is_valid_data:
                 st.toast(
-                    f"❌ Data file validation failed: {data_error}",
+                    f"Data file validation failed: {data_error}",
                     duration="infinite",
                 )
                 st.stop()
@@ -384,7 +384,7 @@ def ui_upload_files(ss):
                     )
                     if not is_valid_map:
                         st.toast(
-                            f"❌ Plate map validation failed: {map_error}",
+                            f"Plate map validation failed: {map_error}",
                             duration="infinite",
                         )
                         st.stop()
@@ -395,7 +395,7 @@ def ui_upload_files(ss):
                     )
                     if not is_valid_map:
                         st.toast(
-                            f"❌ Plate map validation failed: {map_error}",
+                            f"Plate map validation failed: {map_error}",
                             duration="infinite",
                         )
                         st.stop()
@@ -405,7 +405,7 @@ def ui_upload_files(ss):
                     data_file.getvalue()
                 )
                 if not is_valid_cols:
-                    st.toast(f"❌ {cols_error}", duration="infinite")
+                    st.toast(cols_error, duration="infinite")
                     st.stop()
 
             plate_id = (
@@ -1041,7 +1041,7 @@ def ui_analysis_params(ss):
         if clicked:
             rec = ss.plates.get(plate_id, {})
             if not rec.get("uploads"):
-                st.error("No uploads found for this plate.")
+                st.toast("No uploads found for this plate.", duration="infinite")
             else:
                 rec["params"] = params
                 st.markdown(

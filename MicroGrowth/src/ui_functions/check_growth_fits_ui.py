@@ -16,6 +16,7 @@ from src.functions.check_growth_fits import (
     analyse_well,
     update_growth_stats_from_lasso,
 )
+from src.functions.common import toast_once
 from src.functions.plotting_functions import _finite_sorted_xy, plot_derivative_metric
 
 
@@ -157,7 +158,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
     processed = (plate.get("processed_data") or {}).get(well)
     if processed is None or processed.empty:
-        st.info(f"No data for {well}")
+        toast_once(f"No data for {well}")
         return np.nan, np.nan, True
 
     t = processed["Time"]
@@ -246,7 +247,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         # Handle edge case where all OD values are 0 or negative
         actual_max_od = max(processed["baseline_corrected"])
         if actual_max_od <= 0:
-            st.warning("All OD values are ≤ 0 - no growth detected")
+            toast_once(f"{well}: all OD values are ≤ 0 - no growth detected")
             max_od = 0.0
         else:
             max_od = st.slider(
