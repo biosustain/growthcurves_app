@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 from growthcurves.models import MODEL_REGISTRY
-from src.functions.constants import COLS, DEFAULT_PARAMS, ROWS
+from src.functions.constants import ALL_WELLS, COLS, DEFAULT_PARAMS, ROWS
 from src.functions.data_processing import analyse_plate, load_plate
 from src.functions.upload_functions import (
     detect_plate_map_format,
@@ -593,13 +593,8 @@ def ui_preprocessing_params(ss):
             )
 
             # Get default excluded wells from params0
-            # Blank wells are not offered (they are never analysed as samples)
-            exclude_options = [
-                f"{r}{c}"
-                for r in "ABCDEFGH"
-                for c in range(1, 13)
-                if f"{r}{c}" not in blank_wells_all
-            ]
+            # Blank wells are offered too: excluding one drops it from blank subtraction
+            exclude_options = ALL_WELLS
             default_excluded = params0.get("remove_wells", [])
             if default_excluded is False or not default_excluded:
                 default_excluded = []
@@ -609,7 +604,7 @@ def ui_preprocessing_params(ss):
                 "Exclude wells",
                 options=exclude_options,
                 default=default_excluded,
-                help="Manually exclude specific wells from analysis (e.g., contaminated samples)",
+                help="Manually exclude specific wells from analysis (e.g., contaminated samples). Excluded blank wells are left out of blank subtraction.",
             )
 
             # Preserve the False sentinel behavior used elsewhere.
