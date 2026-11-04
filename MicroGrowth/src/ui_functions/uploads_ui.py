@@ -790,6 +790,10 @@ def _ui_model_selection(params0: dict):
 def ui_model_params(growth_method: str, params0: dict, step4_prev: dict, param_col):
     """Render method-specific parameters (window size or spline mode)."""
     smooth = "auto"
+    try:
+        manual_smooth = float(params0.get("smooth", "auto"))
+    except (TypeError, ValueError):
+        manual_smooth = 0.0
 
     with param_col:
         if growth_method == "Sliding Window":
@@ -803,6 +807,32 @@ def ui_model_params(growth_method: str, params0: dict, step4_prev: dict, param_c
             )
         else:  # Spline or Model Fitting
             window_points = int(params0["window_points"])
+
+        if growth_method == "Spline":
+            mode = st.radio(
+                "Spline fitting mode",
+                options=["auto", "manual"],
+                index=1 if manual_smooth > 0 else 0,
+                horizontal=True,
+                format_func=lambda v: v.capitalize(),
+                help=(
+                    "Auto chooses the smoothing by REML. "
+                    "Manual lets you set the smoothing factor (λ) directly."
+                ),
+            )
+            if mode == "manual":
+                smooth = st.number_input(
+                    "Smoothing factor (λ)",
+                    min_value=0.0,
+                    value=manual_smooth if manual_smooth > 0 else 1.0,
+                    step=0.01,
+                    format="%.4f",
+                    help=(
+                        "Spline smoothing factor λ, relative to the data. "
+                        "Larger values produce a smoother (less wiggly) spline. "
+                        "0 uses Auto."
+                    ),
+                )
 
     return window_points, smooth
 
