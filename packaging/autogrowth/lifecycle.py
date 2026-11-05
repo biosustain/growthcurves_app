@@ -1,4 +1,5 @@
 """Private pipe supervisor: one Python installation, independently owned processes."""
+
 import json
 import os
 from pathlib import Path
@@ -16,18 +17,20 @@ SHUTDOWN_TIMEOUT = 12
 
 
 def process_options():
-    if sys.platform == 'win32':
-        return {'creationflags': subprocess.CREATE_NO_WINDOW}
-    return {'start_new_session': True}
+    if sys.platform == "win32":
+        return {"creationflags": subprocess.CREATE_NO_WINDOW}
+    return {"start_new_session": True}
 
 
 def python_executable():
     path = Path(sys.executable)
-    return str(path.with_name('python.exe') if path.name.lower() == 'pythonw.exe' else path)
+    return str(
+        path.with_name("python.exe") if path.name.lower() == "pythonw.exe" else path
+    )
 
 
 def kill_tree(process):
-    if sys.platform == 'win32':
+    if sys.platform == "win32":
         if process.poll() is None:
             process.kill()
     else:
@@ -47,20 +50,22 @@ def stop_child(child):
         child.wait(timeout=5)
     finally:
         # Clean remaining descendants even if the main server has already exited.
-        if sys.platform != 'win32':
+        if sys.platform != "win32":
             kill_tree(child)
 
 
 def supervise(root, status):
     stop = threading.Event()
+
     def read_parent():
         sys.stdin.buffer.readline()
         stop.set()
+
     threading.Thread(target=read_parent, daemon=True).start()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
     with socket.socket() as sock:
-        sock.bind(('127.0.0.1', 0))
+        sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
     mutex = InstanceLock(allow_existing=True) if sys.platform == "win32" else None
     if mutex:
@@ -68,11 +73,21 @@ def supervise(root, status):
     job = WindowsJob()
     child = None
     try:
-        child = subprocess.Popen([python_executable(), '-s', '-B', str(root / 'server_runner.py'),
-                                  str(port), str(status)], stdin=subprocess.PIPE, cwd=root,
-                                 **process_options())
+        child = subprocess.Popen(
+            [
+                python_executable(),
+                "-s",
+                "-B",
+                str(root / "server_runner.py"),
+                str(port),
+                str(status),
+            ],
+            stdin=subprocess.PIPE,
+            cwd=root,
+            **process_options(),
+        )
         job.assign(child)
-        child.stdin.write(b'START\n')
+        child.stdin.write(b"START\n")
         child.stdin.flush()
         while not stop.wait(0.1):
             if child.poll() is not None:
@@ -92,14 +107,25 @@ class Service:
     def __init__(self, root, state_dir, log_path):
         self._close_lock = threading.Lock()
         self.root = Path(root)
-        self.status = Path(state_dir) / 'server.json'
+        self.status = Path(state_dir) / "server.json"
         self.status.unlink(missing_ok=True)
-        self.log = Path(log_path).open('a', encoding='utf-8')
+        self.log = Path(log_path).open("a", encoding="utf-8")
         try:
             self.process = subprocess.Popen(
-                [python_executable(), '-s', '-B', str(self.root / 'lifecycle.py'), str(self.root), str(self.status)],
-                stdin=subprocess.PIPE, stdout=self.log, stderr=self.log,
-                cwd=self.root, **process_options())
+                [
+                    python_executable(),
+                    "-s",
+                    "-B",
+                    str(self.root / "lifecycle.py"),
+                    str(self.root),
+                    str(self.status),
+                ],
+                stdin=subprocess.PIPE,
+                stdout=self.log,
+                stderr=self.log,
+                cwd=self.root,
+                **process_options(),
+            )
         except BaseException:
             self.log.close()
             raise
@@ -108,20 +134,24 @@ class Service:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if cancelled and cancelled.is_set():
-                raise InterruptedError('Startup cancelled')
+                raise InterruptedError("Startup cancelled")
             if self.process.poll() is not None:
-                raise RuntimeError('AutoGrowth server failed to start. See the log for details.')
+                raise RuntimeError(
+                    "AutoGrowth server failed to start. See the log for details."
+                )
             if self.status.exists():
-                info = json.loads(self.status.read_text(encoding='utf-8'))
+                info = json.loads(self.status.read_text(encoding="utf-8"))
                 url = f'http://127.0.0.1:{info["port"]}'
                 try:
-                    with urllib.request.urlopen(url + '/_stcore/health', timeout=0.5) as response:
+                    with urllib.request.urlopen(
+                        url + "/_stcore/health", timeout=0.5
+                    ) as response:
                         if response.status == 200:
                             return url
                 except OSError:
                     pass
             time.sleep(0.1)
-        raise TimeoutError('AutoGrowth did not become ready within 60 seconds.')
+        raise TimeoutError("AutoGrowth did not become ready within 60 seconds.")
 
     def close(self):
         with self._close_lock:
@@ -141,5 +171,5 @@ class Service:
             self.log.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     raise SystemExit(supervise(Path(sys.argv[1]), Path(sys.argv[2])))
