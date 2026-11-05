@@ -172,3 +172,27 @@ The builder also reads files outside this folder, which must be committed too:
 `AutoGrowth/app.py`, `AutoGrowth/logo.svg`, `AutoGrowth/markdowns/`,
 `AutoGrowth/.streamlit/config.toml`, the example CSVs under `AutoGrowth/data/` listed in
 `EXAMPLES` in `build.py`, and the shared helpers in `src/`.
+
+## GitHub release automation
+
+`.github/workflows/autogrowth-release.yml` runs on every push to `main` and through
+Actions → AutoGrowth desktop release → Run workflow. Manual runs build the selected
+ref. macOS Apple Silicon (`macos-15`) and Windows x64 (`windows-2022`) each build from
+the committed dependency lock and run the builder's relocated smoke and lifecycle
+tests. Both must succeed before publication; interactive installer/UI checks remain
+separate. Windows installs Inno Setup if needed and downloads Microsoft's bootstrapper,
+whose signature is checked by the builder.
+
+Each successful run publishes a prerelease tagged
+`autogrowth-build-<run-id>-<attempt>`, targeting the exact built commit. It attaches
+`AutoGrowth-macos-arm64.zip`, `AutoGrowth-macos-arm64.dmg`,
+`AutoGrowth-windows-x64.zip`, `AutoGrowth-Setup-x64.exe`, and `SHA256SUMS.txt`.
+The macOS ZIP preserves app permissions and symlinks; the Windows ZIP contains the
+portable app folder. Uploads are staged in a draft before publication. Failed uploads
+leave a draft for inspection, and reruns use a new attempt tag. Existing stable
+releases and the Latest designation are unchanged. Assets are also retained as
+workflow artifacts for 14 days.
+
+The release job uses the built-in `GITHUB_TOKEN` with `contents: write`; no personal
+token or signing secrets are required. Repository policy must permit that permission.
+The existing Python/PyPI workflow remains independent.
