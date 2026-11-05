@@ -61,6 +61,23 @@ def main():
     )
     parser.add_argument("--uv", default="uv", help="Build-time uv executable")
     parser.add_argument("--refresh-lock", action="store_true")
+    parser.add_argument(
+        "--desktop",
+        action="store_true",
+        help="Build a macOS .app or Windows native launcher",
+    )
+    parser.add_argument(
+        "--dmg",
+        action="store_true",
+        help="Also create a macOS DMG (requires --desktop)",
+    )
+    parser.add_argument(
+        "--installer",
+        action="store_true",
+        help="Also compile Windows Inno Setup installer",
+    )
+    parser.add_argument("--webview2-bootstrapper", type=Path)
+    parser.add_argument("--iscc", default="ISCC.exe")
     args = parser.parse_args()
     system, machine = platform.system(), platform.machine().lower()
     if system == "Darwin" and machine in ("arm64", "x86_64"):
@@ -69,9 +86,34 @@ def main():
         target = "windows-x64"
     else:
         parser.error("Build on macOS or Windows x64; cross-building is not supported.")
+    if args.dmg and (system != "Darwin" or not args.desktop):
+        parser.error("--dmg requires --desktop on macOS")
+    if args.installer and (
+        system != "Windows" or not args.desktop or not args.webview2_bootstrapper
+    ):
+        parser.error(
+            "--installer requires --desktop and --webview2-bootstrapper on Windows"
+        )
+    if args.desktop and system == "Darwin" and args.output.suffix != ".app":
+        parser.error("macOS desktop output must end in .app")
     output = args.output.resolve()
     if output.exists():
         parser.error(f"Output already exists: {output}")
+    if args.desktop:
+        native_tools = (
+            ["clang", "sips", "iconutil"] if system == "Darwin" else ["cl", "rc"]
+        )
+        if args.dmg:
+            native_tools.append("hdiutil")
+            if output.with_suffix(".dmg").exists():
+                parser.error("DMG output already exists")
+        if args.installer:
+            native_tools.append(args.iscc)
+            if not args.webview2_bootstrapper.is_file():
+                parser.error("WebView2 bootstrapper does not exist")
+        for tool in native_tools:
+            if not shutil.which(tool):
+                parser.error(f"Required build tool not on PATH: {tool}")
     # Preflight every input before downloading dependencies.
     required = [
         ROOT / "AutoGrowth/app.py",
@@ -193,6 +235,8 @@ def main():
             (HERE / "README.md", "BUILDING.md"),
         ]:
             shutil.copy2(source, bundle / name)
+        for name in ("desktop_support.py", "lifecycle.py", "server_runner.py"):
+            shutil.copy2(HERE / name, bundle / name)
         if system == "Windows":
             (bundle / "AutoGrowth.cmd").write_text(
                 '@echo off\r\nset "PYTHONHOME="\r\nset "PYTHONPATH="\r\n"%~dp0runtime\\python.exe" -s -B "%~dp0bootstrap.py" %*\r\nexit /b %errorlevel%\r\n'
@@ -240,6 +284,17 @@ def main():
             env=check_env,
             timeout=240,
         )
+        if args.desktop:
+            run(
+                python,
+                "-s",
+                "-B",
+                HERE / "test_lifecycle.py",
+                moved,
+                cwd=staging,
+                env=check_env,
+                timeout=300,
+            )
         trim_runtime(moved / "runtime")
         sizes = {}
         for path in moved.rglob("*"):
@@ -258,7 +313,27 @@ def main():
             )
         )
         output.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(moved), str(output))
+        if args.desktop:
+            from native_package import (
+                wrap_macos,
+                wrap_windows,
+                make_dmg,
+                make_installer,
+            )
+
+            if system == "Darwin":
+                wrap_macos(moved, output)
+                if args.dmg:
+                    make_dmg(output, output.with_suffix(".dmg"))
+            else:
+                wrap_windows(moved)
+                shutil.move(str(moved), str(output))
+                if args.installer:
+                    make_installer(
+                        output, output.parent, args.webview2_bootstrapper, args.iscc
+                    )
+        else:
+            shutil.move(str(moved), str(output))
         print(f"Built {output}: {sum(sizes.values()) / 1024**2:.1f} MiB")
 
 

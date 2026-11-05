@@ -1,77 +1,174 @@
-# Portable AutoGrowth
+# AutoGrowth desktop packaging
 
-One standalone CPython runtime of AutoGrowth app. Uses the user's existing browser.
-Runtime packages include only the Excel engines needed for XLS/XLSX uploads and XLSX
-exports (not pandas' complete Excel extra). Transitive dependencies required by
-growthcurves and Streamlit remain included.
+AutoGrowth ships with one standalone Python runtime, the shared helpers from `src`, and
+the assets used by its pages. MicroGrowth, training runners, development packages, and
+private experimental data are excluded. The desktop window uses pywebview with macOS
+WebKit or Windows WebView2; it does not bundle Chromium, Electron, or Qt.
 
-## Build
+## macOS build
 
-Install uv on the build machine. Run on the target OS and architecture:
+Build on the matching Mac architecture with Python, uv, and the Xcode command-line tools
+installed. From the repository root:
 
 ```sh
-python packaging/autogrowth/build.py --output /absolute/path/to/AutoGrowth
+python packaging/autogrowth/build.py --desktop --dmg \
+  --output dist/AutoGrowth-desktop/AutoGrowth.app
 ```
 
-The supplied macOS arm64 and Windows x64 hashed locks pin runtime dependencies. Use
-`--refresh-lock` only to update them (or create a lock for macOS Intel), then review and
-commit the changed lock. The output must not exist. Use `--uv /path/to/uv` if uv is not
-on PATH. Windows example (from the repository root):
+Use `--uv /absolute/path/to/uv` when needed. Output paths must not already exist. The
+result is `AutoGrowth.app` plus `AutoGrowth.dmg`, containing the app and an Applications
+shortcut. Drag the app into Applications, then open it. Apple Silicon is built here;
+Intel requires a matching host and its own dependency lock. The minimum macOS version is
+derived from installed wheel tags (14.0 for this arm64 build), and the native launcher is
+compiled for that same minimum.
+
+This development artifact is not Developer ID signed or notarized. Distribution to other
+Macs needs a signing/notarization pass covering the nested Python runtime, native
+libraries, and application bundle, plus a clean-machine test. No signing credentials or
+publishing are configured by these scripts.
+
+## Windows x64 build
+
+Use a Windows x64 host, Python, uv, Visual Studio Build Tools (x64 Native Tools Command
+Prompt with `cl` and `rc` on PATH), and Inno Setup 6.3 or newer. Download the Evergreen
+WebView2 bootstrapper from Microsoft's official site:
+<https://developer.microsoft.com/microsoft-edge/webview2/>. The build checks its
+Authenticode signature and Microsoft publisher.
 
 ```powershell
-py packaging/autogrowth/build.py --output C:\builds\AutoGrowth
+py packaging/autogrowth/build.py --desktop --installer `
+  --output C:\builds\AutoGrowth `
+  --webview2-bootstrapper C:\downloads\MicrosoftEdgeWebview2Setup.exe `
+  --iscc "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 ```
 
-Python 3.12.11 is pinned and downloaded using uv's python-build-standalone runtime,
-rather than copying a virtual environment. Downloads and dependency installation require
-internet during building. Native scientific dependencies require wheels; growthcurves may
-build from its hashed source distribution in a temporary build environment. Build on
-macOS arm64 for Apple Silicon, macOS x86_64 for Intel, or Windows x64. Cross-building is
-intentionally rejected. Windows must be exercised on Windows. No signing, notarization,
-installer creation, or publishing is performed. See
-https://docs.astral.sh/uv/concepts/python-versions/#managed-python-distributions.
+The output folder contains `AutoGrowth.exe`; its parent contains
+`AutoGrowth-Setup-x64.exe`. The installer installs per user, creates Start-menu shortcuts
+and an uninstaller, and refuses to update/uninstall a running instance. The supervisor
+retains the installer mutex until server cleanup finishes, even when the GUI dies. No
+administrator access is requested.
 
-## Run
+WebView2 is checked in the per-user and machine registries. If missing, the installer
+runs Microsoft's signed bootstrapper. This step requires internet. An offline WebView2
+installer variant is not implemented. Windows compilation, installer execution, WebView2
+detection, and Job Object behavior must still be validated on Windows; macOS results do
+not validate those code paths.
 
-Move the whole folder anywhere, including a path with spaces. Double-click
-`AutoGrowth.command` on macOS or `AutoGrowth.cmd` on Windows. No Python, uv, Cargo, or
-dependency installation is needed on the user's machine. The launcher opens the system
-browser after server readiness, binds only to 127.0.0.1 on a free port, and retains a
-terminal window. Press Ctrl+C in that window to stop the server. Closing the browser tab
-does not stop it. Logs are in the OS temporary directory under `AutoGrowth-logs`. Use
-`--no-browser` for manual browser launch, or `--check` to check imports/assets.
+## Running and stopping
 
-Only the three example CSVs referenced by the upload page are included. External links in
-the help still require internet. Local data analysis requires no model downloads. The
-source contains its own logo and packaged help illustrations.
+The native launcher resolves resources from its own location, never the caller's working
+directory. Closing the desktop window or choosing Quit requests confirmation: running
+analysis stops and unexported results are lost. The confirmation is always shown; this
+version does not detect dirty session state or save it automatically. Downloads are
+enabled in the embedded webview and external links open in the system browser.
+Uploads/downloads still need an end-to-end native-window check before release.
 
-## Validation and size
+The window process owns a supervisor through an anonymous pipe. Closing the pipe,
+including process death, requests graceful shutdown. The supervisor sends EOF to a server
+adapter that schedules `Server.stop()` on its asyncio loop. A 12-second supervisor
+deadline kills a stuck server; a separate 15-second server watchdog handles loss of the
+supervisor. Unix process groups and Windows kill-on-close Job Objects contain
+descendants. Only app-owned processes are targeted. The server waits for assignment to
+its Windows Job Object before importing application code.
 
-The builder checks imports, method notes, page rendering, a representative fit, peak
-detection, and Excel export/import after relocating to a path with spaces and restricting
-PATH. `build-report.json` records the target and directory sizes. This is not a full
-UI/analysis test: before release, exercise upload, batch fitting, turbidostat analysis,
-download, and shutdown on a clean target machine. Windows results are not implied by
-macOS results.
+This uses multiple processes from **one Python installation**, not extra environments or
+training runners. The adapter uses Streamlit's internal Server API, so Streamlit is
+pinned to 1.66.1. Updating it requires rerunning lifecycle and application tests. There
+is no remotely accessible HTTP shutdown endpoint. The server binds to localhost on a free
+port, and readiness requires a status file from its own process plus an HTTP health
+check. Startup failure is shown in the window and written to a log.
 
-Bytecode caches, static `.a` libraries, and test suites in an explicit scientific-package
-allowlist are removed. Runtime native libraries, package data, metadata, and licenses
-remain intact. Do not indiscriminately remove package subdirectories to save space:
-SciPy, matplotlib and Streamlit load resources dynamically. Archive the directory for
-transfer; an archive does not replace a signed application or installer.
+Logs and caches are outside the installed app:
 
-Run the included smoke checks with the bundled interpreter:
+- macOS: `~/Library/Application Support/AutoGrowth/`
+- Windows: `%LOCALAPPDATA%\AutoGrowth\`
+
+Only one GUI instance is allowed. A second launch reports that AutoGrowth is already
+running; it does not yet focus the existing window. Browser mode is explicit:
 
 ```sh
-/path/to/AutoGrowth/runtime/bin/python3 -s -B packaging/autogrowth/verify.py /path/to/AutoGrowth
+/path/to/payload/runtime/bin/python3 -s -B /path/to/payload/bootstrap.py --browser
 ```
 
-On Windows use `AutoGrowth\runtime\python.exe`. These checks render pages with Streamlit
-AppTest, run a representative fit, and round-trip an Excel export.
+The macOS payload is `AutoGrowth.app/Contents/Resources/payload`. On Windows use
+`runtime\python.exe`. `--no-browser` starts headlessly and prints the URL. In these
+modes, Ctrl+C stops the server; closing a browser tab does not. `--check` checks imports
+and packaged help. Omitting `--desktop` from the builder produces a portable folder with
+the same desktop bootstrap and command launchers.
 
-## Validation in this checkout
+## Dependencies and size
 
-macOS arm64: relocated imports, all seven file-based pages, representative sliding-window
-fitting, Excel export/import, HTTP readiness, and launcher/server shutdown passed.
-Windows x64: dependency lock resolved; artifact has not been built or exercised on a
-Windows host. Clean-machine testing remains outstanding.
+The per-platform hashed locks pin runtime packages. Use `--refresh-lock` deliberately
+when updating dependencies or generating an Intel Mac lock. Python 3.12.11 is a
+standalone runtime downloaded by uv, not a copied virtual environment. Native scientific
+packages require wheels; growthcurves may build from its hashed source release. Build
+tooling and caches are not shipped.
+
+Only XLS/XLSX engines needed by the application are direct Excel dependencies.
+Scientific-package test suites from an explicit allowlist, bytecode caches, and static
+libraries are trimmed. Runtime resources, shared libraries, metadata, and licenses
+remain. Three UI example CSVs and local help illustrations are included. The new arm64
+payload was approximately 624 MiB before the wrapper/icon overhead; the scientific
+libraries account for most of it.
+
+## Checks
+
+The builder checks imports and application smoke tests after relocation to a path with
+spaces and with developer tools removed from PATH. Native builds also run the subprocess
+lifecycle tests. Run them separately with the bundled Python:
+
+```sh
+/path/to/payload/runtime/bin/python3 -s -B packaging/autogrowth/verify.py /path/to/payload
+/path/to/payload/runtime/bin/python3 -s -B packaging/autogrowth/test_lifecycle.py /path/to/payload
+```
+
+macOS arm64 checks completed: all seven file-based pages via AppTest, representative
+sliding-window fitting, peak detection, Excel round-trip, native launcher import mode,
+and six lifecycle scenarios (normal close, close during startup, owner death, supervisor
+death, stalled server, and startup failure). Tests check process exit and port closure;
+graceful cases also check the server's shutdown marker.
+
+The native upload page was visually inspected; close confirmation, Cancel, confirmed
+close, Cmd+Q, native SIGTERM, and forced GUI termination were exercised. A relocated
+native launcher also passed readiness and shutdown with a restricted PATH. File
+dialogs/downloads, active-analysis quit, clean-machine behavior, and all Windows
+execution remain release checks. A native-session log exposed `KeyError: 0` in the
+growthcurves ECOD detector with a datetime index; this path remains a release blocker.
+The existing smoke tests check execution and a representative result, not comprehensive
+numerical accuracy or visual correctness.
+
+
+## What is what?
+
+Files in this folder and what they do.
+
+Needef for the build:
+
+| File | Purpose |
+|---|---|
+| `build.py` | Builder entry point. Assembles the payload (runtime, dependencies, app, assets), runs the checks, and optionally wraps it as `.app`/`.dmg` or Windows installer. |
+| `bootstrap.py` | Startup script copied into the payload. Starts the supervisor and the desktop window, or browser/headless mode. |
+| `desktop_support.py` | Desktop-window helpers copied into the payload (pywebview window, close confirmation, downloads, external links). |
+| `lifecycle.py` | Supervisor logic copied into the payload: pipe ownership, graceful shutdown, kill deadlines, Job Objects/process groups. |
+| `server_runner.py` | Streamlit server adapter copied into the payload. Runs `Server.stop()` on EOF and writes the readiness status file. |
+| `verify.py` | Import and application smoke tests, run by the builder on the relocated payload. |
+| `test_lifecycle.py` | Subprocess lifecycle tests (close, owner/supervisor death, stalled server, startup failure), run by native builds. |
+| `native_package.py` | Wraps the payload into `AutoGrowth.app` and `AutoGrowth.dmg` (macOS) or `AutoGrowth.exe` and the installer (Windows). |
+| `launcher.m` | macOS native launcher (Objective-C), compiled with `clang`. |
+| `launcher.c` | Windows native launcher (C), compiled with `cl`. |
+| `windows.iss` | Inno Setup script for `AutoGrowth-Setup-x64.exe`. |
+| `logo.png` | Source image for the macOS icon set and the Windows `.ico`. |
+| `requirements.in` | Direct runtime dependencies. |
+
+Not needed for the build:
+
+| File | Purpose |
+|---|---|
+| `README.md` | This documentation. |
+| `requirements-macos-arm64.lock` | Hashed dependency lock for macOS arm64. |
+| `requirements-windows-x64.lock` | Hashed dependency lock for Windows x64. |
+
+The builder also reads files outside this folder, which must be committed too:
+`AutoGrowth/app.py`, `AutoGrowth/logo.svg`, `AutoGrowth/markdowns/`,
+`AutoGrowth/.streamlit/config.toml`, the example CSVs under `AutoGrowth/data/` listed in
+`EXAMPLES` in `build.py`, and the shared helpers in `src/`.
