@@ -69,7 +69,7 @@ DEFAULT_PARAMS = {
     "min_od_increase": 0.05,
     "min_growth_rate": 0.001,
     "rmse_threshold": 0.05,
-    "growth_method": "Sliding Window",
+    "growth_method": "Spline",
     "model_family": "phenomenological",
     "model_type": "phenom_logistic",
     "phase_boundary_method": "tangent",
