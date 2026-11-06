@@ -143,9 +143,9 @@ class Service:
                 info = json.loads(self.status.read_text(encoding="utf-8"))
                 url = f'http://127.0.0.1:{info["port"]}'
                 try:
-                    with urllib.request.urlopen(
-                        url + "/_stcore/health", timeout=0.5
-                    ) as response:
+                    with urllib.request.build_opener(
+                        urllib.request.ProxyHandler({})
+                    ).open(url + "/_stcore/health", timeout=0.5) as response:
                         if response.status == 200:
                             return url
                 except OSError:
