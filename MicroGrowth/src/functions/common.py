@@ -13,6 +13,14 @@ def require_plates() -> dict:
     return plates
 
 
+def toast_once(msg: str):
+    """Show a permanent toast, once per session, for warnings raised on every rerun."""
+    shown = st.session_state.setdefault("_toasts_shown", set())
+    if msg not in shown:
+        shown.add(msg)
+        st.toast(msg, duration="infinite")
+
+
 def _iter_wells(plates: dict):
     """Yield (plate_id, plate, well, name, processed_df, growth_stats)."""
     for pid, p in plates.items():

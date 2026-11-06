@@ -16,25 +16,17 @@ from growthcurves.inference import (
 )
 from growthcurves.models import (
     MODEL_REGISTRY,
-    mech_baranyi_model,
-    mech_gompertz_model,
-    mech_logistic_model,
-    mech_richards_model,
-    phenom_gompertz_model,
-    phenom_gompertz_modified_model,
-    phenom_logistic_model,
-    phenom_richards_model,
+    evaluate_parametric_model,
+    log_to_linear,
     spline_from_params,
 )
 from plotly.subplots import make_subplots
 from src.functions.common import _iter_wells
-from src.functions.constants import ALL_WELLS
+from src.functions.constants import PlateFormat, plate_format
 
 # --- fit-quality outlines -----------------------------------------------------
-# Log-space fits report model_rmse as a relative error already; parametric fits
-# report it in OD units, so those are divided by the growth amplitude first.
+# model_rmse is in OD units, so it is divided by the growth amplitude first.
 RMSE_THRESHOLD = 0.05
-LOG_SPACE_FITS = ("spline", "sliding_window")
 
 FIT_COLOR_PASS = "rgb(76, 175, 80)"
 FIT_COLOR_FAIL = "rgb(211, 47, 47)"
@@ -42,8 +34,8 @@ FIT_COLOR_NONE = "rgb(204, 204, 204)"
 SUBPLOT_BOX_COLOR = "rgb(204, 204, 204)"
 
 
-def fit_quality_color(gs: dict | None) -> str:
-    """Green if the well's fit meets RMSE_THRESHOLD, red if not, grey if unfitted."""
+def fit_quality_color(gs: dict | None, threshold: float = RMSE_THRESHOLD) -> str:
+    """Green if the well's fit meets threshold, red if not, grey if unfitted."""
     if not gs or is_no_growth(gs):
         return FIT_COLOR_NONE
 
@@ -52,18 +44,17 @@ def fit_quality_color(gs: dict | None) -> str:
         return FIT_COLOR_NONE
     rmse = float(rmse)
 
-    if not any(k in (gs.get("fit_method") or "") for k in LOG_SPACE_FITS):
-        max_od, n0 = gs.get("max_od"), gs.get("N0")
-        if max_od is None or n0 is None:
-            return FIT_COLOR_NONE
-        if not (np.isfinite(max_od) and np.isfinite(n0)):
-            return FIT_COLOR_NONE
-        amplitude = float(max_od) - float(n0)
-        if amplitude <= 0:
-            return FIT_COLOR_NONE
-        rmse /= amplitude
+    max_od, n0 = gs.get("max_od"), gs.get("N0")
+    if max_od is None or n0 is None:
+        return FIT_COLOR_NONE
+    if not (np.isfinite(max_od) and np.isfinite(n0)):
+        return FIT_COLOR_NONE
+    amplitude = float(max_od) - float(n0)
+    if amplitude <= 0:
+        return FIT_COLOR_NONE
+    rmse /= amplitude
 
-    return FIT_COLOR_PASS if rmse <= RMSE_THRESHOLD else FIT_COLOR_FAIL
+    return FIT_COLOR_PASS if rmse <= threshold else FIT_COLOR_FAIL
 
 
 def _axis_suffix(i: int) -> str:
@@ -160,6 +151,108 @@ def convert_hours_to_unit(hours: float | np.ndarray, time_unit: str = "hours"):
         return hours * 60.0
     else:  # hours
         return hours
+
+
+# --- info-plot style ----------------------------------------------------------
+# Palette of the explanatory figures (info_plots/make_info_plots.py).
+INFO_INK = "#262730"
+INFO_INK_2 = "#5F6368"
+INFO_AXIS = "#9AA0A6"
+INFO_REF = "#6B7280"
+INFO_CURVE = "#2B7BB9"
+INFO_ACCENT = "#E4572E"
+INFO_PHASE = "#66BB6A"
+INFO_POINTS = "#A7ADB4"
+INFO_FADED = "#D9DCE1"
+
+# Sample colours, led by a soft version of the app's green; fixed order,
+# validated for colour-blind separation on white and the grey cards. Some sit
+# just under 3:1 contrast, so multi-sample plots rely on their legend.
+APP_PALETTE = [
+    "#66A86B",  # green (app primary family)
+    "#5B8FC7",  # blue
+    "#E07B5F",  # coral
+    "#8C7BD1",  # lavender
+    "#22A6A8",  # teal
+    "#D19A3C",  # amber
+    "#D57A9C",  # rose
+]
+
+# Trace name -> (colour, line width or marker size)
+_INFO_TRACES = {
+    "Fitted curve": (INFO_CURVE, 3),
+    "umax tangent": (INFO_ACCENT, 2),
+    "Raw": (INFO_FADED, 3),
+    "Smoothed": (INFO_INK_2, 3),
+    "Fitted": (INFO_CURVE, 3),
+}
+
+
+def style_like_info_plots(fig: go.Figure, fit_window=None) -> go.Figure:
+    """Restyle a single-well plot to match the explanatory figures on the Upload
+    page: their palette for the traces, plus style_info_axes.
+
+    As in the sliding-window figure, points used in the fit (lasso-selected and
+    inside fit_window, a (t_min, t_max) pair) are dark grey; all others are light grey.
+    """
+    for tr in fig.data:
+        if tr.name == "Data":  # every point; shows grey where not used
+            tr.marker.update(color=INFO_POINTS, size=6, opacity=1)
+        elif tr.name == "Selected":
+            t0, t1 = (
+                np.nan if v is None else float(v) for v in fit_window or (None, None)
+            )
+            x = np.asarray(tr.x, dtype=float)
+            used = (x >= t0) & (x <= t1)
+            tr.update(x=x[used], y=np.asarray(tr.y, dtype=float)[used])
+            tr.marker.update(color=INFO_INK_2, size=7, line=dict(width=0))
+        elif tr.name in _INFO_TRACES:
+            color, width = _INFO_TRACES[tr.name]
+            if tr.mode == "markers":
+                tr.marker.color = color
+            else:
+                tr.line.color = color
+                tr.line.width = width
+        elif tr.mode == "markers":  # μmax marker
+            tr.marker.update(color=INFO_ACCENT, line=dict(color="white", width=2))
+    for s in fig.layout.shapes:  # below the traces, so the fit line stays on top
+        if s.type == "rect":  # exponential phase
+            s.update(fillcolor=INFO_PHASE, opacity=0.13, layer="below")
+        else:  # reference lines
+            s.update(line_color=INFO_REF, line_dash="dash", opacity=1, layer="below")
+    # Draw order: grey points, used points, other lines, fit line, μmax marker
+    rank = {"Data": 0, "Selected": 1, "Fitted curve": 3, "Fitted": 3}
+    fig.data = sorted(
+        fig.data, key=lambda tr: rank.get(tr.name, 2 if tr.mode == "lines" else 4)
+    )
+    return style_info_axes(fig)
+
+
+def style_info_axes(fig: go.Figure) -> go.Figure:
+    """Transparent background and grey axis lines, as in the explanatory figures.
+
+    Leaves trace colours alone, so per-sample colours are kept.
+    """
+    axis = dict(
+        showline=True,
+        linecolor=INFO_AXIS,
+        linewidth=1.5,
+        showgrid=False,
+        zeroline=False,
+        ticks="",
+        tickfont=dict(color=INFO_INK_2),
+        title_font=dict(size=16, color=INFO_INK),
+    )
+    fig.update_xaxes(**axis)
+    fig.update_yaxes(**axis)
+    fig.update_layout(
+        font=dict(family="Arial, sans-serif", color=INFO_INK_2),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    if fig.layout.title.text:
+        fig.update_layout(title_font=dict(color=INFO_INK))
+    return fig
 
 
 # --- helpers ------------------------------------------------------------------
@@ -335,7 +428,7 @@ def _order_and_colors(d: pd.DataFrame, sample_order: list[str] | None):
     ordered = list(dict.fromkeys([n for n in (sample_order or []) if n]))
     seen = list(pd.unique(d["Sample Name"]))
     names = ordered + [n for n in seen if n not in ordered]
-    palette = px.colors.qualitative.Plotly
+    palette = APP_PALETTE
     color_map = {n: palette[i % len(palette)] for i, n in enumerate(names)}
     return names, color_map
 
@@ -693,7 +786,7 @@ def plot_single_growth_stat(
             if gs not in groups:
                 groups.append(gs)
 
-        base_colors = px.colors.qualitative.Plotly
+        base_colors = APP_PALETTE
         color_map = {g: base_colors[i % len(base_colors)] for i, g in enumerate(groups)}
 
     # ---- aggregate ----
@@ -717,11 +810,13 @@ def plot_single_growth_stat(
             go.Bar(
                 x=agg["_x"],
                 y=agg["mean"],
-                error_y=dict(type="data", array=agg["sd"], visible=True),
+                error_y=dict(
+                    type="data", array=agg["sd"], visible=True, color=INFO_INK
+                ),
                 name="",
                 showlegend=False,
                 hovertemplate=f"{x_col}=%{{x}}<br>Mean=%{{y:.4f}}<extra></extra>",
-                marker=dict(line=dict(color="black", width=1.5)),
+                marker=dict(color=APP_PALETTE[0], line=dict(color=INFO_INK, width=1)),
             )
         )
 
@@ -736,7 +831,7 @@ def plot_single_growth_stat(
                 pointpos=0,
                 fillcolor="rgba(0,0,0,0)",
                 line=dict(width=0),
-                marker=dict(size=6, opacity=0.8),
+                marker=dict(color=INFO_INK, size=6, opacity=0.6),
                 text=(df["plate"].astype(str) + " " + df["well"].astype(str)).tolist(),
                 hovertemplate="Well=%{text}<br>Value=%{y:.4f}<extra></extra>",
             )
@@ -753,7 +848,9 @@ def plot_single_growth_stat(
                 go.Bar(
                     x=a_g["_x"],
                     y=a_g["mean"],
-                    error_y=dict(type="data", array=a_g["sd"], visible=True),
+                    error_y=dict(
+                        type="data", array=a_g["sd"], visible=True, color=INFO_INK
+                    ),
                     name=g,
                     legendgroup=g,
                     offsetgroup=g,
@@ -765,7 +862,7 @@ def plot_single_growth_stat(
                     ),
                     marker=dict(
                         color=color_map[g],
-                        line=dict(color="black", width=1.5),
+                        line=dict(color=INFO_INK, width=1),
                     ),
                 )
             )
@@ -784,9 +881,9 @@ def plot_single_growth_stat(
                     fillcolor="rgba(0,0,0,0)",
                     line=dict(width=0),
                     marker=dict(
-                        color="black",
+                        color=INFO_INK,
                         size=6,
-                        opacity=0.8,
+                        opacity=0.6,
                     ),
                     text=(
                         p_g["plate"].astype(str) + " " + p_g["well"].astype(str)
@@ -802,7 +899,7 @@ def plot_single_growth_stat(
         categoryarray=list(x_order),
         title_text=x_col,
     )
-    fig.update_yaxes(showgrid=False, range=[0, None], title_text=y_axis_label)
+    fig.update_yaxes(showgrid=False, rangemode="nonnegative", title_text=y_axis_label)
 
     fig.update_layout(
         title=display_title,
@@ -817,24 +914,24 @@ def plot_single_growth_stat(
 
 
 # --- window fits ----------------------------------------------------------------
-def _empty_grid(fig):
+def _empty_grid(fig, fmt: PlateFormat):
     """Muted box and label for every well, for plates with nothing to draw."""
     shapes, labels = [], []
-    for i, w in enumerate(ALL_WELLS, 1):
+    for i, w in enumerate(fmt.wells, 1):
         box, label = _well_box(fig, i, w, FIT_COLOR_NONE, muted=True)
         shapes.append(box)
         labels.append(label)
     return shapes, labels
 
 
-def _assemble_grid(fig, traces, shapes, labels):
-    """Apply the batched traces, shapes and labels to the 96-well figure."""
+def _assemble_grid(fig, traces, shapes, labels, fmt: PlateFormat):
+    """Apply the batched traces, shapes and labels to the plate figure."""
     if traces:
         fig.add_traces(traces)
     fig.update_layout(
         shapes=shapes,
         annotations=labels,
-        height=900,
+        height=round(112.5 * len(fmt.rows)),  # 900 px for a 96-well plate
         showlegend=False,
         hovermode=False,
     )
@@ -842,7 +939,7 @@ def _assemble_grid(fig, traces, shapes, labels):
 
 
 def plot_window_plate(plate: dict, time_unit: str = "hours"):
-    """Plot a full 96-well plate overview with window-fit overlays.
+    """Plot a full plate overview (96 or 384 wells) with window-fit overlays.
 
     Args:
         plate: Plate dictionary containing processed_data, growth_stats, and fit_parameters
@@ -851,24 +948,27 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
     proc = plate.get("processed_data") or {}
     gs_all = plate.get("growth_stats") or {}
     fit_params = plate.get("fit_parameters") or {}
+    threshold = float((plate.get("params") or {}).get("rmse_threshold", RMSE_THRESHOLD))
 
+    fmt = plate_format(plate)
+    # Spacing is a fraction of the figure, so scale it to keep gaps constant
     fig = make_subplots(
-        rows=8,
-        cols=12,
-        horizontal_spacing=0.008,
-        vertical_spacing=0.025,
+        rows=len(fmt.rows),
+        cols=len(fmt.cols),
+        horizontal_spacing=0.096 / len(fmt.cols),
+        vertical_spacing=0.2 / len(fmt.rows),
         shared_xaxes=True,
         shared_yaxes=True,
     )
 
     # Batched: adding one at a time re-validates the whole figure each call,
-    # which is quadratic over 96 subplots.
+    # which is quadratic in the number of subplots.
     traces, shapes, labels = [], [], []
 
     # Check if there's any data
     if not proc:
         fig.update_layout(margin=dict(l=60, r=25, t=60, b=55))
-        return _assemble_grid(fig, [], *_empty_grid(fig))
+        return _assemble_grid(fig, [], *_empty_grid(fig, fmt), fmt)
 
     # Calculate global ranges
     ts, ys = [], []
@@ -880,7 +980,7 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
 
     if not ts:
         fig.update_layout(margin=dict(l=60, r=25, t=60, b=55))
-        return _assemble_grid(fig, [], *_empty_grid(fig))
+        return _assemble_grid(fig, [], *_empty_grid(fig, fmt), fmt)
 
     x_min, x_max = float(min(t.min() for t in ts)), float(max(t.max() for t in ts))
     x_min_display = convert_hours_to_unit(x_min, time_unit)
@@ -890,14 +990,16 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
     x_range = [x_min_display - 0.02 * xr, x_max_display + 0.02 * xr]
     y_range = [y_min - 0.05 * yr, y_max + 0.05 * yr]
 
-    for i, well in enumerate(ALL_WELLS, 1):
+    for i, well in enumerate(fmt.wells, 1):
         d = proc.get(well)
         gs = gs_all.get(well) or {}
         fit_result = fit_params.get(well)
 
         # Box first so empty wells are outlined too.
         empty = d is None or d.empty
-        box, label = _well_box(fig, i, well, fit_quality_color(gs), muted=empty)
+        box, label = _well_box(
+            fig, i, well, fit_quality_color(gs, threshold), muted=empty
+        )
         shapes.append(box)
         labels.append(label)
 
@@ -989,7 +1091,7 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
     fig.update_xaxes(showgrid=False, range=x_range, matches="x")
     fig.update_yaxes(showgrid=False, range=y_range, matches="y")
 
-    return _assemble_grid(fig, traces, shapes, labels)
+    return _assemble_grid(fig, traces, shapes, labels, fmt)
 
 
 # --- derivative models ---------------------------------------------------------
@@ -1163,33 +1265,16 @@ def plot_derivative_metric(
                 MODEL_REGISTRY["mechanistic"] + MODEL_REGISTRY["phenomenological"]
             ):
                 # For parametric models, compute metric from the model
-                model_func = {
-                    "mech_logistic": mech_logistic_model,
-                    "mech_gompertz": mech_gompertz_model,
-                    "mech_richards": mech_richards_model,
-                    "mech_baranyi": mech_baranyi_model,
-                    "phenom_logistic": phenom_logistic_model,
-                    "phenom_gompertz": phenom_gompertz_model,
-                    "phenom_gompertz_modified": phenom_gompertz_modified_model,
-                    "phenom_richards": phenom_richards_model,
-                }.get(model_type)
+                y_model = evaluate_parametric_model(t_model, model_type, params)
+                # Phenomenological models return ln(N/N0), so convert to OD
+                if model_type in MODEL_REGISTRY["phenomenological"]:
+                    y_model = log_to_linear(y_model, params["N0"])
 
-                if model_func is not None:
-                    # Handle parameter name mismatches and filter metadata
-                    model_params = params.copy()
-                    if "mu_max_param" in model_params:
-                        model_params["mu_max"] = model_params.pop("mu_max_param")
-                    model_params.pop("fit_t_min", None)
-                    model_params.pop("fit_t_max", None)
-
-                    # Evaluate the model on fitted range
-                    y_model = model_func(t_model, **model_params)
-
-                    # Compute metric from model
-                    if metric == "dndt":
-                        _, metric_model = compute_first_derivative(t_model, y_model)
-                    else:  # mu
-                        _, metric_model = compute_instantaneous_mu(t_model, y_model)
+                # Compute metric from model
+                if metric == "dndt":
+                    _, metric_model = compute_first_derivative(t_model, y_model)
+                else:  # mu
+                    _, metric_model = compute_instantaneous_mu(t_model, y_model)
 
             elif model_type == "spline":
                 # For spline model, reconstruct the spline and evaluate
@@ -1265,5 +1350,13 @@ def plot_derivative_metric(
         margin=dict(l=40, r=20, t=60, b=40),
     )
     fig.update_xaxes(showgrid=False, title=f"Time ({time_unit})", range=x_range)
-    fig.update_yaxes(showgrid=False, title=y_axis_title)
+    # y range from the smoothed curve, so raw-derivative spikes don't flatten it
+    finite = np.asarray(metric_smooth, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    y_range = None
+    if finite.size:
+        lo, hi = float(finite.min()), float(finite.max())
+        pad = 0.05 * (hi - lo) or 0.05 * abs(hi) or 0.05
+        y_range = [lo - pad, hi + pad]
+    fig.update_yaxes(showgrid=False, title=y_axis_title, range=y_range)
     return fig

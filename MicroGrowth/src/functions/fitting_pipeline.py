@@ -25,10 +25,10 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
     Returns:
         (fit_stats_dict, fit_result_dict | None)
     """
-    growth_method = params.get("growth_method", "Spline")
-    lag_frac = float(params.get("lag_cutoff", 0.15))
-    exp_frac = float(params.get("exp_cutoff", 0.15))
-    phase_boundary_method = str(params.get("phase_boundary_method", "tangent")).lower()
+    growth_method = params.get("growth_method", "Sliding Window")
+    # Phase boundaries always use the tangent at μmax (models with a fitted lag
+    # time use it as the exponential phase start)
+    phase_boundary_method = "tangent"
 
     fit_result = None
 
@@ -42,8 +42,6 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
                 fit_result,
                 t_arr,
                 y_arr,
-                lag_frac=lag_frac,
-                exp_frac=exp_frac,
                 phase_boundary_method=phase_boundary_method,
             )
             # Store model parameters
@@ -54,30 +52,27 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
 
     elif growth_method == "Spline":
         # Use non-parametric spline method
-        smooth = params.get("smooth", "fast")
+        smooth = params.get("smooth", "auto")
+        # growthcurves only accepts "auto" (REML) or a positive number, so anything
+        # else (e.g. legacy "fast"/"slow", or a manual value of 0) maps to "auto"
+        try:
+            smooth_arg = float(smooth) if float(smooth) > 0 else "auto"
+        except (TypeError, ValueError):
+            smooth_arg = "auto"
         fit_result = fit_non_parametric(
             t_arr,
             y_arr,
             method="spline",
-            smooth=smooth,
-            exp_start=lag_frac,
-            exp_end=exp_frac,
-            sg_window=int(params.get("sg_window", 11)),
-            sg_poly=int(params.get("sg_poly", 1)),
-            use_weights=False,
+            smooth=smooth_arg,
         )
         if fit_result is not None:
             fit = extract_stats(
                 fit_result,
                 t_arr,
                 y_arr,
-                lag_frac=lag_frac,
-                exp_frac=exp_frac,
                 phase_boundary_method=phase_boundary_method,
             )
-            actual_params = fit_result.get("params") or {}
-            fit["spline_s"] = actual_params.get("spline_s")
-            fit["smooth"] = actual_params.get("smooth", smooth)
+            fit["smooth"] = smooth
         else:
             fit = bad_fit_stats()
 
@@ -87,18 +82,16 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
             t_arr,
             y_arr,
             method="sliding_window",
-            window_points=int(params.get("window_points", 7)),
+            window_points=int(params.get("window_points", 5)),
         )
         if fit_result is not None:
             fit = extract_stats(
                 fit_result,
                 t_arr,
                 y_arr,
-                lag_frac=lag_frac,
-                exp_frac=exp_frac,
                 phase_boundary_method=phase_boundary_method,
             )
-            fit["window_points"] = int(params.get("window_points", 7))
+            fit["window_points"] = int(params.get("window_points", 5))
         else:
             fit = bad_fit_stats()
 
