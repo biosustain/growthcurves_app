@@ -16,7 +16,13 @@ from src.functions.check_growth_fits import (
     analyse_well,
     update_growth_stats_from_lasso,
 )
-from src.functions.plotting_functions import _finite_sorted_xy, plot_derivative_metric
+from src.functions.common import toast_once
+from src.functions.constants import plate_format
+from src.functions.plotting_functions import (
+    _finite_sorted_xy,
+    plot_derivative_metric,
+    style_like_info_plots,
+)
 
 
 def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
@@ -25,7 +31,7 @@ def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
 
     # Define metrics to display with nice labels and formatting
     metrics = [
-        ("fit_method", "Fit Method", lambda x: str(x) if x else "sliding_window"),
+        ("fit_method", "Fit Method", lambda x: str(x) if x else "--"),
         ("model_rmse", "RMSE", lambda x: f"{float(x):.5f}" if pd.notna(x) else "--"),
         ("max_od", "Maximum OD", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
         (
@@ -91,7 +97,7 @@ def _format_analysis_params_table(
     # Use stored custom params if present, otherwise fall back to plate defaults
     analysis_params = gs.get("_analysis_params") or {}
     used_fit_times = gs.get("_used_fit_times")
-    growth_method = plate_params.get("growth_method", "Spline")
+    growth_method = plate_params.get("growth_method", "Sliding Window")
 
     n_selected = len(used_fit_times) if used_fit_times else n_total
     total_str = str(n_total) if n_total is not None else "?"
@@ -109,7 +115,7 @@ def _format_analysis_params_table(
     method_params = []
     if growth_method == "Sliding Window":
         method_params = [
-            ("window_points", "Window size (points)", lambda x: str(int(x)))
+            ("window_points", "Minimum window size (points)", lambda x: str(int(x)))
         ]
     elif growth_method == "Spline":
         method_params = [("smooth", "Spline mode", lambda v: str(v).capitalize())]
@@ -121,8 +127,6 @@ def _format_analysis_params_table(
                 value = gs.get("smooth")
             if value is None:
                 value = plate_params.get(param_name)
-            if value is None:
-                value = plate_params.get("spline_s")
         else:
             value = (
                 analysis_params.get(param_name)
@@ -157,7 +161,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
     processed = (plate.get("processed_data") or {}).get(well)
     if processed is None or processed.empty:
-        st.info(f"No data for {well}")
+        toast_once(f"No data for {well}")
         return np.nan, np.nan, True
 
     t = processed["Time"]
@@ -166,7 +170,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
     growth_stats = (plate.get("growth_stats") or {}).setdefault(well, {})
     plate_params = (plate or {}).get("params") or {}
-    growth_method = plate_params.get("growth_method", "Spline")
+    growth_method = plate_params.get("growth_method", "Sliding Window")
 
     ss_key = f"phase__{key}"
     maxod_key = f"maxod__{key}"
@@ -215,17 +219,8 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             plate_params.get("min_signal_to_noise", 1.0)
         )
         st.session_state[_rp_min_dp_key] = int(plate_params.get("min_data_points", 5))
-        st.session_state[_rp_window_key] = int(plate_params.get("window_points", 15))
-        smooth_default = (
-            str(plate_params.get("smooth", plate_params.get("spline_s", "fast")))
-            .strip()
-            .lower()
-        )
-        st.session_state[_rp_smooth_key] = (
-            "slow"
-            if smooth_default == "auto"
-            else smooth_default if smooth_default in {"fast", "slow"} else "fast"
-        )
+        st.session_state[_rp_window_key] = int(plate_params.get("window_points", 5))
+        st.session_state[_rp_smooth_key] = "auto"
         st.session_state[_rp_spline_s_key] = None
 
     # Initialise re-analysis params the first time this well is shown
@@ -255,7 +250,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         # Handle edge case where all OD values are 0 or negative
         actual_max_od = max(processed["baseline_corrected"])
         if actual_max_od <= 0:
-            st.warning("All OD values are ≤ 0 - no growth detected")
+            toast_once(f"{well}: all OD values are ≤ 0 - no growth detected")
             max_od = 0.0
         else:
             max_od = st.slider(
@@ -312,17 +307,17 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         if growth_method == "Sliding Window":
             params_override["window_points"] = int(
                 st.session_state.get(
-                    _rp_window_key, plate_params.get("window_points", 15)
+                    _rp_window_key, plate_params.get("window_points", 5)
                 )
             )
         elif growth_method == "Spline":
-            smooth_mode = st.session_state.get(_rp_smooth_key, "fast")
+            smooth_mode = st.session_state.get(_rp_smooth_key, "auto")
             if smooth_mode == "manual":
                 params_override["smooth"] = float(
                     st.session_state.get(_rp_spline_s_key) or 0.0
                 )
             else:
-                params_override["smooth"] = smooth_mode
+                params_override["smooth"] = "auto"
 
         effective_p = dict(plate_params)
         effective_p.update(params_override)
@@ -365,18 +360,9 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         if growth_method == "Sliding Window":
             analysis_params["window_points"] = effective_p.get("window_points")
         elif growth_method == "Spline":
-            _sv = (
-                str(
-                    growth_stats.get(
-                        "smooth",
-                        effective_p.get("smooth", effective_p.get("spline_s", "fast")),
-                    )
-                )
-                .strip()
-                .lower()
-            )
+            _sv = growth_stats.get("smooth", effective_p.get("smooth", "auto"))
             analysis_params["smooth"] = (
-                "slow" if _sv == "auto" else _sv if _sv in {"fast", "slow"} else "fast"
+                _sv if isinstance(_sv, (int, float)) and _sv > 0 else "auto"
             )
         growth_stats["_analysis_params"] = analysis_params
 
@@ -460,22 +446,21 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             )
             if growth_method == "Sliding Window":
                 st.number_input(
-                    "Window size (points)",
+                    "Minimum window size (points)",
                     min_value=3,
                     step=1,
                     key=_rp_window_key,
-                    help="Number of data points in each sliding window used to estimate growth rate.",
+                    help="Minimum number of data points per sliding window; the window length adapts to the noise in the data.",
                 )
             elif growth_method == "Spline":
                 st.radio(
                     "Spline fitting mode",
-                    options=["fast", "slow", "manual"],
+                    options=["auto", "manual"],
                     key=_rp_smooth_key,
                     horizontal=True,
                     format_func=lambda v: v.capitalize(),
                     help=(
-                        "Fast uses auto-default smoothing with OD weights. "
-                        "Slow uses weighted GCV smoothing and is typically slower. "
+                        "Auto chooses the smoothing by REML. "
                         "Manual lets you set the smoothing factor (λ) directly."
                     ),
                 )
@@ -488,8 +473,9 @@ def _phase_controls(plate: dict, well: str, *, key: str):
                         format="%.4f",
                         key=_rp_spline_s_key,
                         help=(
-                            "Spline smoothing factor λ. "
-                            "Larger values produce a smoother (less wiggly) spline."
+                            "Spline smoothing factor λ, relative to the data. "
+                            "Larger values produce a smoother (less wiggly) spline. "
+                            "0 uses Auto."
                         ),
                     )
             btn_col, restore_col = st.columns(2)
@@ -538,8 +524,8 @@ def ui_window_fits_well_editor(plates: dict):
     current_plate = plates.get(current_plate_id, {})
     processed_data = current_plate.get("processed_data") or {}
 
-    # Get available wells and sort them in A1-H12 order
-    all_standard_wells = [f"{r}{c}" for r in "ABCDEFGH" for c in range(1, 13)]
+    # Get available wells and sort them in plate order (A1, A2, ...)
+    all_standard_wells = list(plate_format(current_plate).wells)
     wells = [w for w in all_standard_wells if w in processed_data]
 
     # If no wells with data, fall back to standard ordering
@@ -562,7 +548,7 @@ def ui_window_fits_well_editor(plates: dict):
 
     col1, col2 = st.columns(2, gap="large")
     with col1:
-        with st.container(border=True):
+        with st.container(border=True, key="card_check_growth_fits_1"):
             plate_col, popover_col, toggle_col1 = st.columns(
                 [2, 0.9, 0.9], vertical_alignment="bottom", gap="small"
             )
@@ -639,7 +625,7 @@ def ui_window_fits_well_editor(plates: dict):
                 )
 
     with col2:
-        with st.container(border=True):
+        with st.container(border=True, key="card_check_growth_fits_2"):
             plate = plates[plate_id]
             key = f"{plate_id}_{well}"
 
@@ -783,25 +769,29 @@ def ui_window_fits_well_editor(plates: dict):
                 uirevision="keep",
                 dragmode="lasso",
                 showlegend=False,
-                plot_bgcolor="white",
-                paper_bgcolor="white",
-                margin=dict(l=20, r=20, t=20, b=20),
+                title=f"Fitted growth curve – {well}",
+                margin=dict(l=20, r=20, t=60, b=20),
                 height=600,
+            )
+            style_like_info_plots(
+                fig_main, fit_window=(gs.get("fit_t_min"), gs.get("fit_t_max"))
             )
         else:
             fig_main = go.Figure()
     else:
         fig_main = go.Figure()
 
-    st.plotly_chart(
-        fig_main,
-        key=chart_key,
-        selection_mode="lasso",
-        on_select=lambda: update_growth_stats_from_lasso(
-            plates, plate_id, well, chart_key
-        ),
-        width="stretch",
-    )
+    # Grey cards with transparent plot backgrounds, as on the Upload & Analyse page
+    with st.container(border=True, key="card_check_growth_fits_3"):
+        st.plotly_chart(
+            fig_main,
+            key=chart_key,
+            selection_mode="lasso",
+            on_select=lambda: update_growth_stats_from_lasso(
+                plates, plate_id, well, chart_key
+            ),
+            width="stretch",
+        )
 
     # Show derivative plots
     fig_dndt = plot_derivative_metric(
@@ -810,5 +800,7 @@ def ui_window_fits_well_editor(plates: dict):
     fig_mu = plot_derivative_metric(
         plate, well, metric="mu", sg_window=sg_w, sg_poly=sg_p, gs=gs
     )
-    st.plotly_chart(fig_dndt, width="stretch")
-    st.plotly_chart(fig_mu, width="stretch")
+    for i, fig in enumerate((fig_dndt, fig_mu), start=4):
+        style_like_info_plots(fig)
+        with st.container(border=True, key=f"card_check_growth_fits_{i}"):
+            st.plotly_chart(fig, width="stretch")

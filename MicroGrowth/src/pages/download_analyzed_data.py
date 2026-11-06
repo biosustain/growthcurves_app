@@ -45,7 +45,7 @@ if "export_zip_bytes" not in st.session_state:
     st.session_state.export_zip_bytes = None
 
 # ---- Tabulated Data + Global Plots in one container ----
-with st.container(border=True):
+with st.container(border=True, key="card_download_page_1"):
     top_left, top_right = st.columns(2)
 
     with top_left:

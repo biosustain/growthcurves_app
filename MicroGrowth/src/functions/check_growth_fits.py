@@ -136,6 +136,7 @@ def _add_lasso_selected_points(
             x=t_sel,
             y=y_plot,
             mode="markers",
+            name="Selected",
             marker=dict(size=8, color="#ef5350", symbol="circle"),
             showlegend=False,
         ),
@@ -232,28 +233,12 @@ def update_growth_stats_from_lasso(
             params[param_key] = st.session_state[ss_key]
 
     if params.get("growth_method") == "Spline":
-        smooth_key = f"rp_smooth__{well_key}"
-        if smooth_key in st.session_state:
-            smooth_mode = str(st.session_state[smooth_key]).strip().lower()
-            params["smooth"] = (
-                smooth_mode if smooth_mode in {"fast", "slow"} else "fast"
-            )
-        else:
-            smooth_mode = (
-                str(params.get("smooth", params.get("spline_s", "fast")))
-                .strip()
-                .lower()
-            )
-            if smooth_mode == "auto":
-                smooth_mode = "slow"
-            params["smooth"] = (
-                smooth_mode if smooth_mode in {"fast", "slow"} else "fast"
-            )
+        params["smooth"] = "auto"
 
     fit, fit_result = _analyse_series_with_plate_params(refit_t, refit_y, params)
 
     # Build the params record that was actually used
-    growth_method = params.get("growth_method", "Spline")
+    growth_method = params.get("growth_method", "Sliding Window")
     analysis_params = {
         "min_od_increase": params.get("min_od_increase"),
         "min_growth_rate": params.get("min_growth_rate"),
@@ -285,7 +270,7 @@ def _sg_params_for_plate(plates: dict, plate_id: str) -> tuple[int, int, int]:
     return (
         int(params.get("sg_window", 11)),
         int(params.get("sg_poly", 2)),
-        int(params.get("window_points", 15)),
+        int(params.get("window_points", 5)),
     )
 
 

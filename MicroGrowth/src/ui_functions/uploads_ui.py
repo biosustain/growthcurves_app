@@ -7,7 +7,12 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 from growthcurves.models import MODEL_REGISTRY
-from src.functions.constants import COLS, DEFAULT_PARAMS, ROWS
+from src.functions.constants import (
+    DEFAULT_PARAMS,
+    PLATE_96,
+    PlateFormat,
+    plate_format,
+)
 from src.functions.data_processing import analyse_plate, load_plate
 from src.functions.upload_functions import (
     detect_plate_map_format,
@@ -19,17 +24,17 @@ from src.functions.upload_functions import (
     validate_long_plate_map_file,
     validate_plate_map_file,
 )
-from src.styling import growth_param_table_style
+from src.styling import growth_param_table_style, plate_title_row_style
 from src.ui_functions.blank_grouping_ui import (
     DEFAULT_GROUP,
     color_for_group,
     darken_hex_color,
-    st_selectable_grid,
+    painted_blank_wells,
     ui_blank_group_assigner,
 )
+from src.ui_functions.plate_painter import plate_painter
 from src.ui_functions.ui_components import (
     ui_method_visualization,
-    ui_phase_boundary_visualization,
 )
 
 
@@ -44,38 +49,32 @@ def ui_upload_and_analyse_header():
             st.markdown("""
 **Workflow Overview - Upload & Analyse**
 
-This is your starting point. Follow the 6 steps in order to upload your data and run the growth analysis.
+This is your starting point. Follow the 4 steps in order to upload your data and run the growth analysis.
 
-**Step 1 - Upload data file**
-Upload your plate reader Excel file. Click "Requirements" to see the expected format and download an example. Your file must have a **Time** column plus one column per well (e.g. A1, A2, ...).
+**Step 1 - Upload data and names**
+- **Plate reader data**: Upload your plate reader Excel file. Click "Requirements" to see the expected format and download an example. Your file must have a **Time** column plus one column per well (e.g. A1, A2, ...).
+- **Sample names** (optional): Upload a plate map Excel file that assigns sample names to each well. If provided, data column names must be well IDs (A1–H12, or A1–P24 for 384-well plates) and the plate map is used to label each well. If omitted, the data column names are used directly as sample names. Wells with the same name are treated as replicates. Use **BLANK** (or any name starting with BLANK) for blank wells. Click "Requirements" for the expected format and an example download.
+- Click **Import data** to load your file(s). If a plate map is provided it is matched to the data; otherwise column names are used as sample names directly.
 
-**Step 2 - Upload sample names**
-Optionally upload a plate map Excel file that assigns sample names to each well. If provided, data column names must be well IDs (A1–H12) and the plate map is used to label each well. If omitted, the data column names are used directly as sample names. Wells with the same name are treated as replicates. Use **BLANK** (or any name starting with BLANK) for blank wells. Click "Requirements" for the expected format and an example download.
-
-**Step 3 - Match samples with names**
-Click the button to load your file(s). If a plate map is provided it will be matched to the data; otherwise column names are used as sample names directly.
-
-**Step 4 - Select preprocessing parameters**
+**Step 2 - Select preprocessing parameters**
 Configure how the data is processed before analysis:
 - **Time unit**: Set to match the unit in your data file (seconds, minutes, hours, days, or HH:MM:SS)
 - **Pathlength**: Your plate reader's optical path length, used to normalise OD to 1 cm
-- **Blank subtraction groups**: Link sample wells to blank wells by analysis group so subtraction uses only matched blank wells (any well named BLANK or starting with BLANK)
+- **Blank groups**: Drag across the plate map to assign wells to groups, so each blank is subtracted only from samples in its group. Select **Blank** to mark extra wells as blanks (wells named BLANK in the plate map are always blanks). Blank wells are not analysed as samples.
 - **Time range**: Restrict analysis to a specific window of the experiment
-- **Outlier detection**: Optionally detect/remove outliers with a sliding IQR window (window size + threshold)
 - **Exclude wells**: Manually remove specific wells (e.g. contaminated or failed wells)
 
 The plate preview updates live - colored wells are included, and gray wells are not included. Hover any well for details.
 
-**Step 5 - Select analysis parameters**
+**Step 3 - Select analysis parameters**
 Choose how growth descriptors are calculated:
-- **Model family & method**: Select a parametric model (mechanistic or phenomenological) or a non-parametric approach (Sliding Window or Spline). The visualisation below the selector shows the shape of the selected model.
-- **Spline fitting mode**: For the Spline method, choose **Fast** (auto-default smoothing with OD weighting) or **Slow** (weighted GCV smoothing).
+- **Model family & method**: Select a parametric model (mechanistic or phenomenological) or a non-parametric approach (Sliding Window or Spline). The figure shows how each growth parameter is calculated with the selected method.
 - **Quality control filters**: Wells not meeting these thresholds are automatically marked as "no growth"
-- **Phase boundary method**: Controls how the lag phase end and exponential phase end are determined
+- **Remove outliers**: Optionally detect and remove outlier points from each well before fitting (MAD z-score threshold)
 
 The table at the bottom shows exactly how each growth parameter will be calculated for your selected settings.
 
-**Step 6 - Analyse**
+**Step 4 - Analyse**
 Click the button to run the analysis. Once complete, navigate to the other pages using the top navigation bar to review and download your results.
 """)
 
@@ -84,13 +83,14 @@ Click the button to run the analysis. Once complete, navigate to the other pages
 
 def _build_plate_preview_cells(
     *,
+    fmt: PlateFormat,
     plate_map: pd.DataFrame | None,
     present: set[str],
     remove_wells: list[str] | bool,
     blank: bool,
     blank_group_assignments: dict[str, str] | bool,
 ) -> list[list[dict[str, Any]]]:
-    """Build st_selectable_grid cell payload for upload preview."""
+    """Build the cell payload (label, colour, tooltip) for the upload preview."""
     present_wells = {str(well).strip().upper() for well in present}
     removed_wells = {str(well).strip().upper() for well in (remove_wells or [])}
     group_map = (
@@ -103,9 +103,9 @@ def _build_plate_preview_cells(
     )
 
     cells: list[list[dict[str, Any]]] = []
-    for row in ROWS:
+    for row in fmt.rows:
         rendered_row: list[dict[str, Any]] = []
-        for col in COLS:
+        for col in fmt.cols:
             well = f"{row}{col}"
             group_name = group_map.get(well, DEFAULT_GROUP)
 
@@ -183,6 +183,7 @@ def render_plate_table(
     *,
     key: str,
     plate_map: pd.DataFrame | None,
+    fmt: PlateFormat = PLATE_96,
     present: set[str] | None = None,
     remove_wells: list[str] | bool = False,
     blank: bool = True,
@@ -192,6 +193,7 @@ def render_plate_table(
 ):
     """Render plate preview with the blank-linker style table."""
     cells = _build_plate_preview_cells(
+        fmt=fmt,
         plate_map=plate_map,
         present=present or set(),
         remove_wells=remove_wells,
@@ -199,36 +201,43 @@ def render_plate_table(
         blank_group_assignments=blank_group_assignments,
     )
 
-    if st_selectable_grid is None:
-        # Fallback keeps well labels visible when optional dependency is unavailable.
-        fallback_df = pd.DataFrame(
+    # Read-only version of the shared drag-to-paint plate map
+    plate_painter(
+        rows=fmt.rows,
+        cols=fmt.cols,
+        cells=[
             [
-                [re.sub(r"<[^>]+>", "", str(cell["label"])) for cell in row]
-                for row in cells
-            ],
-            index=ROWS,
-            columns=COLS,
-        )
-        st.dataframe(fallback_df, width="stretch", height=grid_height)
-        return
-
-    st_selectable_grid(
-        cells=cells,
-        header=[str(c) for c in COLS],
-        index=ROWS,
-        aspect_ratio=grid_aspect_ratio,
-        allow_secondary_selection=False,
-        allow_header_selection=False,
-        resize=True,
-        height=grid_height,
-        primary_selection_color="#6b7280",
+                {
+                    "label": re.sub(r"<[^>]+>", "", str(cell["label"])),
+                    "color": cell["cell_color"],
+                    "border": cell.get("cell_border_color"),
+                    "tooltip": cell.get("tooltip", ""),
+                    "tooltip_base": cell.get("tooltip", ""),
+                    "group": "",
+                    "blank": "<b>" in str(cell["label"]),
+                    "fixed_blank": False,
+                    "painted": False,
+                    "included": False,
+                }
+                for cell in row
+            ]
+            for row in cells
+        ],
+        group_colors={},
+        active_group="",
+        default_group="",
         key=f"uploads_preview::{key}",
+        on_paint=lambda: None,
+        aspect_ratio=grid_aspect_ratio,
+        interactive=False,
     )
 
 
 def _plate_cell_name(plate_map: pd.DataFrame, row: str, col: int) -> str:
     """Return normalized sample name at a plate position."""
-    if col in plate_map.columns:
+    if row not in plate_map.index:
+        value = "False"
+    elif col in plate_map.columns:
         value = plate_map.loc[row, col]
     elif str(col) in plate_map.columns:
         value = plate_map.loc[row, str(col)]
@@ -237,24 +246,29 @@ def _plate_cell_name(plate_map: pd.DataFrame, row: str, col: int) -> str:
     return str(value).strip()
 
 
-def _name_by_well_from_plate_map(plate_map: pd.DataFrame) -> dict[str, str]:
+def _name_by_well_from_plate_map(
+    plate_map: pd.DataFrame, fmt: PlateFormat
+) -> dict[str, str]:
     """Return well->sample-name mapping from a preview plate map."""
     return {
         f"{row}{col}": _plate_cell_name(plate_map, row, col)
-        for row in ROWS
-        for col in COLS
+        for row in fmt.rows
+        for col in fmt.cols
     }
 
 
 def ui_upload_files(ss):
     """Fragment for file upload controls."""
-    u1, u2 = st.columns(2)
+    step1 = st.container(border=True, key="card_uploads_1")
+    with step1:
+        st.header("Step 1. Upload data and names")
+        u1, u2 = st.columns(2, gap="large")
     with u1:
-        with st.container(border=True):
+        with st.container():
             # Header row with requirements in top right
             header_col, req_col = st.columns([3, 1])
             with header_col:
-                st.header("Step 1. Upload data")
+                st.subheader("Plate reader data")
             with req_col:
                 with st.popover("Requirements", width="stretch"):
                     st.caption(
@@ -262,13 +276,15 @@ def ui_upload_files(ss):
                         "You can choose to name the samples using column headings in "
                         "the data file, or upload a separate plate map to assign "
                         "sample names to wells. If you upload a plate map, column "
-                        "names in the data file must be well IDs (e.g. A1, B3)."
+                        "names in the data file must be well IDs (e.g. A1, B3).",
+                        text_alignment="center",
                     )
                     st.image("MicroGrowth/info_plots/data_upload.png", width="stretch")
 
                     st.caption(
                         "The Time column format can be either a float (e.g. 0, 0.5, 1.0) or HH:MM:SS "
-                        "(e.g. 00:00:00, 00:30:00, 01:00:00). The units can be selected below in Step 4."
+                        "(e.g. 00:00:00, 00:30:00, 01:00:00). The units can be selected below in Step 2.",
+                        text_alignment="center",
                     )
 
                     st.markdown("")
@@ -287,20 +303,22 @@ def ui_upload_files(ss):
                 "Plate reader Excel (.xlsx/.xls)", ["xlsx", "xls"], key="data_up"
             )
     with u2:
-        with st.container(border=True):
+        with st.container():
             # Header row with requirements in top right
             header_col, req_col = st.columns([3, 1])
             with header_col:
-                st.header("Step 2. Upload names")
+                st.subheader("Sample names (optional)")
             with req_col:
                 with st.popover("Requirements", width="stretch"):
                     st.caption(
                         "The plate map assigns sample names to each well. "
-                        "If provided, data column names must be well IDs (A1–H12) and the "
+                        "If provided, data column names must be well IDs (A1–H12, or "
+                        "A1–P24 for 384-well plates) and the "
                         "plate map is used to label each well. If omitted, the data "
                         "column names are used directly as sample names. Wells with the same "
                         "name are treated as replicates in the app. Use BLANK (or any name "
-                        "starting with BLANK) for blank wells."
+                        "starting with BLANK) for blank wells.",
+                        text_alignment="center",
                     )
                     st.image(
                         "MicroGrowth/info_plots/naming_upload.png", width="stretch"
@@ -311,7 +329,8 @@ def ui_upload_files(ss):
                         "Sample names can optionally include a strain and a condition, "
                         "separated by the first underscore (e.g. **Strain1_Condition1**). "
                         "The Create Visualizations page uses this to group and color samples "
-                        "by strain or condition."
+                        "by strain or condition.",
+                        text_alignment="center",
                     )
                     st.image(
                         "MicroGrowth/info_plots/naming_convention.png", width="stretch"
@@ -353,10 +372,10 @@ def ui_upload_files(ss):
                 key="map_up",
             )
 
-    with st.container(border=True):
-        st.header("Step 3. Match samples with names")
+    with step1:
+        st.write("")
         if st.button(
-            "Match samples with names",
+            "Import data",
             type="primary",
             width="stretch",
             disabled=not data_file,
@@ -364,7 +383,7 @@ def ui_upload_files(ss):
             is_valid_data, data_error = validate_data_file(data_file.getvalue())
             if not is_valid_data:
                 st.toast(
-                    f"❌ Data file validation failed: {data_error}",
+                    f"Data file validation failed: {data_error}",
                     duration="infinite",
                 )
                 st.stop()
@@ -378,7 +397,7 @@ def ui_upload_files(ss):
                     )
                     if not is_valid_map:
                         st.toast(
-                            f"❌ Plate map validation failed: {map_error}",
+                            f"Plate map validation failed: {map_error}",
                             duration="infinite",
                         )
                         st.stop()
@@ -389,7 +408,7 @@ def ui_upload_files(ss):
                     )
                     if not is_valid_map:
                         st.toast(
-                            f"❌ Plate map validation failed: {map_error}",
+                            f"Plate map validation failed: {map_error}",
                             duration="infinite",
                         )
                         st.stop()
@@ -399,7 +418,7 @@ def ui_upload_files(ss):
                     data_file.getvalue()
                 )
                 if not is_valid_cols:
-                    st.toast(f"❌ {cols_error}", duration="infinite")
+                    st.toast(cols_error, duration="infinite")
                     st.stop()
 
             plate_id = (
@@ -429,39 +448,57 @@ def ui_preprocessing_params(ss):
     clip_time_series = (None, None)
     time_unit = "hours"
     pl_cm = float(DEFAULT_PARAMS["pathlength_cm_"])
-    outlier_detection = bool(DEFAULT_PARAMS.get("outlier_detection", False))
-    outlier_threshold = float(DEFAULT_PARAMS.get("outlier_threshold", 3.5))
     plate_map = None
     present: set[str] = set()
     name_by_well: dict[str, str] = {}
     has_blank_wells = False
     blank_well_count = 0
+    painted_blanks: list[str] = []
+    blank_wells_all: set[str] = set()  # named BLANK in the plate map or painted
+    fmt = PLATE_96
 
-    with st.container(border=True):
-        st.header("Step 4. Select plate and preprocessing parameters")
+    with st.container(border=True, key="card_uploads_4"):
+        st.header("Step 2. Select plate and preprocessing parameters")
 
         selector_col, plate_name_col = st.columns(
-            [1.0, 1.35], vertical_alignment="bottom"
+            [1.0, 1.35], gap="large", vertical_alignment="bottom"
         )
         with selector_col:
             plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
-        with plate_name_col:
-            if plate_id:
-                st.markdown(
-                    f"<h3 style='text-align:center; margin:0; font-size:2rem;'>{plate_id}</h3>",
-                    unsafe_allow_html=True,
+        with plate_name_col, st.container(key="plate_title_row"):
+            plate_title_row_style()
+            title_col, delete_col = st.columns([4, 1])
+            with title_col:
+                # Escape Markdown so names such as example_data are shown literally
+                name = (
+                    re.sub(r"([\\`*_{}\[\]()#+\-.!|~>])", r"\\\1", str(plate_id))
+                    if plate_id
+                    else ""
                 )
-            else:
-                st.write("")
+                st.info(
+                    (
+                        f"**Plate:** {name}"
+                        if plate_id
+                        else "**Plate:** no plate selected"
+                    ),
+                    icon=":material/science:",
+                )
+            with delete_col:
+                if st.button(
+                    "Delete",
+                    key="delete_plate",
+                    type="tertiary",
+                    width="stretch",
+                    disabled=not plate_id,
+                    help="Remove this plate from the app",
+                ):
+                    ss.plates.pop(plate_id, None)
+                    st.rerun()
         params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
-        outlier_detection = bool(params0.get("outlier_detection", False))
-        try:
-            outlier_threshold = float(params0.get("outlier_threshold", 3.5))
-        except (TypeError, ValueError):
-            outlier_threshold = 3.5
 
         if plate_id:
             rec = ss.plates.get(plate_id, {})
+            fmt = plate_format(rec)
             if rec.get("uploads"):
                 uploads = rec["uploads"]
                 plate_map, present = get_plate_preview_data(
@@ -469,22 +506,33 @@ def ui_preprocessing_params(ss):
                     data_bytes=uploads["data_bytes"],
                 )
                 if plate_map is not None:
-                    name_by_well = _name_by_well_from_plate_map(plate_map)
-                    blank_well_count = sum(
-                        1
-                        for v in name_by_well.values()
+                    name_by_well = _name_by_well_from_plate_map(plate_map, fmt)
+                    # Blanks: BLANK names in the plate map plus wells painted as blanks
+                    # (only wells that are in the plate map and the data file)
+                    painted_blanks = [
+                        w
+                        for w in painted_blank_wells(
+                            plate_id, params0.get("blank_wells") or []
+                        )
+                        if str(name_by_well.get(w, "")).strip() not in {"", "False"}
+                        and (present is None or w in present)
+                    ]
+                    blank_wells_all = {
+                        w
+                        for w, v in name_by_well.items()
                         if v.upper().startswith("BLANK")
-                    )
+                    } | set(painted_blanks)
+                    blank_well_count = len(blank_wells_all)
                     has_blank_wells = blank_well_count > 0
 
         controls_col, plate_col = st.columns([1.0, 1.35], gap="large")
         plate_grid_height = 380
-        plate_grid_aspect_ratio = 0.65
+        # Wider, shorter cells so the plate map fills the column width
+        plate_grid_aspect_ratio = 0.58
         initial_group_map: dict[str, str] | None = None
 
         with controls_col:
-            _outlier_key = f"outlier_cb_{plate_id}"
-            _row_cols = st.columns([1.0, 0.8, 1.0, 0.8], vertical_alignment="bottom")
+            _row_cols = st.columns([1.0, 0.8, 1.8], vertical_alignment="bottom")
             a, b = _row_cols[0], _row_cols[1]
             _time_unit_options = ["seconds", "minutes", "hours", "days", "HH:MM:SS"]
             _saved_time_unit = params0.get("time_unit", "hours")
@@ -505,27 +553,6 @@ def ui_preprocessing_params(ss):
                 format="%.3f",
                 help="Optical pathlength of the plate reader (used to normalize OD600 values to 1 cm pathlength)",
             )
-            outlier_detection = _row_cols[2].checkbox(
-                "Remove outliers",
-                value=outlier_detection,
-                key=_outlier_key,
-            )
-            if outlier_detection:
-                outlier_threshold = float(
-                    _row_cols[3].number_input(
-                        "Threshold",
-                        min_value=1.0,
-                        max_value=5.0,
-                        value=outlier_threshold,
-                        step=0.1,
-                        format="%.2f",
-                        help=(
-                            "MAD z-score threshold for flagging outliers. Higher values flag "
-                            "fewer, more extreme points."
-                        ),
-                    )
-                )
-
             # Derive min/max time in hours from the uploaded data file
             _min_time_h = 0.0
             _max_time_h = 1e6
@@ -591,15 +618,18 @@ def ui_preprocessing_params(ss):
             )
 
             # Get default excluded wells from params0
+            # Blank wells are offered too: excluding one drops it from blank subtraction
+            exclude_options = list(fmt.wells)
             default_excluded = params0.get("remove_wells", [])
             if default_excluded is False or not default_excluded:
                 default_excluded = []
+            default_excluded = [w for w in default_excluded if w in exclude_options]
 
             remove_wells = st.multiselect(
                 "Exclude wells",
-                options=[f"{r}{c}" for r in "ABCDEFGH" for c in range(1, 13)],
+                options=exclude_options,
                 default=default_excluded,
-                help="Manually exclude specific wells from analysis (e.g., contaminated samples)",
+                help="Manually exclude specific wells from analysis (e.g., contaminated samples). Excluded blank wells are left out of blank subtraction.",
             )
 
             # Preserve the False sentinel behavior used elsewhere.
@@ -614,11 +644,13 @@ def ui_preprocessing_params(ss):
 
             ui_blank_group_assigner(
                 plate_id=plate_id or "placeholder",
+                fmt=fmt,
                 initial_group_map=initial_group_map,
                 name_by_well=name_by_well,
                 present_wells=present,
                 remove_wells=remove_wells,
                 blank_enabled=blank,
+                initial_blank_wells=params0.get("blank_wells") or [],
                 show_caption=True,
                 show_controls=True,
                 controls_disabled=blank_well_count <= 1,
@@ -631,11 +663,13 @@ def ui_preprocessing_params(ss):
             if plate_id and plate_map is not None:
                 blank_group_assignments = ui_blank_group_assigner(
                     plate_id=plate_id,
+                    fmt=fmt,
                     initial_group_map=initial_group_map,
                     name_by_well=name_by_well,
                     present_wells=present,
                     remove_wells=remove_wells,
                     blank_enabled=blank,
+                    initial_blank_wells=params0.get("blank_wells") or [],
                     show_caption=False,
                     show_controls=False,
                     show_grid=True,
@@ -649,14 +683,6 @@ def ui_preprocessing_params(ss):
                     grid_height=plate_grid_height,
                     grid_aspect_ratio=plate_grid_aspect_ratio,
                 )
-            if st.button(
-                "Remove selected plate",
-                type="tertiary",
-                width="stretch",
-                disabled=not plate_id,
-            ):
-                ss.plates.pop(plate_id, None)
-                st.rerun()
 
     # Store selected values in session state for access by other fragments
     if plate_id:
@@ -665,9 +691,8 @@ def ui_preprocessing_params(ss):
         ss["step3_params"]["time_unit"] = time_unit
         ss["step3_params"]["pl_cm"] = pl_cm
         ss["step3_params"]["blank"] = blank
+        ss["step3_params"]["blank_wells"] = painted_blanks
         ss["step3_params"]["blank_group_assignments"] = blank_group_assignments
-        ss["step3_params"]["outlier_detection"] = bool(outlier_detection)
-        ss["step3_params"]["outlier_threshold"] = float(outlier_threshold)
         ss["step3_params"]["clip_time_series"] = clip_time_series
         ss["step3_params"]["remove_wells"] = remove_wells
         ss["step3_params"]["params0"] = params0
@@ -693,13 +718,13 @@ def _get_model_display_name(model_code: str) -> str:
 
 def _ui_model_selection(params0: dict):
     """Render model family and growth method selection UI."""
-    stored_method = params0.get("growth_method", "Spline")
+    stored_method = params0.get("growth_method", "Sliding Window")
     stored_model_family = params0.get("model_family", "mechanistic")
     stored_model_type = params0.get("model_type", "mech_logistic")
 
     st.caption("Select the model family and growth descriptor method:")
 
-    family_col, method_col, param_col = st.columns(3)
+    family_col, method_col, param_col = st.columns([0.8, 0.8, 1.4])
 
     # Determine default family index from stored state
     if stored_method in ["Sliding Window", "Spline"]:
@@ -788,39 +813,51 @@ def _ui_model_selection(params0: dict):
 
 def ui_model_params(growth_method: str, params0: dict, step4_prev: dict, param_col):
     """Render method-specific parameters (window size or spline mode)."""
-    smooth_default = (
-        str(step4_prev.get("smooth", params0.get("smooth", "fast"))).strip().lower()
-    )
-    if smooth_default not in {"fast", "slow"}:
-        smooth_default = "fast"
+    smooth = "auto"
+    try:
+        manual_smooth = float(params0.get("smooth", "auto"))
+    except (TypeError, ValueError):
+        manual_smooth = 0.0
 
     with param_col:
         if growth_method == "Sliding Window":
             window_points = st.number_input(
-                "Window size (points)",
+                "Minimum window size (points)",
                 5,
                 200,
                 int(params0["window_points"]),
                 1,
-                help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
+                help="Minimum number of consecutive data points per sliding window; the window length adapts to the noise in the data",
             )
-            smooth = smooth_default
-        elif growth_method == "Spline":
+        else:  # Spline or Model Fitting
             window_points = int(params0["window_points"])
-            smooth = st.radio(
+
+        if growth_method == "Spline":
+            mode_col, smooth_col = st.columns(2)
+            mode = mode_col.radio(
                 "Spline fitting mode",
-                options=["fast", "slow"],
-                index=0 if smooth_default == "fast" else 1,
+                options=["auto", "manual"],
+                index=1 if manual_smooth > 0 else 0,
                 horizontal=True,
                 format_func=lambda v: v.capitalize(),
                 help=(
-                    "Fast uses auto-default smoothing with OD weights. "
-                    "Slow uses weighted GCV smoothing and is typically slower."
+                    "Auto chooses the smoothing by REML. "
+                    "Manual lets you set the smoothing factor (λ) directly."
                 ),
             )
-        else:  # Model Fitting
-            window_points = int(params0["window_points"])
-            smooth = smooth_default
+            if mode == "manual":
+                smooth = smooth_col.number_input(
+                    "Smoothing factor (λ)",
+                    min_value=0.0,
+                    value=manual_smooth if manual_smooth > 0 else 1.0,
+                    step=0.01,
+                    format="%.4f",
+                    help=(
+                        "Spline smoothing factor λ, relative to the data. "
+                        "Larger values produce a smoother (less wiggly) spline. "
+                        "0 uses Auto."
+                    ),
+                )
 
     return window_points, smooth
 
@@ -868,52 +905,10 @@ def ui_qc_filters(params0: dict):
     return min_data_points, min_signal_to_noise, min_od_increase, min_growth_rate
 
 
-def ui_phase_boundaries(params0: dict):
-    """Render phase boundary method selection UI."""
-    st.caption(
-        "Phase boundaries define when the lag phase ends and when the exponential phase ends."
-    )
-    phase_boundary_method = st.selectbox(
-        "Phase boundary calculation",
-        options=["threshold", "tangent"],
-        index=(
-            0 if params0.get("phase_boundary_method", "tangent") == "threshold" else 1
-        ),
-        format_func=lambda v: v.capitalize(),
-        help="Threshold uses fractions of μ_max; tangent uses the tangent at μ_max to estimate exponential phase bounds.",
-    )
-    lag_cutoff = st.number_input(
-        "Lag phase cutoff",
-        0.01,
-        0.5,
-        float(params0.get("lag_cutoff", 0.5)),
-        0.01,
-        format="%.2f",
-        disabled=phase_boundary_method == "tangent",
-        help="Fraction of maximum growth rate used to define lag phase end (threshold mode).",
-    )
-    exp_cutoff = st.number_input(
-        "Exponential phase cutoff",
-        0.01,
-        0.5,
-        float(params0.get("exp_cutoff", 0.5)),
-        0.01,
-        format="%.2f",
-        disabled=phase_boundary_method == "tangent",
-        help="Fraction of maximum growth rate used to define exponential phase end (threshold mode).",
-    )
-
-    return phase_boundary_method, lag_cutoff, exp_cutoff
-
-
 def ui_calculation_table(
     growth_method: str,
     model_type: str,
     model_family: str,
-    phase_boundary_method: str,
-    lag_cutoff: float,
-    exp_cutoff: float,
-    window_points: int,
 ):
     """Render the growth parameter calculations table."""
     if growth_method == "Model Fitting":
@@ -924,24 +919,19 @@ def ui_calculation_table(
         max_od_calc = "Maximum raw OD"
         if growth_method == "Sliding Window":
             mu_max_calc = "b"
-            model_rmse_calc = f"RMSE over {window_points} point sliding-window"
+            model_rmse_calc = "RMSE (OD) of the μ<sub>max</sub> window line"
         else:
             mu_max_calc = "Max spline derivative"
-            model_rmse_calc = "RMSE over spline fit window (log phase)"
+            model_rmse_calc = "RMSE (OD) over the spline fit range"
 
     if growth_method == "Model Fitting" and model_family == "mechanistic":
         intrinsic_calc = "Fitted intrinsic μ"
     else:
         intrinsic_calc = "N.a."
 
-    if phase_boundary_method == "threshold":
-        boundary_calc = f"Time at instantaneous μ > {lag_cutoff:.0%} μ<sub>max</sub>"
-        exp_phase_end_calc = (
-            f"Time at instantaneous μ < {exp_cutoff:.0%} μ<sub>max</sub>"
-        )
-    else:
-        boundary_calc = "μ<sub>max</sub> tangent intersect with OD baseline"
-        exp_phase_end_calc = "μ<sub>max</sub> tangent intersec with OD(max)"
+    # Phase boundaries always use the tangent to the growth curve at μmax
+    boundary_calc = "Tangent to the growth curve at μ<sub>max</sub> meets baseline OD"
+    exp_phase_end_calc = "Tangent to the growth curve at μ<sub>max</sub> meets OD(max)"
 
     if growth_method == "Model Fitting" and model_type in {
         "mech_baranyi",
@@ -971,6 +961,21 @@ def ui_calculation_table(
     )
 
 
+# Step 2 preprocessing params that belong to an individual plate; batch analysis
+# keeps each plate's stored values for these and shares everything else.
+_PLATE_SPECIFIC_KEYS = frozenset(
+    {
+        "time_unit",
+        "pathlength_cm_",
+        "clip_time_series",
+        "remove_wells",
+        "blank",
+        "blank_group_assignments",
+        "blank_wells",
+    }
+)
+
+
 @st.fragment
 def ui_analysis_params(ss):
     """Fragment for analysis parameters and the analyse button."""
@@ -978,29 +983,25 @@ def ui_analysis_params(ss):
     step4_prev = ss.get("step4_params", {})
     params0 = step3_params.get("params0", DEFAULT_PARAMS)
 
-    # Step 3 preprocessing values needed to build the final params dict
+    # Step 2 (preprocessing) values needed to build the final params dict
     plate_id = step3_params.get("plate_id")
     time_unit = step3_params.get("time_unit", "hours")
     pl_cm = step3_params.get("pl_cm", 0.42)
     blank = step3_params.get("blank", True)
     blank_group_assignments = step3_params.get("blank_group_assignments", False)
-    outlier_detection = bool(
-        step3_params.get("outlier_detection", params0.get("outlier_detection", False))
-    )
+    outlier_detection = bool(params0.get("outlier_detection", False))
     try:
-        outlier_threshold = float(
-            step3_params.get("outlier_threshold", params0.get("outlier_threshold", 3.5))
-        )
+        outlier_threshold = float(params0.get("outlier_threshold", 3.5))
     except (TypeError, ValueError):
         outlier_threshold = 3.5
     clip_time_series = step3_params.get("clip_time_series", (None, None))
     remove_wells = step3_params.get("remove_wells", False)
 
-    with st.container(border=True):
-        st.header("Step 5. Select the analysis parameters")
+    with st.container(border=True, key="card_uploads_5"):
+        st.header("Step 3. Select the curve fitting parameters")
 
-        # Two columns: Model options | Phase boundary options
-        model_col, boundary_col = st.columns(2, gap="large")
+        # Two columns: model options | how the selected method calculates parameters
+        model_col, help_col = st.columns(2, gap="large")
 
         with model_col:
             # Model selection
@@ -1021,36 +1022,53 @@ def ui_analysis_params(ss):
                 ui_qc_filters(params0)
             )
 
+            # Outlier removal before fitting, and the fit-quality flag shown as
+            # red outlines on the plate overview
+            out_cb_col, out_thr_col, _, rmse_col = st.columns(
+                4, vertical_alignment="bottom"
+            )
+            rmse_threshold = rmse_col.number_input(
+                "Fit flag threshold",
+                min_value=0.0,
+                value=float(params0.get("rmse_threshold", 0.05)),
+                step=0.01,
+                format="%.3f",
+                help=(
+                    "Wells whose fit RMSE divided by their OD increase exceeds this "
+                    "are flagged as poor fits (red outline on the plate overview)."
+                ),
+            )
+            outlier_detection = out_cb_col.checkbox(
+                "Remove outliers",
+                value=outlier_detection,
+                key=f"outlier_cb_{plate_id}",
+                help="Detect and remove outlier points from each well before fitting.",
+            )
+            if outlier_detection:
+                outlier_threshold = float(
+                    out_thr_col.number_input(
+                        "Outlier threshold",
+                        min_value=1.0,
+                        max_value=5.0,
+                        value=outlier_threshold,
+                        step=0.1,
+                        format="%.2f",
+                        help=(
+                            "MAD z-score threshold for flagging outliers. Higher values flag "
+                            "fewer, more extreme points."
+                        ),
+                    )
+                )
+
+            # Equation and description of the selected method
             st.write("")
-
-        with boundary_col:
-            # Phase boundary selection
-            phase_boundary_method, lag_cutoff, exp_cutoff = ui_phase_boundaries(params0)
-            st.write("")
-
-        st.write("")
-
-        # Visualization columns
-        help_model_col, help_boundary_col = st.columns(2, gap="large")
-
-        with help_model_col:
             model_fig = ui_method_visualization(growth_method, model_type)
 
-        with help_boundary_col:
-            boundary_image = ui_phase_boundary_visualization(phase_boundary_method)
-
-        # Render the visualizations
-        graph_col_model, graph_col_boundary = st.columns(2, gap="large")
-
-        with graph_col_model:
+        with help_col:
             if isinstance(model_fig, str):
                 st.image(model_fig, width="stretch")
             elif model_fig is not None:
                 st.plotly_chart(model_fig, width="stretch", config={"staticPlot": True})
-
-        with graph_col_boundary:
-            if boundary_image is not None:
-                st.image(boundary_image, width="stretch")
 
     # Build final params dict
     params = dict(
@@ -1060,48 +1078,77 @@ def ui_analysis_params(ss):
         remove_wells=remove_wells,
         blank=bool(blank),
         blank_group_assignments=blank_group_assignments if blank else False,
+        blank_wells=list(step3_params.get("blank_wells", [])) if blank else [],
         outlier_detection=bool(outlier_detection),
         outlier_threshold=float(outlier_threshold),
         window_points=int(window_points),
-        lag_cutoff=float(lag_cutoff),
-        exp_cutoff=float(exp_cutoff),
         sg_window=int(params0.get("sg_window", 15)),
         sg_poly=int(params0.get("sg_poly", 2)),
         min_data_points=int(min_data_points),
         min_signal_to_noise=float(min_signal_to_noise),
         min_od_increase=float(min_od_increase),
         min_growth_rate=float(min_growth_rate),
+        rmse_threshold=float(rmse_threshold),
         growth_method=str(growth_method),
         model_family=str(model_family),
         model_type=str(model_type),
-        phase_boundary_method=str(phase_boundary_method),
+        phase_boundary_method="tangent",
         smooth=str(smooth),
     )
 
-    with st.container(border=True):
-        st.header("Step 6. Click analyse")
+    with st.container(border=True, key="card_uploads_6"):
+        st.header("Step 4. Click analyse")
 
-        ui_calculation_table(
-            growth_method,
-            model_type,
-            model_family,
-            phase_boundary_method,
-            lag_cutoff,
-            exp_cutoff,
-            window_points,
-        )
+        ui_calculation_table(growth_method, model_type, model_family)
 
         st.write("")
-        clicked = st.button(
-            "Update parameters and analyse selected plate",
+        plate_label = (
+            re.sub(r"([\\`*_{}\[\]()#+\-.!|~>])", r"\\\1", str(plate_id))
+            if plate_id
+            else "selected plate"
+        )
+        analyse_col, batch_col = st.columns(2)
+        clicked = analyse_col.button(
+            f"Update parameters and analyse **{plate_label}**",
             type="primary",
             width="stretch",
             disabled=not plate_id,
         )
+        batch_clicked = batch_col.button(
+            "Batch analyse all plates",
+            type="secondary",
+            width="stretch",
+            disabled=not ss.get("plates"),
+            help="Step 2 settings are plate-specific; Step 3 settings apply to all plates.",
+        )
+        if batch_clicked:
+            shared = {k: v for k, v in params.items() if k not in _PLATE_SPECIFIC_KEYS}
+            targets = [pid for pid, r in ss.plates.items() if (r or {}).get("uploads")]
+            if not targets:
+                st.toast("No uploads found for any plate.", duration="infinite")
+            else:
+                progress = st.progress(0.0, text="Analysing plates...")
+                failed: list[str] = []
+                for i, pid in enumerate(targets):
+                    rec = ss.plates[pid]
+                    if pid == plate_id:
+                        rec["params"] = dict(params)
+                    else:
+                        rec["params"] = {**plate_params(ss, pid), **shared}
+                    progress.progress(i / len(targets), text=f"Analysing {pid}...")
+                    try:
+                        ss.plates[pid] = analyse_plate(rec)
+                    except Exception as e:  # keep going if one plate fails
+                        failed.append(f"{pid} ({e})")
+                progress.empty()
+                done = len(targets) - len(failed)
+                st.toast(f"Analysed {done}/{len(targets)} plates", duration="infinite")
+                if failed:
+                    st.error("Failed to analyse: " + "; ".join(failed))
         if clicked:
             rec = ss.plates.get(plate_id, {})
             if not rec.get("uploads"):
-                st.error("No uploads found for this plate.")
+                st.toast("No uploads found for this plate.", duration="infinite")
             else:
                 rec["params"] = params
                 st.markdown(
@@ -1123,14 +1170,13 @@ def ui_analysis_params(ss):
     # Store analysis parameters in session state
     ss.setdefault("step4_params", {})
     ss["step4_params"]["window_points"] = window_points
-    ss["step4_params"]["lag_cutoff"] = lag_cutoff
-    ss["step4_params"]["exp_cutoff"] = exp_cutoff
     ss["step4_params"]["min_data_points"] = min_data_points
     ss["step4_params"]["min_signal_to_noise"] = min_signal_to_noise
     ss["step4_params"]["min_od_increase"] = min_od_increase
     ss["step4_params"]["min_growth_rate"] = min_growth_rate
+    ss["step4_params"]["rmse_threshold"] = rmse_threshold
     ss["step4_params"]["growth_method"] = growth_method
     ss["step4_params"]["model_family"] = model_family
     ss["step4_params"]["model_type"] = model_type
-    ss["step4_params"]["phase_boundary_method"] = phase_boundary_method
+    ss["step4_params"]["phase_boundary_method"] = "tangent"
     ss["step4_params"]["smooth"] = smooth
