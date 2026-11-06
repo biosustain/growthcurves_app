@@ -470,9 +470,17 @@ def ui_preprocessing_params(ss):
             title_col, delete_col = st.columns([4, 1])
             with title_col:
                 # Escape Markdown so names such as example_data are shown literally
-                name = re.sub(r"([\\`*_{}\[\]()#+\-.!|~>])", r"\\\1", str(plate_id)) if plate_id else ""
+                name = (
+                    re.sub(r"([\\`*_{}\[\]()#+\-.!|~>])", r"\\\1", str(plate_id))
+                    if plate_id
+                    else ""
+                )
                 st.info(
-                    f"**Plate:** {name}" if plate_id else "**Plate:** no plate selected",
+                    (
+                        f"**Plate:** {name}"
+                        if plate_id
+                        else "**Plate:** no plate selected"
+                    ),
                     icon=":material/science:",
                 )
             with delete_col:
@@ -510,7 +518,9 @@ def ui_preprocessing_params(ss):
                         and (present is None or w in present)
                     ]
                     blank_wells_all = {
-                        w for w, v in name_by_well.items() if v.upper().startswith("BLANK")
+                        w
+                        for w, v in name_by_well.items()
+                        if v.upper().startswith("BLANK")
                     } | set(painted_blanks)
                     blank_well_count = len(blank_wells_all)
                     has_blank_wells = blank_well_count > 0

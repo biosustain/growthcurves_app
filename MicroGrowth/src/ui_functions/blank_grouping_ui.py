@@ -93,7 +93,9 @@ def _grid_fits(grid, fmt: PlateFormat) -> bool:
     return len(grid) == len(fmt.rows) and all(len(r) == len(fmt.cols) for r in grid)
 
 
-def assignments_to_map(assignments: list[list[str]], fmt: PlateFormat) -> dict[str, str]:
+def assignments_to_map(
+    assignments: list[list[str]], fmt: PlateFormat
+) -> dict[str, str]:
     return {
         fmt.well(y, x): str(group)
         for y, row in enumerate(assignments)
@@ -233,7 +235,12 @@ def _painter_cells(
             included = cell["cell_color"] != "#e5e7eb"
             tooltip = str(cell["tooltip"])
             well = fmt.well(y, x)
-            fixed = str((name_by_well or {}).get(well, "")).strip().upper().startswith("BLANK")
+            fixed = (
+                str((name_by_well or {}).get(well, ""))
+                .strip()
+                .upper()
+                .startswith("BLANK")
+            )
             out_row.append(
                 {
                     "label": re.sub(r"<[^>]+>", "", label),
@@ -268,10 +275,14 @@ def _apply_paint(prefix: str, painter_key: str, fmt: PlateFormat) -> None:
     if ss[_state_key(prefix, "active_group")] == BLANK_OPTION:
         bk = _state_key(prefix, "painted_blanks")
         wells = {fmt.well(y, x) for y in rows for x in cols}
-        ss[bk] = sorted(set(ss[bk]) - wells if stroke.get("erase") else set(ss[bk]) | wells)
+        ss[bk] = sorted(
+            set(ss[bk]) - wells if stroke.get("erase") else set(ss[bk]) | wells
+        )
         return
     ak = _state_key(prefix, "assignments")
-    value = DEFAULT_GROUP if stroke.get("erase") else ss[_state_key(prefix, "active_group")]
+    value = (
+        DEFAULT_GROUP if stroke.get("erase") else ss[_state_key(prefix, "active_group")]
+    )
     ss[ak] = fill_rect(
         ss[ak],
         {"x": int(stroke["c0"]), "y": int(stroke["r0"])},
@@ -318,7 +329,6 @@ def _init_state(
         if current_active == BLANK_OPTION
         else rename_map.get(current_active, DEFAULT_GROUP)
     )
-
 
 
 def _add_group(prefix: str) -> None:

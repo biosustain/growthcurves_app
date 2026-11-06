@@ -199,7 +199,9 @@ def style_like_info_plots(fig: go.Figure, fit_window=None) -> go.Figure:
         if tr.name == "Data":  # every point; shows grey where not used
             tr.marker.update(color=INFO_POINTS, size=6, opacity=1)
         elif tr.name == "Selected":
-            t0, t1 = (np.nan if v is None else float(v) for v in fit_window or (None, None))
+            t0, t1 = (
+                np.nan if v is None else float(v) for v in fit_window or (None, None)
+            )
             x = np.asarray(tr.x, dtype=float)
             used = (x >= t0) & (x <= t1)
             tr.update(x=x[used], y=np.asarray(tr.y, dtype=float)[used])
@@ -808,7 +810,9 @@ def plot_single_growth_stat(
             go.Bar(
                 x=agg["_x"],
                 y=agg["mean"],
-                error_y=dict(type="data", array=agg["sd"], visible=True, color=INFO_INK),
+                error_y=dict(
+                    type="data", array=agg["sd"], visible=True, color=INFO_INK
+                ),
                 name="",
                 showlegend=False,
                 hovertemplate=f"{x_col}=%{{x}}<br>Mean=%{{y:.4f}}<extra></extra>",
@@ -944,9 +948,7 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
     proc = plate.get("processed_data") or {}
     gs_all = plate.get("growth_stats") or {}
     fit_params = plate.get("fit_parameters") or {}
-    threshold = float(
-        (plate.get("params") or {}).get("rmse_threshold", RMSE_THRESHOLD)
-    )
+    threshold = float((plate.get("params") or {}).get("rmse_threshold", RMSE_THRESHOLD))
 
     fmt = plate_format(plate)
     # Spacing is a fraction of the figure, so scale it to keep gaps constant
@@ -995,7 +997,9 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
 
         # Box first so empty wells are outlined too.
         empty = d is None or d.empty
-        box, label = _well_box(fig, i, well, fit_quality_color(gs, threshold), muted=empty)
+        box, label = _well_box(
+            fig, i, well, fit_quality_color(gs, threshold), muted=empty
+        )
         shapes.append(box)
         labels.append(label)
 

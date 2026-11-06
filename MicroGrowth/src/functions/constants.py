@@ -52,6 +52,7 @@ def plate_format(plate: dict | None) -> PlateFormat:
     """Plate format stored on a plate record (96-well if not recorded)."""
     return PLATE_FORMATS.get((plate or {}).get("n_wells"), PLATE_96)
 
+
 # Default parameters
 DEFAULT_PARAMS = {
     "time_unit": "minutes",

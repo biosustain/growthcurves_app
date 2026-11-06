@@ -124,15 +124,16 @@ def ui_method_visualization(growth_method: str, model_type: str = None):
                 "Modified Gompertz asymmetric S-curve for diphasic growth. "
                 + phenom_params
                 + ", α = rate of the second growth phase (h⁻¹), "
-                "t_shift = time shift of the second growth phase (h). "
-                + figure_note
+                "t_shift = time shift of the second growth phase (h). " + figure_note
             )
         else:
             st.markdown("**Gompertz** (Currently Selected)")
             _equation(
                 r"\ln N(t) = \ln N_0 + A\exp\!\left[-\exp\!\left(\frac{\mu_{\max}\,e\,(\lambda-t)}{A}+1\right)\right]"
             )
-            st.caption("Gompertz asymmetric S-curve. " + phenom_params + ". " + figure_note)
+            st.caption(
+                "Gompertz asymmetric S-curve. " + phenom_params + ". " + figure_note
+            )
     elif model_type == "phenom_richards":
         st.markdown("**Richards** (Currently Selected)")
         _equation(
