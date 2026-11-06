@@ -2,7 +2,6 @@
 
 import json
 import os
-from pathlib import Path
 import shutil
 import signal
 import socket
@@ -11,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from pathlib import Path
 
 ROOT = Path(sys.argv.pop(1)).resolve() if __name__ == "__main__" else None
 if ROOT is not None:

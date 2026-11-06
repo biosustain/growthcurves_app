@@ -3,11 +3,11 @@
 import argparse
 import json
 import os
-from pathlib import Path
 import platform
 import shutil
 import subprocess
 import tempfile
+from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -315,10 +315,10 @@ def main():
         output.parent.mkdir(parents=True, exist_ok=True)
         if args.desktop:
             from native_package import (
-                wrap_macos,
-                wrap_windows,
                 make_dmg,
                 make_installer,
+                wrap_macos,
+                wrap_windows,
             )
 
             if system == "Darwin":

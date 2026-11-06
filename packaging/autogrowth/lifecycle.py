@@ -2,7 +2,6 @@
 
 import json
 import os
-from pathlib import Path
 import signal
 import socket
 import subprocess
@@ -10,8 +9,9 @@ import sys
 import threading
 import time
 import urllib.request
+from pathlib import Path
 
-from desktop_support import WindowsJob, InstanceLock
+from desktop_support import InstanceLock, WindowsJob
 
 SHUTDOWN_TIMEOUT = 12
 

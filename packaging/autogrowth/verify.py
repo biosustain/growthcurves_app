@@ -2,17 +2,18 @@
 
 import io
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 root = Path(sys.argv[1]).resolve()
 os.chdir(root)
 sys.path[:0] = [str(root / "src"), str(root / "AutoGrowth")]
 import numpy as np
 import pandas as pd
+from streamlit.testing.v1 import AppTest
+
 from growthcurve_app.analyze import fit_single_series
 from growthcurve_app.turbistat import detect_peaks
-from streamlit.testing.v1 import AppTest
 
 app = AppTest.from_file(str(root / "AutoGrowth/app.py")).run(timeout=90)
 assert not app.exception, [e.message for e in app.exception]

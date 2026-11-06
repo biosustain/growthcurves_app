@@ -6,10 +6,10 @@ No public HTTP shutdown endpoint. EOF also requests shutdown if the supervisor d
 import asyncio
 import json
 import os
-from pathlib import Path
 import signal
 import sys
 import threading
+from pathlib import Path
 
 
 def main():
