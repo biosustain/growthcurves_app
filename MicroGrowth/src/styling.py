@@ -36,6 +36,32 @@ def green_navbar():
     )
 
 
+# light tint on bordered section containers (st.container(key="card_..."))
+def card_containers():
+    return st.markdown(
+        """
+        <style>
+        [class*="st-key-card_"] {
+            background-color: #F8F9FB;
+        }
+        /* Inputs inside a tinted container stay white so they stand out */
+        [class*="st-key-card_"] [data-baseweb="select"] > div,
+        [class*="st-key-card_"] [data-baseweb="input"],
+        [class*="st-key-card_"] [data-baseweb="base-input"],
+        [class*="st-key-card_"] [data-baseweb="textarea"],
+        [class*="st-key-card_"] [data-testid="stNumberInputContainer"],
+        [class*="st-key-card_"] [data-testid="stNumberInputStepDown"],
+        [class*="st-key-card_"] [data-testid="stNumberInputStepUp"],
+        [class*="st-key-card_"] [data-testid="stFileUploaderDropzone"],
+        [class*="st-key-card_"] [data-testid="stSelectbox"] div:has(> input) {
+            background-color: #FFFFFF !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # adds a green gradient background at the top of the page
 def green_gradient():
     return st.markdown(
@@ -108,6 +134,29 @@ def plate_table_style():
         }
         table.plate th { font-weight: 600; }
         table.plate th.row { width: 2.2rem; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# makes the Delete plate button as tall as the plate name box beside it
+def plate_title_row_style():
+    return st.markdown(
+        """
+        <style>
+        .st-key-plate_title_row [data-testid="stHorizontalBlock"] {
+            align-items: stretch;
+        }
+        .st-key-plate_title_row [data-testid="stColumn"] > [data-testid="stVerticalBlock"],
+        .st-key-delete_plate,
+        .st-key-delete_plate .stButton,
+        .st-key-delete_plate .stButton > div,
+        .st-key-delete_plate .stTooltipIcon,
+        .st-key-delete_plate .stTooltipHoverTarget,
+        .st-key-delete_plate button {
+            height: 100%;
+        }
         </style>
         """,
         unsafe_allow_html=True,

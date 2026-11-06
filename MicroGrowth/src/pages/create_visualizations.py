@@ -6,6 +6,7 @@ from src.functions.plotting_functions import (
     plot_mean_growth,
     plot_replicates_scatter,
     plot_single_growth_stat,
+    style_info_axes,
 )
 from src.functions.visualization_functions import (
     _build_growth_curves_long_df,
@@ -60,24 +61,14 @@ max_t = _max_time_hours(plates)
 col1, col2 = st.columns([1, 1])
 with col1:
     stats = ui_growth_stats_controls_container(has_split, sel_opt)
-    apply_stats = st.button(
-        "Generate growth stats plot",
-        type="primary",
-        width="stretch",
-    )
 with col2:
     curves = ui_growth_curves_controls_container(max_t, sel_sample_names)
-    b1, b2 = st.columns(2)
-    apply_mean = b1.button(
-        "Generate mean growth plot",
-        type="primary",
-        width="stretch",
-    )
-    apply_reps = b2.button(
-        "Generate replicates plot",
-        type="primary",
-        width="stretch",
-    )
+
+# Set by the Generate buttons inside the Step 2 containers
+action = st.session_state.pop("viz_action", None)
+apply_stats = action == "stats"
+apply_mean = action == "mean"
+apply_reps = action == "reps"
 
 x_col = stats["x_col"]
 legend_col = stats["legend_col"]
@@ -121,25 +112,34 @@ if apply_stats:
                     x_order=x_ordered,
                     legend_order=legend_ordered,
                 )
-                st.plotly_chart(fig, width="stretch")
+                with st.container(border=True, key=f"card_viz_stat_{metric}"):
+                    st.plotly_chart(style_info_axes(fig), width="stretch")
 
 # Build the shared curves DF only if needed
 if apply_mean or apply_reps:
     curves_df = _build_growth_curves_long_df(plates, sel_sample_names)
 
 if apply_mean:
-    st.plotly_chart(
-        plot_mean_growth(curves_df, curves_ordered, t_start=curves_t0, t_end=curves_t1),
-        width="stretch",
-    )
+    with st.container(border=True, key="card_viz_mean"):
+        st.plotly_chart(
+            style_info_axes(
+                plot_mean_growth(
+                    curves_df, curves_ordered, t_start=curves_t0, t_end=curves_t1
+                )
+            ),
+            width="stretch",
+        )
 
 if apply_reps:
     if curves_df.empty:
         st.info("No replicate data found.")
     else:
-        st.plotly_chart(
-            plot_replicates_scatter(
-                curves_df, curves_ordered, t_start=curves_t0, t_end=curves_t1
-            ),
-            width="stretch",
-        )
+        with st.container(border=True, key="card_viz_reps"):
+            st.plotly_chart(
+                style_info_axes(
+                    plot_replicates_scatter(
+                        curves_df, curves_ordered, t_start=curves_t0, t_end=curves_t1
+                    )
+                ),
+                width="stretch",
+            )

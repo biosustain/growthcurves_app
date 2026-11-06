@@ -80,7 +80,7 @@ def ui_growth_selection_container(plates: dict) -> dict:
     # -----------------------------
     # UI: Step 1 selection (outside form so grid changes rerun)
     # -----------------------------
-    with st.container(border=True):
+    with st.container(border=True, key="card_create_visualizations_1"):
         st.header("Step 1. Select Samples for Visualization")
 
         data_grid_style()
@@ -126,10 +126,18 @@ def ui_growth_selection_container(plates: dict) -> dict:
     }
 
 
+def _plot_button(label: str, action: str):
+    """Request a plot from inside a fragment: the plots are drawn by the page,
+    so record the request and rerun the whole app."""
+    if st.button(label, type="primary", width="stretch"):
+        st.session_state["viz_action"] = action
+        st.rerun()
+
+
 @st.fragment
 def ui_growth_stats_controls_container(has_split: bool, sel_opt: pd.DataFrame) -> dict:
     """Render growth stats controls and return form selections."""
-    with st.container(border=True):
+    with st.container(border=True, key="card_create_visualizations_2"):
         st.header("Step 2. option a) Plot Growth Statistics")
 
         x_choices = ["Sample Name"]
@@ -168,6 +176,8 @@ def ui_growth_stats_controls_container(has_split: bool, sel_opt: pd.DataFrame) -
             legend_col,
         )
 
+        _plot_button("Generate growth stats plot", "stats")
+
     return {
         "x_col": x_col,
         "legend_col": legend_col,
@@ -181,7 +191,7 @@ def ui_growth_curves_controls_container(
     max_t: float, sel_sample_names: list[str]
 ) -> dict:
     """Render growth curves controls and return form selections."""
-    with st.container(border=True):
+    with st.container(border=True, key="card_create_visualizations_3"):
         st.header("Step 2. option b) Plot Growth Curves")
 
         # Persist across navigation via a plain key; re-seed widget when absent.
@@ -205,6 +215,12 @@ def ui_growth_curves_controls_container(
             "Drag to set Sample Name order (mean/replicates):",
             sel_sample_names,
         )
+
+        b1, b2 = st.columns(2)
+        with b1:
+            _plot_button("Generate mean growth plot", "mean")
+        with b2:
+            _plot_button("Generate replicates plot", "reps")
 
     return {
         "curves_t0": curves_t0,

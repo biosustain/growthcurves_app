@@ -5,7 +5,7 @@ from io import BytesIO
 import pandas as pd
 import streamlit as st
 
-from .constants import DEFAULT_PARAMS
+from .constants import DEFAULT_PARAMS, PLATE_96, VALID_WELLS, detect_plate_format
 
 
 def init_state():
@@ -93,30 +93,32 @@ def validate_plate_map_file(file_bytes):
     if rows_col is None:
         return False, "Plate map must contain a 'rows' column"
 
-    # Check that rows column contains expected row labels (A-H)
-    expected_rows = set(list("ABCDEFGH"))
+    # Every supported plate contains at least the 96-well rows A-H and columns 1-12
+    expected_rows = set(PLATE_96.rows)
     actual_rows = set(df[rows_col].astype(str).str.strip().str.upper())
 
     if not expected_rows.issubset(actual_rows):
         missing_rows = expected_rows - actual_rows
         return (
             False,
-            f"Plate map must contain rows A-H. Missing rows: {', '.join(sorted(missing_rows))}",
+            "Plate map must contain rows A-H (A-P for a 384-well plate). "
+            f"Missing rows: {', '.join(sorted(missing_rows))}",
         )
 
     # Check that there are column headers for wells (1-12)
-    numeric_cols = []
+    numeric_cols = set()
     for col in df.columns:
         if col != rows_col:
             try:
-                col_num = int(str(col).strip())
-                if 1 <= col_num <= 12:
-                    numeric_cols.append(col_num)
+                numeric_cols.add(int(str(col).strip()))
             except (ValueError, TypeError):
                 pass
 
-    if len(numeric_cols) < 12:
-        return False, "Plate map must contain columns 1-12 for a 96-well plate format"
+    if not set(PLATE_96.cols) <= numeric_cols:
+        return (
+            False,
+            "Plate map must contain columns 1-12 (1-24 for a 384-well plate)",
+        )
 
     return True, None
 
@@ -144,10 +146,9 @@ def detect_plate_map_format(file_bytes: bytes) -> str:
         return "wide"
 
     # Long format: exactly 2 columns, first column contains values that look like well IDs
-    valid_wells = {f"{r}{c}" for r in "ABCDEFGH" for c in range(1, 13)}
     if len(cols) >= 2:
         first_col_values = df.iloc[:, 0].dropna().astype(str).str.strip().str.upper()
-        if first_col_values.isin(valid_wells).any():
+        if first_col_values.isin(VALID_WELLS).any():
             return "long"
 
     return "unknown"
@@ -176,10 +177,9 @@ def validate_long_plate_map_file(file_bytes: bytes):
             "Long-format plate map must have at least 2 columns (well ID and sample name)",
         )
 
-    valid_wells = {f"{r}{c}" for r in "ABCDEFGH" for c in range(1, 13)}
     first_col_values = df.iloc[:, 0].dropna().astype(str).str.strip().str.upper()
 
-    invalid = first_col_values[~first_col_values.isin(valid_wells)]
+    invalid = first_col_values[~first_col_values.isin(VALID_WELLS)]
     if len(invalid) > 0 and len(first_col_values) > 0:
         sample = ", ".join(invalid.head(3).tolist())
         return (
@@ -197,7 +197,8 @@ def long_plate_map_to_wide_bytes(file_bytes: bytes) -> bytes:
     """Convert a long-format plate map to wide-format Excel bytes.
 
     Long format: first column = well ID (e.g. A1), second column = sample name.
-    Wide format: 'rows' column (A-H) + columns 1-12 with sample names.
+    Wide format: 'rows' column + one column per plate column, with sample names.
+    The plate size (96 or 384 wells) is detected from the well IDs.
 
     Args:
         file_bytes: Bytes of the long-format Excel file
@@ -206,26 +207,17 @@ def long_plate_map_to_wide_bytes(file_bytes: bytes) -> bytes:
         Bytes of a wide-format Excel file compatible with the standard plate map format
     """
     df = pd.read_excel(BytesIO(file_bytes), header=0)
-    well_col = df.columns[0]
-    name_col = df.columns[1]
+    wells = df.iloc[:, 0].astype(str).str.strip().str.upper()
+    names = df.iloc[:, 1]
+    fmt = detect_plate_format(wells)
 
-    wide = pd.DataFrame(
-        "", index=list("ABCDEFGH"), columns=list(range(1, 13)), dtype=object
-    )
+    wide = pd.DataFrame("", index=list(fmt.rows), columns=list(fmt.cols), dtype=object)
     wide.index.name = "rows"
 
-    for _, row in df.iterrows():
-        well = str(row[well_col]).strip().upper()
-        name = str(row[name_col]).strip() if pd.notna(row[name_col]) else ""
-        if len(well) >= 2:
-            r = well[0]
-            c_str = well[1:]
-            try:
-                c = int(c_str)
-                if r in "ABCDEFGH" and 1 <= c <= 12:
-                    wide.loc[r, c] = name
-            except ValueError:
-                pass
+    for well, name in zip(wells, names):
+        pt = fmt.point(well)
+        if pt:
+            wide.iat[pt] = str(name).strip() if pd.notna(name) else ""
 
     buf = BytesIO()
     wide.reset_index().to_excel(buf, index=False)
@@ -233,7 +225,7 @@ def long_plate_map_to_wide_bytes(file_bytes: bytes) -> bytes:
 
 
 def validate_data_columns_are_wells(file_bytes: bytes):
-    """Check that all non-Time columns are valid well IDs (A1–H12).
+    """Check that all non-Time columns are valid well IDs (A1–H12, or A1–P24).
 
     Returns:
         tuple: (is_valid: bool, error_message: str or None)
@@ -243,14 +235,13 @@ def validate_data_columns_are_wells(file_bytes: bytes):
     except Exception as e:
         return False, f"Failed to read Excel file: {str(e)}"
 
-    valid_wells = {f"{r}{c}" for r in "ABCDEFGH" for c in range(1, 13)}
     non_time = [c for c in df.columns if str(c).strip().lower() != "time"]
-    invalid = [c for c in non_time if str(c).strip().upper() not in valid_wells]
+    invalid = [c for c in non_time if str(c).strip().upper() not in VALID_WELLS]
     if invalid:
         sample = ", ".join(str(c) for c in invalid[:5])
         return (
             False,
-            f"When a plate map is provided, all data columns must be well IDs (A1–H12). Invalid columns: {sample}",
+            f"When a plate map is provided, all data columns must be well IDs (A1–H12, or A1–P24 for 384-well plates). Invalid columns: {sample}",
         )
     return True, None
 
