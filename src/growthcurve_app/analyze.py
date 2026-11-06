@@ -57,6 +57,7 @@ def run_model_fitting_on_df_compat(
     model_name: str,
     smooth_mode: str | float,
     window_points: int,
+    min_fold: float,
     phase_boundary_method: str,
     lag_cutoff: float,
     exp_cutoff: float,
@@ -76,6 +77,7 @@ def run_model_fitting_on_df_compat(
             model_name=model_name,
             window_points=window_points,
             smooth_mode=smooth_mode,
+            min_fold=min_fold,
         )
         _t = s.index.to_numpy()
         _n = s.to_numpy()
@@ -117,14 +119,16 @@ def build_fit_kwargs(
     model_name: str,
     window_points: int,
     smooth_mode: str | float,
+    min_fold: float = 1.5,
 ) -> dict:
     """Map UI options to growthcurves fit kwargs.
 
     - sliding_window: ``window_points`` is the minimum number of readings per window
       (the window length adapts per curve).
     - spline: ``smooth`` is ``"auto"`` (REML) or a fixed positive value.
+    - all models: ``min_fold`` is the minimum fold rise of the smoothed OD for growth.
     """
-    fit_kwargs = {}
+    fit_kwargs = {"min_fold": float(min_fold)}
     if model_name == "sliding_window":
         fit_kwargs["window_points"] = int(window_points)
     elif model_name == "spline":
@@ -144,6 +148,7 @@ def fit_single_series(
         model_name=batch_options["selected_model"],
         window_points=batch_options["window_points"],
         smooth_mode=batch_options.get("smooth_mode", "auto"),
+        min_fold=batch_options.get("min_fold", 1.5),
     )
 
     t_start = time.time()
@@ -367,6 +372,7 @@ def default_analysis_params(batch_options: dict) -> dict:
     """Build default analysis parameter dict for readout table."""
     params = {
         "selected_model": batch_options.get("selected_model"),
+        "min_fold": batch_options.get("min_fold"),
         "min_od_increase": batch_options.get("min_od_increase"),
         "min_growth_rate": batch_options.get("min_growth_rate"),
         "min_signal_to_noise": batch_options.get("min_signal_to_noise"),
@@ -454,6 +460,7 @@ def format_analysis_params_table(
 
     growth_method = growth_method_from_model(batch_options.get("selected_model", ""))
     common_params = [
+        ("min_fold", "Min fold change", lambda x: f"{float(x):.2f}"),
         ("min_od_increase", "Min OD increase", lambda x: f"{float(x):.4f}"),
         ("min_growth_rate", "Min growth rate (1/h)", lambda x: f"{float(x):.5f}"),
         ("min_signal_to_noise", "Min signal-to-noise", lambda x: f"{float(x):.2f}"),
@@ -542,6 +549,7 @@ def build_analysis_params_per_sample_table(
             "model": batch_options.get("selected_model"),
             "growth_method": method,
             "phase_boundary_method": batch_options.get("phase_boundary_method"),
+            "min_fold": sample_params.get("min_fold"),
             "min_od_increase": sample_params.get("min_od_increase"),
             "min_growth_rate": sample_params.get("min_growth_rate"),
             "min_signal_to_noise": sample_params.get("min_signal_to_noise"),

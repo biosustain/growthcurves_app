@@ -159,10 +159,11 @@ def _ui_qc_filters_upload_style(
     min_signal_to_noise_default=1.0,
     min_od_increase_default=0.05,
     min_growth_rate_default=0.001,
+    min_fold_default=1.5,
 ):
     """Render quality control filter inputs."""
     st.caption("Wells failing these criteria will be marked as no growth")
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
 
     min_data_points = col1.number_input(
         "Minimum data points",
@@ -203,11 +204,27 @@ def _ui_qc_filters_upload_style(
         key="batch_min_growth_rate",
     )
 
+    min_fold = col5.number_input(
+        "Minimum fold change",
+        1.0,
+        None,
+        float(min_fold_default),
+        0.1,
+        format="%.2f",
+        help=(
+            "Minimum fold rise of the smoothed OD, from its lowest value to its peak, "
+            "required to fit a curve. Applied inside the fit, before the "
+            "minimum OD increase check."
+        ),
+        key="batch_min_fold",
+    )
+
     return (
         int(min_data_points),
         float(min_signal_to_noise),
         float(min_od_increase),
         float(min_growth_rate),
+        float(min_fold),
     )
 
 
@@ -473,6 +490,7 @@ def render_upload_style_analysis_options(
     min_signal_to_noise_default=1.0,
     min_od_increase_default=0.05,
     min_growth_rate_default=0.001,
+    min_fold_default=1.5,
 ):
     """Render analysis options aligned with TheGrowthAnalysisApp upload page."""
     model_col, boundary_col = st.columns(2, gap="large")
@@ -496,11 +514,13 @@ def render_upload_style_analysis_options(
             min_signal_to_noise,
             min_od_increase,
             min_growth_rate,
+            min_fold,
         ) = _ui_qc_filters_upload_style(
             min_data_points_default=min_data_points_default,
             min_signal_to_noise_default=min_signal_to_noise_default,
             min_od_increase_default=min_od_increase_default,
             min_growth_rate_default=min_growth_rate_default,
+            min_fold_default=min_fold_default,
         )
 
     with boundary_col:
@@ -544,6 +564,7 @@ def render_upload_style_analysis_options(
         "min_signal_to_noise": min_signal_to_noise,
         "min_od_increase": min_od_increase,
         "min_growth_rate": min_growth_rate,
+        "min_fold": min_fold,
         "growth_method": growth_method,
         "model_family": model_family,
         "model_type": model_type,

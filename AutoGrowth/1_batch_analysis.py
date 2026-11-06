@@ -430,6 +430,9 @@ with st.container(border=True):
         min_growth_rate_default=st.session_state["batch_analysis_options"].get(
             "min_growth_rate", 0.01
         ),
+        min_fold_default=st.session_state["batch_analysis_options"].get(
+            "min_fold", 1.5
+        ),
     )
     render_parameter_calculation_table_upload_style(analysis_options)
     run_analysis = st.button("Run Analysis", type="primary", width="stretch")
@@ -443,6 +446,7 @@ if run_analysis and not no_data_uploaded:
         model_name=analysis_options["selected_model"],
         smooth_mode=analysis_options.get("smooth_mode", "auto"),
         window_points=analysis_options["window_points"],
+        min_fold=analysis_options["min_fold"],
         phase_boundary_method=analysis_options["phase_boundary_method"],
         lag_cutoff=analysis_options["lag_cutoff"],
         exp_cutoff=analysis_options["exp_cutoff"],

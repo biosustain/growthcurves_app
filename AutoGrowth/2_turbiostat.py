@@ -52,6 +52,7 @@ def _run_model_fitting_on_df_with_peaks_compat(
     model_name: str,
     smooth_mode: str | float,
     window_points: int,
+    min_fold: float,
     phase_boundary_method: str | None,
     lag_threshold: float,
     exp_threshold: float,
@@ -229,7 +230,11 @@ with st.container(border=True):
 
 with st.container(border=True):
     st.header("Step 2. Configure and Run Analysis")
-    analysis_options = render_upload_style_analysis_options()
+    analysis_options = render_upload_style_analysis_options(
+        min_fold_default=st.session_state.get("turbidostat_min_fold", 1.5),
+    )
+    # remember the value when navigating to other pages
+    st.session_state["turbidostat_min_fold"] = analysis_options["min_fold"]
     render_parameter_calculation_table_upload_style(analysis_options)
     run_analysis = st.button("Run Analysis", type="primary", width="stretch")
 
@@ -392,6 +397,7 @@ with st.spinner(text="Fitting curves...", show_time=True):
         model_name=selected_model,
         smooth_mode=smooth_mode,
         window_points=window_points,
+        min_fold=analysis_options["min_fold"],
         phase_boundary_method=phase_boundary_method,
         exp_threshold=exp_cutoff,
         lag_threshold=lag_cutoff,
