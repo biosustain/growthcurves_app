@@ -63,6 +63,7 @@ def _run_model_fitting_on_df_with_peaks_compat(
         model_name=model_name,
         window_points=window_points,
         smooth_mode=smooth_mode,
+        min_fold=min_fold,
     )
 
     for col in df.columns:
