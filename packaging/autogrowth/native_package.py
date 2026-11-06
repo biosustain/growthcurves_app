@@ -156,7 +156,7 @@ def make_installer(payload, output, bootstrapper, iscc="ISCC.exe"):
     env = os.environ.copy()
     env["AUTOGROWTH_WEBVIEW_BOOTSTRAPPER"] = str(bootstrapper)
     run(
-        "powershell.exe",
+        "pwsh",
         "-NoProfile",
         "-NonInteractive",
         "-Command",
