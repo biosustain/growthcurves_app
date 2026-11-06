@@ -1,0 +1,132 @@
+name: AutoGrowth desktop release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Keep each run's release assets together, including when jobs are rerun.
+concurrency:
+  group: autogrowth-release-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and test (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: macos-arm64
+          - runner: windows-2022
+            target: windows-x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.24"
+          enable-cache: false
+      - name: Set up Windows compiler
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Build and test macOS app and DMG
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          test "$(uname -m)" = arm64
+          python packaging/autogrowth/build.py --desktop --dmg --output dist/AutoGrowth-macos-arm64/AutoGrowth.app
+          dist/AutoGrowth-macos-arm64/AutoGrowth.app/Contents/MacOS/AutoGrowth --check
+          hdiutil verify dist/AutoGrowth-macos-arm64/AutoGrowth.dmg
+          mkdir -p release-assets
+          mv dist/AutoGrowth-macos-arm64/AutoGrowth.dmg release-assets/AutoGrowth-macos-arm64.dmg
+          # ditto preserves the executable permissions and symlinks in the app.
+          ditto -c -k --sequesterRsrc --keepParent dist/AutoGrowth-macos-arm64/AutoGrowth.app release-assets/AutoGrowth-macos-arm64.zip
+      - name: Build and test Windows app and installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          }
+          if (!(Test-Path $iscc)) { throw 'Inno Setup 6 compiler was not found' }
+          $bootstrapper = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+          Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $bootstrapper
+          # build.py verifies the Microsoft Authenticode signature before packaging.
+          python packaging/autogrowth/build.py --desktop --installer --output dist/AutoGrowth-windows-x64 --webview2-bootstrapper $bootstrapper --iscc $iscc
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build or bundled tests failed' }
+          New-Item -ItemType Directory -Path release-assets | Out-Null
+          Move-Item dist/AutoGrowth-Setup-x64.exe release-assets/AutoGrowth-Setup-x64.exe
+          # Python ZIP includes hidden files and the complete portable directory.
+          python -c "import shutil; shutil.make_archive('release-assets/AutoGrowth-windows-x64', 'zip', 'dist', 'AutoGrowth-windows-x64')"
+          if ($LASTEXITCODE -ne 0) { throw 'Windows ZIP creation failed' }
+      - name: Preserve tested release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: autogrowth-${{ matrix.target }}
+          path: release-assets/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  release:
+    name: Publish tested desktop downloads
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: autogrowth-*
+          merge-multiple: true
+          path: release-assets
+      - name: Publish prerelease for this build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BUILD_SHA: ${{ github.sha }}
+          RELEASE_TAG: autogrowth-build-${{ github.run_id }}-${{ github.run_attempt }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          assets=(
+            release-assets/AutoGrowth-macos-arm64.zip
+            release-assets/AutoGrowth-macos-arm64.dmg
+            release-assets/AutoGrowth-windows-x64.zip
+            release-assets/AutoGrowth-Setup-x64.exe
+          )
+          for asset in "${assets[@]}"; do test -s "$asset"; done
+          (cd release-assets && sha256sum ./*.zip ./*.dmg ./*.exe > SHA256SUMS.txt)
+          cat > release-notes.md <<EOF_NOTES
+          Automated AutoGrowth desktop build from commit ${BUILD_SHA}.
+
+          - macOS Apple Silicon: ZIP containing AutoGrowth.app, or drag-to-Applications DMG (macOS 14+).
+          - Windows x64: portable ZIP, or per-user EXE installer. WebView2 installation needs internet if absent.
+          - One bundled Python runtime; no training runners or bundled browser engine.
+          - Both platform builds passed relocated import, page execution, representative fitting, Excel, and lifecycle checks. Interactive UI and installer behavior are not covered by these CI tests.
+          - Development builds are unsigned and not notarized. See packaging/autogrowth/README.md at this commit for known limitations.
+
+          Build logs: ${RUN_URL}
+          EOF_NOTES
+          # Stage all uploads before making the release visible.
+          gh release create "$RELEASE_TAG" --target "$BUILD_SHA" --draft --prerelease --latest=false \
+            --title "AutoGrowth desktop ${RELEASE_TAG#autogrowth-build-}" --notes-file release-notes.md
+          gh release upload "$RELEASE_TAG" "${assets[@]}" release-assets/SHA256SUMS.txt
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
