@@ -1,5 +1,4 @@
 import functools
-import inspect
 import itertools
 import time
 from io import BytesIO
@@ -15,7 +14,7 @@ from growthcurves_options import (
 from plots import create_figure_bytes_to_download, plot_growth_data_w_peaks
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
-from growthcurve_app.fit_spline import get_smoothing_range
+from growthcurve_app.analyze import build_fit_kwargs
 from growthcurve_app.turbistat import detect_peaks
 
 
@@ -46,35 +45,12 @@ def reset_minimum_peak_height():
     st.session_state["turbidostat_min_peak_height_input"] = None
 
 
-def _build_turbidostat_fit_kwargs(
-    model_name: str,
-    n_fits: int,
-    window_points: int,
-    spline_s: int,
-    smooth_mode: str,
-) -> dict:
-    """Build model-specific kwargs for growthcurves.fit_model."""
-    fit_kwargs = {}
-    if model_name == "sliding_window":
-        fit_kwargs["n_fits"] = n_fits
-        fit_kwargs["window_points"] = window_points
-    elif model_name == "spline":
-        fit_kwargs["window_points"] = window_points
-        if "smooth" in NON_PARAMETRIC_FIT_PARAMS:
-            fit_kwargs["smooth"] = smooth_mode
-        if "spline_s" in NON_PARAMETRIC_FIT_PARAMS:
-            fit_kwargs["spline_s"] = spline_s
-    return fit_kwargs
-
-
 def _run_model_fitting_on_df_with_peaks_compat(
     df: pd.DataFrame,
     peaks: pd.DataFrame,
     *,
     model_name: str,
-    n_fits: int,
-    spline_s: int,
-    smooth_mode: str,
+    smooth_mode: str | float,
     window_points: int,
     phase_boundary_method: str | None,
     lag_threshold: float,
@@ -82,11 +58,9 @@ def _run_model_fitting_on_df_with_peaks_compat(
 ) -> pd.DataFrame:
     """Run segmented fitting with growthcurves kwargs compatible across model APIs."""
     stats_dict = {}
-    fit_kwargs = _build_turbidostat_fit_kwargs(
+    fit_kwargs = build_fit_kwargs(
         model_name=model_name,
-        n_fits=n_fits,
         window_points=window_points,
-        spline_s=spline_s,
         smooth_mode=smooth_mode,
     )
 
@@ -150,9 +124,6 @@ round_time = st.session_state.get("round_time", 60)
 
 DEFAULT_XLABEL_TPS = st.session_state.get("DEFAULT_XLABEL_TPS", "Timepoints (rounded)")
 DEFAULT_XLABEL_REL = st.session_state.get("DEFAULT_XLABEL_REL", "Elapsed time (hours)")
-NON_PARAMETRIC_FIT_PARAMS = set(
-    inspect.signature(gc.non_parametric.fit_non_parametric).parameters
-)
 ########################################################################################
 # UI
 
@@ -256,13 +227,9 @@ with st.container(border=True):
         )
 
 
-smoothing_range = get_smoothing_range(len(df_rolling))
-
 with st.container(border=True):
     st.header("Step 2. Configure and Run Analysis")
-    analysis_options = render_upload_style_analysis_options(
-        s_min=smoothing_range.s_min, s_max=smoothing_range.s_max
-    )
+    analysis_options = render_upload_style_analysis_options()
     render_parameter_calculation_table_upload_style(analysis_options)
     run_analysis = st.button("Run Analysis", type="primary", width="stretch")
 
@@ -405,13 +372,11 @@ if remove_downward_trending:
     )
 
 selected_model = analysis_options["selected_model"]
-spline_smoothing_value = analysis_options["spline_smoothing_value"]
-fits_sliding_window = analysis_options["n_fits"]
 window_points = analysis_options["window_points"]
 phase_boundary_method = analysis_options["phase_boundary_method"]
 lag_cutoff = analysis_options["lag_cutoff"]
 exp_cutoff = analysis_options["exp_cutoff"]
-smooth_mode = analysis_options.get("smooth_mode", "slow")
+smooth_mode = analysis_options.get("smooth_mode", "auto")
 
 # views for plotting to allow for elapsed time option
 xlabel = DEFAULT_XLABEL_REL
@@ -425,8 +390,6 @@ with st.spinner(text="Fitting curves...", show_time=True):
         df_rolling,
         peaks,
         model_name=selected_model,
-        n_fits=fits_sliding_window,
-        spline_s=spline_smoothing_value,
         smooth_mode=smooth_mode,
         window_points=window_points,
         phase_boundary_method=phase_boundary_method,

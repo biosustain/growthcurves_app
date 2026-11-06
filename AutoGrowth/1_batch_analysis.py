@@ -41,12 +41,11 @@ Per-reactor dynamic keys (created from selected reactor id):
 - batch_rp_min_gr__{reactor}: Re-analysis threshold (min growth rate).
 - batch_rp_min_snr__{reactor}: Re-analysis threshold (min signal-to-noise).
 - batch_rp_min_dp__{reactor}: Re-analysis threshold (min data points).
-- batch_rp_window__{reactor}: Re-analysis window size (sliding window method).
-- batch_rp_smooth__{reactor}: Re-analysis spline smooth mode (spline method).
+- batch_rp_window__{reactor}: Re-analysis min. window size (sliding window method).
+- batch_rp_smooth__{reactor}: Re-analysis spline smoothing, 0 = auto (spline method).
 - batch_lasso_fit_{reactor}: Plotly lasso selection event payload key.
 """
 
-import inspect
 import logging
 
 import growthcurves as gc
@@ -64,7 +63,6 @@ from growthcurves_options import (
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
 import growthcurve_app.analyze
-from growthcurve_app.fit_spline import get_smoothing_range
 
 logger = logging.getLogger(__name__)
 if st.session_state.get("debug_mode", False):
@@ -155,9 +153,9 @@ def _on_defaults(
         batch_options.get("min_signal_to_noise", 1.0)
     )
     st.session_state[rp_min_dp_key] = int(batch_options.get("min_data_points", 50))
-    st.session_state[rp_window_key] = int(batch_options.get("window_points", 150))
-    st.session_state[rp_smooth_key] = growthcurve_app.analyze.normalize_smooth(
-        batch_options.get("smooth_mode", "slow")
+    st.session_state[rp_window_key] = int(batch_options.get("window_points", 5))
+    st.session_state[rp_smooth_key] = growthcurve_app.analyze.smooth_to_number(
+        batch_options.get("smooth_mode", "auto")
     )
     _fit(
         t=t_all,
@@ -386,9 +384,6 @@ start_time = st.session_state.get("start_time")
 
 DEFAULT_XLABEL_TPS = st.session_state.get("DEFAULT_XLABEL_TPS", "Timepoints (rounded)")
 DEFAULT_XLABEL_REL = st.session_state.get("DEFAULT_XLABEL_REL", "Elapsed time (hours)")
-NON_PARAMETRIC_FIT_PARAMS = set(
-    inspect.signature(gc.non_parametric.fit_non_parametric).parameters
-)
 ########################################################################################
 # UI
 
@@ -412,21 +407,17 @@ if no_data_uploaded:
     show_warning_to_upload_data()
     st.stop()
 
-smoothing_range = get_smoothing_range(len(df_rolling))
-
 ### Form ###############################################################################
 # default batch analysis options (globally set)
 with st.container(border=True):
     st.header("Step 1. Configure Analysis Options")
     analysis_options = render_upload_style_analysis_options(
-        s_min=smoothing_range.s_min,
-        s_max=smoothing_range.s_max,
-        min_window_points=15,
+        min_window_points=3,
         max_window_points=500,
         default_window_points=st.session_state["batch_analysis_options"].get(
-            "window_points", 150
+            "window_points", 5
         ),
-        window_step_size=5,
+        window_step_size=1,
         min_data_points_default=st.session_state["batch_analysis_options"].get(
             "min_data_points", 50
         ),
@@ -450,9 +441,7 @@ if run_analysis and not no_data_uploaded:
     stats_df_new, fit_cache = growthcurve_app.analyze.run_model_fitting_on_df_compat(
         df_rolling,
         model_name=analysis_options["selected_model"],
-        n_fits=analysis_options["n_fits"],
-        spline_s=analysis_options["spline_smoothing_value"],
-        smooth_mode=analysis_options.get("smooth_mode", "slow"),
+        smooth_mode=analysis_options.get("smooth_mode", "auto"),
         window_points=analysis_options["window_points"],
         phase_boundary_method=analysis_options["phase_boundary_method"],
         lag_cutoff=analysis_options["lag_cutoff"],
@@ -640,10 +629,10 @@ with st.container(border=True):
     if rp_min_dp_key not in st.session_state:
         st.session_state[rp_min_dp_key] = int(batch_options.get("min_data_points", 5))
     if rp_window_key not in st.session_state:
-        st.session_state[rp_window_key] = int(batch_options.get("window_points", 10))
+        st.session_state[rp_window_key] = int(batch_options.get("window_points", 5))
     if rp_smooth_key not in st.session_state:
-        st.session_state[rp_smooth_key] = growthcurve_app.analyze.normalize_smooth(
-            batch_options.get("smooth_mode", "slow")
+        st.session_state[rp_smooth_key] = growthcurve_app.analyze.smooth_to_number(
+            batch_options.get("smooth_mode", "auto")
         )
 
     # Right top-box in panel for step 2
@@ -732,18 +721,23 @@ with st.container(border=True):
                     )
                     if method == "Sliding Window":
                         st.number_input(
-                            "Window size (points)",
+                            "Min. window size (points). Searches for optimal window size"
+                            "automatically.",
                             min_value=3,
                             step=1,
                             key=rp_window_key,
                         )
                     elif method == "Spline":
-                        st.radio(
-                            "Spline fitting mode",
-                            options=["fast", "slow"],
+                        st.number_input(
+                            "Spline smoothing (0 = automatic)",
+                            min_value=0.0,
+                            step=0.1,
+                            format="%g",
                             key=rp_smooth_key,
-                            horizontal=True,
-                            format_func=lambda v: v.capitalize(),
+                            help=(
+                                "0 chooses the smoothing automatically. "
+                                "Larger values give a smoother spline."
+                            ),
                         )
                     btn_col, defaults_col = st.columns(2)
                     with btn_col:

@@ -1,6 +1,5 @@
 """Functions used in 0_upload_data.py and 2_turbiostat.py"""
 
-import inspect
 import logging
 import time
 
@@ -11,12 +10,7 @@ import plotly.graph_objects as go
 
 logger = logging.getLogger(__name__)
 
-NON_PARAMETRIC_FIT_PARAMS = set(
-    inspect.signature(gc.non_parametric.fit_non_parametric).parameters
-)
-
 __all__ = [
-    "NON_PARAMETRIC_FIT_PARAMS",
     "get_timestamps_from_elapsed_hours",
     "load_method_notes_markdown",
     "run_model_fitting_on_df_compat",
@@ -30,6 +24,7 @@ __all__ = [
     "get_reactor_stat",
     "get_reactor_stats_dict",
     "normalize_smooth",
+    "smooth_to_number",
     "format_smooth",
     "growth_method_from_model",
     "default_analysis_params",
@@ -60,9 +55,7 @@ def load_method_notes_markdown() -> str:
 def run_model_fitting_on_df_compat(
     df: pd.DataFrame,
     model_name: str,
-    n_fits: int,
-    spline_s: int,
-    smooth_mode: str,
+    smooth_mode: str | float,
     window_points: int,
     phase_boundary_method: str,
     lag_cutoff: float,
@@ -81,9 +74,7 @@ def run_model_fitting_on_df_compat(
         t_start = time.time()
         fit_kwargs = build_fit_kwargs(
             model_name=model_name,
-            n_fits=n_fits,
             window_points=window_points,
-            spline_s=spline_s,
             smooth_mode=smooth_mode,
         )
         _t = s.index.to_numpy()
@@ -124,22 +115,20 @@ def run_model_fitting_on_df_compat(
 
 def build_fit_kwargs(
     model_name: str,
-    n_fits: int,
     window_points: int,
-    spline_s: int,
-    smooth_mode: str,
+    smooth_mode: str | float,
 ) -> dict:
-    """Map UI options to growthcurves fit kwargs across API versions."""
+    """Map UI options to growthcurves fit kwargs.
+
+    - sliding_window: ``window_points`` is the minimum number of readings per window
+      (the window length adapts per curve).
+    - spline: ``smooth`` is ``"auto"`` (REML) or a fixed positive value.
+    """
     fit_kwargs = {}
     if model_name == "sliding_window":
-        fit_kwargs["n_fits"] = n_fits
-        fit_kwargs["window_points"] = window_points
+        fit_kwargs["window_points"] = int(window_points)
     elif model_name == "spline":
-        fit_kwargs["window_points"] = window_points
-        if "smooth" in NON_PARAMETRIC_FIT_PARAMS:
-            fit_kwargs["smooth"] = smooth_mode
-        if "spline_s" in NON_PARAMETRIC_FIT_PARAMS:
-            fit_kwargs["spline_s"] = spline_s
+        fit_kwargs["smooth"] = normalize_smooth(smooth_mode)
     return fit_kwargs
 
 
@@ -153,10 +142,8 @@ def fit_single_series(
     n_arr = np.asarray(n_values, dtype=float)
     fit_kwargs = build_fit_kwargs(
         model_name=batch_options["selected_model"],
-        n_fits=batch_options["n_fits"],
         window_points=batch_options["window_points"],
-        spline_s=batch_options["spline_smoothing_value"],
-        smooth_mode=batch_options.get("smooth_mode", "fast"),
+        smooth_mode=batch_options.get("smooth_mode", "auto"),
     )
 
     t_start = time.time()
@@ -341,19 +328,30 @@ def get_reactor_stats_dict(stats_df: pd.DataFrame, reactor: str) -> dict:
     return row.to_dict()
 
 
-def normalize_smooth(value) -> str:
-    """Normalize spline mode to fast/slow with legacy compatibility."""
-    mode = str(value).strip().lower() if value is not None else ""
-    if mode == "auto":
-        return "slow"
-    if mode in {"fast", "slow"}:
-        return mode
-    return "fast"
+def normalize_smooth(value) -> str | float:
+    """Normalize spline smoothing to ``"auto"`` or a positive float.
+
+    ``growthcurves.non_parametric.fit_spline`` accepts ``smooth="auto"`` (chosen by
+    REML) or a fixed positive number. ``None``, ``0``, non-numeric values and the
+    legacy ``"fast"``/``"slow"`` modes map to ``"auto"``.
+    """
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "auto"
+    return number if np.isfinite(number) and number > 0 else "auto"
+
+
+def smooth_to_number(value) -> float:
+    """Spline smoothing as a number for UI widgets: 0.0 means automatic (REML)."""
+    smooth = normalize_smooth(value)
+    return 0.0 if smooth == "auto" else float(smooth)
 
 
 def format_smooth(value) -> str:
-    """Format spline mode for display."""
-    return normalize_smooth(value).capitalize()
+    """Format spline smoothing for display."""
+    smooth = normalize_smooth(value)
+    return "Auto (REML)" if smooth == "auto" else f"{smooth:g}"
 
 
 def growth_method_from_model(model_name: str) -> str:
@@ -378,7 +376,7 @@ def default_analysis_params(batch_options: dict) -> dict:
     if method == "Sliding Window":
         params["window_points"] = batch_options.get("window_points")
     elif method == "Spline":
-        params["smooth"] = normalize_smooth(batch_options.get("smooth_mode", "fast"))
+        params["smooth"] = normalize_smooth(batch_options.get("smooth_mode", "auto"))
     return params
 
 
@@ -464,10 +462,10 @@ def format_analysis_params_table(
     method_params = []
     if growth_method == "Sliding Window":
         method_params = [
-            ("window_points", "Window size (points)", lambda x: str(int(x)))
+            ("window_points", "Min. window size (points)", lambda x: str(int(x)))
         ]
     elif growth_method == "Spline":
-        method_params = [("smooth", "Spline mode", format_smooth)]
+        method_params = [("smooth", "Spline smoothing", format_smooth)]
 
     defaults = default_analysis_params(batch_options)
     for param_name, plabel, formatter in common_params + method_params:
