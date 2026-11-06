@@ -26,7 +26,7 @@ dependencies = [
     # Pinned to match MicroGrowth/requirements.txt and environment.yaml.
     # Step 1 sample selection needs st.dataframe(selection_default=...).
     "streamlit>=1.59.2",
-    "growthcurves",
+    "growthcurves>0.9.0",
 ]
 # use requirements.txt instead of pyproject.toml for dependencies
 # https://stackoverflow.com/a/73600610/9684872

@@ -1,78 +1,9 @@
 from pathlib import Path
 
-import growthcurves as gc
 import streamlit as st
 from growthcurves.models import MODEL_REGISTRY
 
 INFO_PLOTS_DIR = Path(__file__).resolve().parent.parent / "info_plots"
-
-
-def render_options_for_growthcurve_fitting(s_min=3, s_max=1000, s_default=1000):
-    st.write("### Model selection")
-    selected_model = st.selectbox(
-        "See the differences between the options in the"
-        " [growthcurves package](https://growthcurves.readthedocs.io)",
-        gc.get_all_models(),
-        index=7,
-    )
-    st.session_state["selected_model"] = selected_model
-    st.write("#### Spline fitting options:")
-    spline_smoothing_value = st.slider(
-        "Smoothing of the spline fitted to OD values (zero means no smoothing). "
-        "Range suggested using scipy, see "
-        "[docs](https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.make_splrep.html)",
-        1,
-        s_max,
-        s_default,
-        step=1,
-    )
-    st.write("#### Sliding window options:")
-    fits_sliding_window = st.slider(
-        "Number of fits used for sliding window to calculate derivatives",
-        5,
-        200,
-        50,
-        step=5,
-    )
-    window_size = st.slider(
-        "Window size for sliding window method (in hours)",
-        3,
-        1000,
-        300,
-        step=3,
-    )
-    # ! Add tangent and threshold method options here
-    tangent_cols = st.columns(2)
-    phase_boundary_method = tangent_cols[0].radio(
-        "Select method for exponential phase detection (default recommended):",
-        ["default", "tangent", "threshold"],
-        help=("""
-            Default picks for parametric models the threshold method and
-            for phenomenological models, the sliding window and spline method the
-            tangent method.
-
-            In short:
-
-            - "threshold": Threshold-based method using fractions of μ_max
-            - "tangent": Tangent line method at point of maximum growth rate
-            """),
-        index=0,
-    )
-    exp_frac = tangent_cols[1].slider(
-        "Define percentage of µmax considered as high for threshold method",
-        0,
-        100,
-        90,
-        step=1,
-    )
-    return (
-        selected_model,
-        spline_smoothing_value,
-        fits_sliding_window,
-        window_size,
-        phase_boundary_method,
-        exp_frac,
-    )
 
 
 def _get_model_display_name(model_code: str) -> str:
@@ -174,53 +105,52 @@ def _ui_model_selection_upload_style():
 def _ui_method_params_upload_style(
     growth_method: str,
     param_col,
-    s_min: int,
-    s_max: int,
-    min_window_points=5,
+    min_window_points=3,
     max_window_points=200,
-    default_window_points=10,
+    default_window_points=5,
     window_step_size=1,
+    default_smooth=0.0,
 ):
-    """Render method-specific controls and convert to spline_s/window_points values."""
+    """Render method-specific controls.
+
+    Returns ``(window_points, smooth)`` where ``smooth`` is ``"auto"`` or a positive
+    float, as accepted by ``growthcurves.non_parametric.fit_spline``.
+    """
+    window_points = default_window_points
+    smooth = "auto"
     with param_col:
         if growth_method == "Sliding Window":
             window_points = st.number_input(
-                "Window size (points)",
+                "Min. window size (points)",
                 min_window_points,
                 max_window_points,
                 default_window_points,
                 window_step_size,
                 help=(
-                    "Number of consecutive data points used for sliding window "
-                    "linear fit to determine maximum growth rate."
+                    "Minimum number of consecutive data points per window. Windows "
+                    "of every length from this value up to half the curve are "
+                    "fitted to ln(OD); the best-supported slope gives the maximum "
+                    "growth rate."
                 ),
                 key="batch_window_points",
             )
-            smooth_mode = "fast"
         elif growth_method == "Spline":
-            window_points = default_window_points
-            smooth_mode = st.radio(
-                "Spline fitting mode",
-                options=["fast", "slow"],
-                index=1,
-                horizontal=True,
-                format_func=lambda v: v.capitalize(),
+            smooth_value = st.number_input(
+                "Spline smoothing (0 = automatic)",
+                min_value=0.0,
+                value=float(default_smooth),
+                step=0.1,
+                format="%g",
                 help=(
-                    "Fast uses stronger default smoothing. "
-                    "Slow uses lighter smoothing."
+                    "0 chooses the smoothing automatically (REML, recommended). "
+                    "A positive value fixes the smoothing: larger values give a "
+                    "smoother spline."
                 ),
-                key="batch_spline_mode",
+                key="batch_spline_smooth",
             )
-        else:
-            window_points = default_window_points
-            smooth_mode = "fast"
+            smooth = smooth_value if smooth_value > 0 else "auto"
 
-    if growth_method == "Spline":
-        spline_s = int(s_max if smooth_mode == "fast" else max(s_min, 1))
-    else:
-        spline_s = int(s_max)
-
-    return int(window_points), smooth_mode, spline_s
+    return int(window_points), smooth
 
 
 # ! to update to save last set state
@@ -229,10 +159,11 @@ def _ui_qc_filters_upload_style(
     min_signal_to_noise_default=1.0,
     min_od_increase_default=0.05,
     min_growth_rate_default=0.001,
+    min_fold_default=1.5,
 ):
     """Render quality control filter inputs."""
     st.caption("Wells failing these criteria will be marked as no growth")
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
 
     min_data_points = col1.number_input(
         "Minimum data points",
@@ -273,11 +204,27 @@ def _ui_qc_filters_upload_style(
         key="batch_min_growth_rate",
     )
 
+    min_fold = col5.number_input(
+        "Minimum fold change",
+        1.0,
+        None,
+        float(min_fold_default),
+        0.1,
+        format="%.2f",
+        help=(
+            "Minimum fold rise of the smoothed OD, from its lowest value to its peak, "
+            "required to fit a curve. Applied inside the fit, before the "
+            "minimum OD increase check."
+        ),
+        key="batch_min_fold",
+    )
+
     return (
         int(min_data_points),
         float(min_signal_to_noise),
         float(min_od_increase),
         float(min_growth_rate),
+        float(min_fold),
     )
 
 
@@ -433,7 +380,6 @@ def render_parameter_calculation_table_upload_style(options: dict):
     phase_boundary_method = options.get("phase_boundary_method")
     lag_cutoff = float(options.get("lag_cutoff", 0.5))
     exp_cutoff = float(options.get("exp_cutoff", 0.5))
-    window_points = int(options.get("window_points", 10))
 
     if growth_method == "Model Fitting":
         mu_max_calc = "μ<sub>max</sub>"
@@ -443,7 +389,7 @@ def render_parameter_calculation_table_upload_style(options: dict):
         max_od_calc = "Maximum raw OD"
         if growth_method == "Sliding Window":
             mu_max_calc = "b"
-            model_rmse_calc = f"RMSE over {window_points} point sliding-window"
+            model_rmse_calc = "RMSE over the selected sliding window"
         else:
             mu_max_calc = "Max spline derivative"
             model_rmse_calc = "RMSE over spline fit window (log phase)"
@@ -536,16 +482,15 @@ div.param-calc-table th {{
 
 
 def render_upload_style_analysis_options(
-    s_min=3,
-    s_max=1000,
-    min_window_points=5,
+    min_window_points=3,
     max_window_points=200,
-    default_window_points=10,
+    default_window_points=5,
     window_step_size=1,
     min_data_points_default=5,
     min_signal_to_noise_default=1.0,
     min_od_increase_default=0.05,
     min_growth_rate_default=0.001,
+    min_fold_default=1.5,
 ):
     """Render analysis options aligned with TheGrowthAnalysisApp upload page."""
     model_col, boundary_col = st.columns(2, gap="large")
@@ -554,17 +499,13 @@ def render_upload_style_analysis_options(
         model_family, growth_method, model_type, param_col = (
             _ui_model_selection_upload_style()
         )
-        window_points, smooth_mode, spline_smoothing_value = (
-            _ui_method_params_upload_style(
-                growth_method,
-                param_col,
-                s_min,
-                s_max,
-                min_window_points,
-                max_window_points,
-                default_window_points,
-                window_step_size,
-            )
+        window_points, smooth_mode = _ui_method_params_upload_style(
+            growth_method,
+            param_col,
+            min_window_points,
+            max_window_points,
+            default_window_points,
+            window_step_size,
         )
         st.write("")
         st.write("")
@@ -573,11 +514,13 @@ def render_upload_style_analysis_options(
             min_signal_to_noise,
             min_od_increase,
             min_growth_rate,
+            min_fold,
         ) = _ui_qc_filters_upload_style(
             min_data_points_default=min_data_points_default,
             min_signal_to_noise_default=min_signal_to_noise_default,
             min_od_increase_default=min_od_increase_default,
             min_growth_rate_default=min_growth_rate_default,
+            min_fold_default=min_fold_default,
         )
 
     with boundary_col:
@@ -613,8 +556,6 @@ def render_upload_style_analysis_options(
 
     return {
         "selected_model": selected_model,
-        "spline_smoothing_value": spline_smoothing_value,
-        "n_fits": 50,
         "window_points": window_points,
         "phase_boundary_method": phase_boundary_method,
         "lag_cutoff": lag_cutoff,
@@ -623,6 +564,7 @@ def render_upload_style_analysis_options(
         "min_signal_to_noise": min_signal_to_noise,
         "min_od_increase": min_od_increase,
         "min_growth_rate": min_growth_rate,
+        "min_fold": min_fold,
         "growth_method": growth_method,
         "model_family": model_family,
         "model_type": model_type,
