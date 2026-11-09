@@ -176,12 +176,12 @@ The builder also reads files outside this folder, which must be committed too:
 ## GitHub release automation
 
 `.github/workflows/autogrowth-release.yml` runs on every push to `main` and through
-Actions → AutoGrowth desktop release → Run workflow. Manual runs build the selected
-ref. macOS Apple Silicon (`macos-15`) and Windows x64 (`windows-2022`) each build from
-the committed dependency lock and run the builder's relocated smoke and lifecycle
-tests. Both must succeed before publication; interactive installer/UI checks remain
-separate. Windows installs Inno Setup if needed and downloads Microsoft's bootstrapper,
-whose signature is checked by the builder.
+Actions → AutoGrowth desktop release → Run workflow. Manual runs build the selected ref.
+macOS Apple Silicon (`macos-15`) and Windows x64 (`windows-2022`) from the committed
+dependency lock and run the builder's relocated smoke and lifecycle tests. Both must
+succeed before publication; interactive installer/UI checks remain separate. Windows
+installs Inno Setup if needed and downloads Microsoft's bootstrapper, whose signature is
+checked by the builder.
 
 Each successful run publishes a prerelease tagged
 `autogrowth-build-<run-id>-<attempt>`, targeting the exact built commit. It attaches
@@ -196,3 +196,24 @@ workflow artifacts for 14 days.
 The release job uses the built-in `GITHUB_TOKEN` with `contents: write`; no personal
 token or signing secrets are required. Repository policy must permit that permission.
 The existing Python/PyPI workflow remains independent.
+
+
+## Terminal fallback downloads
+
+Every workflow build also saves `AutoGrowth-terminal-macos-arm64.zip` and
+`AutoGrowth-terminal-windows-x64.zip`. These contain standalone folders with the
+bundled Python runtime, independent of the native `.app`/DMG or installer.
+Extract the complete folder and run `AutoGrowth.command` on macOS or
+`AutoGrowth.cmd` on Windows. These terminal launchers explicitly use browser mode;
+the native app launcher continues to use its embedded window. Keep the terminal
+open while using AutoGrowth, and press Ctrl+C there to stop the server. Closing
+the browser tab does not stop it. No system Python installation is needed.
+
+Each fallback is built and smoke-tested separately, then uploaded as the
+`autogrowth-terminal-<platform>` Actions artifact **before native packaging**.
+It remains downloadable for 14 days even if a later native build fails. Successful
+release runs additionally attach both terminal ZIPs and include their checksums.
+The original desktop ZIPs, DMG, and Windows installer are still included.
+
+This fallback does not fix signing/notarization or bypass macOS security checks.
+The reported damaged-app warning has not yet been diagnosed or resolved.

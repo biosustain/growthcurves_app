@@ -37,6 +37,27 @@ jobs:
         with:
           version: "0.8.24"
           enable-cache: false
+      - name: Build and test terminal fallback
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          python packaging/autogrowth/build.py --output "dist/AutoGrowth-terminal-$TARGET"
+          mkdir -p terminal-assets
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            ditto -c -k --sequesterRsrc --keepParent "dist/AutoGrowth-terminal-$TARGET" "terminal-assets/AutoGrowth-terminal-$TARGET.zip"
+          else
+            python -c "import os, shutil; name = 'AutoGrowth-terminal-' + os.environ['TARGET']; shutil.make_archive('terminal-assets/' + name, 'zip', 'dist', name)"
+          fi
+      # Save the fallback before native packaging, even if that later fails.
+      - name: Preserve terminal fallback for testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: autogrowth-terminal-${{ matrix.target }}
+          path: terminal-assets/*.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
       - name: Set up Windows compiler
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
@@ -107,6 +128,8 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           assets=(
+            release-assets/AutoGrowth-terminal-macos-arm64.zip
+            release-assets/AutoGrowth-terminal-windows-x64.zip
             release-assets/AutoGrowth-macos-arm64.zip
             release-assets/AutoGrowth-macos-arm64.dmg
             release-assets/AutoGrowth-windows-x64.zip
@@ -117,6 +140,7 @@ jobs:
           cat > release-notes.md <<EOF_NOTES
           Automated AutoGrowth desktop build from commit ${BUILD_SHA}.
 
+          - Terminal fallback: AutoGrowth-terminal-*.zip contains a standalone folder. Extract it and run AutoGrowth.command (macOS) or AutoGrowth.cmd (Windows); the app opens in your browser. Keep the terminal open and use Ctrl+C to stop.
           - macOS Apple Silicon: ZIP containing AutoGrowth.app, or drag-to-Applications DMG (macOS 14+).
           - Windows x64: portable ZIP, or per-user EXE installer. WebView2 installation needs internet if absent.
           - One bundled Python runtime; no training runners or bundled browser engine.

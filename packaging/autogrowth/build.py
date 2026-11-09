@@ -239,12 +239,12 @@ def main():
             shutil.copy2(HERE / name, bundle / name)
         if system == "Windows":
             (bundle / "AutoGrowth.cmd").write_text(
-                '@echo off\r\nset "PYTHONHOME="\r\nset "PYTHONPATH="\r\n"%~dp0runtime\\python.exe" -s -B "%~dp0bootstrap.py" %*\r\nexit /b %errorlevel%\r\n'
+                '@echo off\r\nset "PYTHONHOME="\r\nset "PYTHONPATH="\r\n"%~dp0runtime\\python.exe" -s -B "%~dp0bootstrap.py" --browser %*\r\nexit /b %errorlevel%\r\n'
             )
         else:
             launcher = bundle / "AutoGrowth.command"
             launcher.write_text(
-                '#!/bin/sh\nunset PYTHONHOME PYTHONPATH\nROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexec "$ROOT/runtime/bin/python3" -s -B "$ROOT/bootstrap.py" "$@"\n'
+                '#!/bin/sh\nunset PYTHONHOME PYTHONPATH\nROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexec "$ROOT/runtime/bin/python3" -s -B "$ROOT/bootstrap.py" --browser "$@"\n'
             )
             launcher.chmod(0o755)
         trim_runtime(runtime)
