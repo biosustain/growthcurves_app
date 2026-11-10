@@ -235,7 +235,7 @@ with st.container(border=True):
 with st.container(border=True):
     st.header("Step 2. Configure and Run Analysis")
     analysis_options = render_upload_style_analysis_options(
-        # intervals between dilutions only grow ~1.3-1.8 fold
+        # intervals between dilutions only grow in example ~1.3-1.8 fold
         min_fold_default=st.session_state.get("turbidostat_min_fold", 1.1),
     )
     # remember the value when navigating to other pages
@@ -395,11 +395,12 @@ xlabel = DEFAULT_XLABEL_REL
 # ? should the one with negative values removed stored globally?
 st.session_state["df_rolling_turbidostat"] = df_rolling
 
-# fit the 60 s data, not its rolling median, at the timepoints kept in it
+# fit the noisy data, not its rolling median, at the timepoints kept in it
+# reapplies the OD adjustment and reindexes timestamps to elapsed hours if needed.
 df_fit = st.session_state["df_wide_raw_od_data_filtered"]
-if isinstance(df_fit.index, pd.DatetimeIndex):  # PioReactor: timestamps
+if isinstance(df_fit.index, pd.DatetimeIndex):  # e.g. PioReactor: timestamps
     df_fit = df_fit.set_axis(convert_to_elapsed_hours(df_fit.index, start_time))
-else:  # Chi.Bio: seconds
+else:  # e.g. Chi.Bio: seconds
     df_fit = df_fit.set_axis(df_fit.index / 3600.0)
 # tolerance: a restored session's times can differ in the last float digit
 df_fit = df_fit.reindex(df_rolling.index, method="nearest", tolerance=1e-6)
