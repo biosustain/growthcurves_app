@@ -71,9 +71,11 @@ def _run_model_fitting_on_df_with_peaks_compat(
         peaks_col = peaks[col] if col in peaks else pd.Series(dtype="object")
         peak_timepoints = [s.index.min(), *peaks_col.dropna().index, s.index.max()]
 
-        for start_seg, end_seg in itertools.pairwise(peak_timepoints):
+        for i, (start_seg, end_seg) in enumerate(itertools.pairwise(peak_timepoints)):
             fit_start = time.time()
-            s_segment = s.loc[start_seg:end_seg]
+            # half-open: the reading at a cut ends the previous interval only
+            after_start = s.index >= start_seg if i == 0 else s.index > start_seg
+            s_segment = s.loc[after_start & (s.index <= end_seg)]
             t_segment = s_segment.index.to_numpy()
             n_segment = s_segment.to_numpy()
             key = (col, f"{start_seg:.2f}-{end_seg:.2f}")
@@ -232,7 +234,8 @@ with st.container(border=True):
 with st.container(border=True):
     st.header("Step 2. Configure and Run Analysis")
     analysis_options = render_upload_style_analysis_options(
-        min_fold_default=st.session_state.get("turbidostat_min_fold", 1.5),
+        # intervals between dilutions only grow ~1.3-1.8 fold
+        min_fold_default=st.session_state.get("turbidostat_min_fold", 1.1),
     )
     # remember the value when navigating to other pages
     st.session_state["turbidostat_min_fold"] = analysis_options["min_fold"]
@@ -393,7 +396,10 @@ st.session_state["df_rolling_turbidostat"] = df_rolling
 
 with st.spinner(text="Fitting curves...", show_time=True):
     stats_df = _run_model_fitting_on_df_with_peaks_compat(
-        df_rolling,
+        # fit the 60 s data, not its rolling median, at the timepoints kept in it
+        st.session_state["df_wide_raw_od_data_filtered"]
+        .set_axis(df_rolling.index)
+        .where(df_rolling.notna()),
         peaks,
         model_name=selected_model,
         smooth_mode=smooth_mode,
