@@ -14,6 +14,7 @@ from growthcurves_options import (
 from plots import create_figure_bytes_to_download, plot_growth_data_w_peaks
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
+from growthcurve_app import convert_to_elapsed_hours
 from growthcurve_app.analyze import build_fit_kwargs
 from growthcurve_app.turbistat import detect_peaks
 
@@ -394,12 +395,22 @@ xlabel = DEFAULT_XLABEL_REL
 # ? should the one with negative values removed stored globally?
 st.session_state["df_rolling_turbidostat"] = df_rolling
 
+# fit the 60 s data, not its rolling median, at the timepoints kept in it
+df_fit = st.session_state["df_wide_raw_od_data_filtered"]
+if isinstance(df_fit.index, pd.DatetimeIndex):  # PioReactor: timestamps
+    df_fit = df_fit.set_axis(convert_to_elapsed_hours(df_fit.index, start_time))
+else:  # Chi.Bio: seconds
+    df_fit = df_fit.set_axis(df_fit.index / 3600.0)
+# tolerance: a restored session's times can differ in the last float digit
+df_fit = df_fit.reindex(df_rolling.index, method="nearest", tolerance=1e-6)
+df_fit = df_fit.where(df_rolling.notna())
+coefficients = st.session_state.get("od_adjustment_coefficients", {})
+for reactor, (slope, intercept) in coefficients.items():  # as applied to df_rolling
+    df_fit[reactor] = df_fit[reactor] * slope + intercept
+
 with st.spinner(text="Fitting curves...", show_time=True):
     stats_df = _run_model_fitting_on_df_with_peaks_compat(
-        # fit the 60 s data, not its rolling median, at the timepoints kept in it
-        st.session_state["df_wide_raw_od_data_filtered"]
-        .set_axis(df_rolling.index)
-        .where(df_rolling.notna()),
+        df_fit,
         peaks,
         model_name=selected_model,
         smooth_mode=smooth_mode,
