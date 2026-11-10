@@ -51,7 +51,7 @@ def callback_clear_raw_data():
 
 def apply_linear_adjustments(
     df_rolling: pd.DataFrame, adjustment_table: pd.DataFrame
-) -> tuple[pd.DataFrame, list[str]]:
+) -> tuple[pd.DataFrame, list[str], dict[str, tuple[float, float]]]:
     required_columns = {"reactor", "od"}
     missing_columns = required_columns - set(adjustment_table.columns)
     if missing_columns:
@@ -61,6 +61,7 @@ def apply_linear_adjustments(
         )
 
     warnings = []
+    coefficients = {}  # reactor: (slope, intercept)
     adjusted = df_rolling.copy()
     table = adjustment_table.loc[:, ["reactor", "od"]].dropna(subset=["reactor"])
 
@@ -93,8 +94,9 @@ def apply_linear_adjustments(
         slope = (target_end - target_start) / (original_end - original_start)
         intercept = target_start - slope * original_start
         adjusted[reactor] = adjusted[reactor] * slope + intercept
+        coefficients[reactor] = (slope, intercept)
 
-    return adjusted, warnings
+    return adjusted, warnings, coefficients
 
 
 # region: UI components for upload page
@@ -855,6 +857,7 @@ if button_pressed:
         msg += "- Smoothing disabled; using filtered data directly.\n"
 
     # ? Should it not be possible to be run twice in a single session?
+    st.session_state["od_adjustment_coefficients"] = {}
     if od_adjustment_upload is not None:
         if st.session_state.get("is_df_rolling_adjusted"):
             st.warning(
@@ -863,7 +866,7 @@ if button_pressed:
             )
         df_adjustments = read_od_adjustment_table(od_adjustment_upload)
         try:
-            df_rolling, adjustment_warnings = apply_linear_adjustments(
+            df_rolling, adjustment_warnings, coefficients = apply_linear_adjustments(
                 df_rolling, df_adjustments
             )
         except KeyError as e:
@@ -876,6 +879,8 @@ if button_pressed:
         st.session_state["is_df_rolling_adjusted"] = True
         st.session_state["df_rolling"] = df_rolling
         st.session_state["df_od_adjustment"] = df_adjustments
+        # also applied to the 60 s data fitted on the turbidostat page
+        st.session_state["od_adjustment_coefficients"] = coefficients
         msg += "- Applied OD adjustments based on uploaded adjustment table.\n"
         if adjustment_warnings:
             msg += "- OD adjustments applied with the following warnings:\n"
