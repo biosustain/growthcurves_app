@@ -22,10 +22,15 @@ Intel requires a matching host and its own dependency lock. The minimum macOS ve
 derived from installed wheel tags (14.0 for this arm64 build), and the native launcher is
 compiled for that same minimum.
 
-This development artifact is not Developer ID signed or notarized. Distribution to other
-Macs needs a signing/notarization pass covering the nested Python runtime, native
-libraries, and application bundle, plus a clean-machine test. No signing credentials or
-publishing are configured by these scripts.
+The macOS app is ad-hoc signed for testing, without Apple credentials. After assembling
+the complete bundle, the builder runs `codesign --force --deep --sign -` and `codesign
+--verify --deep` on the app, before creating the DMG or release ZIP. Either command
+failing stops the build. The terminal fallback does not use this signing step.
+
+Ad-hoc signing does not provide a Developer ID or notarization; downloaded builds may
+still require approval in System Settings > Privacy & Security > Open Anyway. Avoiding
+that block requires Developer ID signing and notarization covering the nested Python
+runtime, native libraries, and application bundle, plus a clean-machine download test.
 
 ## Windows x64 build
 

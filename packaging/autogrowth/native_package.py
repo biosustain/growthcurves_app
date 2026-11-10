@@ -84,6 +84,10 @@ def wrap_macos(payload, output):
                 file,
             )
         shutil.move(str(payload), str(resources / "payload"))
+        # Ad-hoc signing supports testing without Apple credentials (as in MyCol).
+        # Sign the complete bundle after all payload changes, before DMG/ZIP creation.
+        run("codesign", "--force", "--deep", "--sign", "-", app)
+        run("codesign", "--verify", "--deep", app)
         output.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(app), str(output))
     return output

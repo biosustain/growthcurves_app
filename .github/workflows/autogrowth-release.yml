@@ -143,9 +143,9 @@ jobs:
           - Terminal fallback: AutoGrowth-terminal-*.zip contains a standalone folder. Extract it and run AutoGrowth.command (macOS) or AutoGrowth.cmd (Windows); the app opens in your browser. Keep the terminal open and use Ctrl+C to stop.
           - macOS Apple Silicon: ZIP containing AutoGrowth.app, or drag-to-Applications DMG (macOS 14+).
           - Windows x64: portable ZIP, or per-user EXE installer. WebView2 installation needs internet if absent.
-          - One bundled Python runtime; no training runners or bundled browser engine.
+          - One bundled Python runtime; no bundled browser engine.
           - Both platform builds passed relocated import, page execution, representative fitting, Excel, and lifecycle checks. Interactive UI and installer behavior are not covered by these CI tests.
-          - Development builds are unsigned and not notarized. See packaging/autogrowth/README.md at this commit for known limitations.
+          - The macOS app is ad-hoc signed for testing, without Developer ID signing or notarization. Windows builds and the terminal fallback have no release-signing step. See packaging/autogrowth/README.md at this commit for known limitations.
 
           Build logs: ${RUN_URL}
           EOF_NOTES
