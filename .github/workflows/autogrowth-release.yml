@@ -95,11 +95,30 @@ jobs:
           # Python ZIP includes hidden files and the complete portable directory.
           python -c "import shutil; shutil.make_archive('release-assets/AutoGrowth-windows-x64', 'zip', 'dist', 'AutoGrowth-windows-x64')"
           if ($LASTEXITCODE -ne 0) { throw 'Windows ZIP creation failed' }
-      - name: Preserve tested release assets
+      # Keep installers separate from portable ZIPs in Actions downloads too.
+      - name: Preserve tested portable ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: autogrowth-${{ matrix.target }}
-          path: release-assets/*
+          name: autogrowth-portable-${{ matrix.target }}
+          path: release-assets/AutoGrowth-${{ matrix.target }}.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - name: Preserve tested macOS DMG
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: autogrowth-installer-macos-arm64
+          path: release-assets/AutoGrowth-macos-arm64.dmg
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - name: Preserve tested Windows installer
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: autogrowth-installer-windows-x64
+          path: release-assets/AutoGrowth-Setup-x64.exe
           if-no-files-found: error
           compression-level: 0
           retention-days: 14

@@ -196,7 +196,10 @@ The macOS ZIP preserves app permissions and symlinks; the Windows ZIP contains t
 portable app folder. Uploads are staged in a draft before publication. Failed uploads
 leave a draft for inspection, and reruns use a new attempt tag. Existing stable
 releases and the Latest designation are unchanged. Assets are also retained as
-workflow artifacts for 14 days.
+workflow artifacts for 14 days. Each DMG, Windows installer, and portable ZIP has
+its own Actions artifact, so installers are never grouped with portable archives.
+The release page provides the `.dmg` and `.exe` directly as separate assets; Actions
+artifact downloads may wrap each individual file in an additional ZIP.
 
 The release job uses the built-in `GITHUB_TOKEN` with `contents: write`; no personal
 token or signing secrets are required. Repository policy must permit that permission.
@@ -222,3 +225,18 @@ The original desktop ZIPs, DMG, and Windows installer are still included.
 
 This fallback does not fix signing/notarization or bypass macOS security checks.
 The reported damaged-app warning has not yet been diagnosed or resolved.
+
+## Known limitations
+
+- Native upload/download dialogs and quit during a real analysis still need end-to-end
+  validation. AppTest is not a visual check after every build.
+- Windows x64 dependencies resolved, but its launcher and installer have not been
+  compiled or exercised on Windows. Job Objects, mutex upgrade protection, WebView2
+  installation, and uninstall behavior remain unverified on that platform.
+- The macOS arm64 wheel set requires macOS 14 or newer. Clean-machine validation,
+  Developer ID signing, and notarization are not completed.
+- Quit does not save session state. Confirmation is unconditional rather than based on a
+  dirty-state flag. A second launch reports the existing instance instead of focusing it.
+  Windows installation needs internet if WebView2 is absent.
+- Streamlit's internal Server API is a deliberate compatibility seam: changes to the
+  pinned version require the lifecycle tests to pass before release.
