@@ -18,6 +18,7 @@ from src.functions.upload_functions import (
     detect_plate_map_format,
     get_plate_preview_data,
     long_plate_map_to_wide_bytes,
+    plate_from_column_names,
     plate_params,
     validate_data_columns_are_wells,
     validate_data_file,
@@ -388,6 +389,7 @@ def ui_upload_files(ss):
                 )
                 st.stop()
 
+            data_bytes = data_file.getvalue()
             plate_bytes = None
             if map_file:
                 map_format = detect_plate_map_format(map_file.getvalue())
@@ -420,6 +422,15 @@ def ui_upload_files(ss):
                 if not is_valid_cols:
                     st.toast(cols_error, duration="infinite")
                     st.stop()
+            else:
+                # Column headers are the sample names
+                data_bytes, plate_bytes, assigned = plate_from_column_names(data_bytes)
+                if assigned:
+                    st.toast(
+                        "Plate positions are not known, so samples were assigned "
+                        "to wells in column order (A1, A2, A3, ...).",
+                        duration="infinite",
+                    )
 
             plate_id = (
                 data_file.name.rsplit(".", 1)[0]
@@ -429,7 +440,7 @@ def ui_upload_files(ss):
             load_plate(
                 ss.plates,
                 plate_id,
-                data_bytes=data_file.getvalue(),
+                data_bytes=data_bytes,
                 plate_bytes=plate_bytes,
                 params=DEFAULT_PARAMS,
             )

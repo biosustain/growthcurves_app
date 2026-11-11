@@ -5,7 +5,13 @@ from io import BytesIO
 import pandas as pd
 import streamlit as st
 
-from .constants import DEFAULT_PARAMS, PLATE_96, VALID_WELLS, detect_plate_format
+from .constants import (
+    DEFAULT_PARAMS,
+    PLATE_96,
+    PLATE_FORMATS,
+    VALID_WELLS,
+    detect_plate_format,
+)
 
 
 def init_state():
@@ -222,6 +228,28 @@ def long_plate_map_to_wide_bytes(file_bytes: bytes) -> bytes:
     buf = BytesIO()
     wide.reset_index().to_excel(buf, index=False)
     return buf.getvalue()
+
+
+def plate_from_column_names(data_bytes: bytes) -> tuple[bytes, bytes, bool]:
+    """Return (data, plate map, positions assigned) with the headers as sample names."""
+    df = pd.read_excel(BytesIO(data_bytes), header=None, dtype=object)
+    header = [str(c).strip() for c in df.iloc[0]]
+    names = [c for c in header if c != "Time"]
+    assigned = not all(n.upper() in VALID_WELLS for n in names)
+    if not assigned:
+        wells = [n.upper() for n in names]
+    else:
+        fmt = next(f for f in PLATE_FORMATS.values() if len(names) <= f.n_wells)
+        wells = list(fmt.wells[: len(names)])
+
+    long_map = BytesIO()
+    pd.DataFrame({"well": wells, "name": names}).to_excel(long_map, index=False)
+
+    well_ids = iter(wells)
+    df.iloc[0] = [c if c == "Time" else next(well_ids) for c in header]
+    data = BytesIO()
+    df.to_excel(data, index=False, header=False)
+    return data.getvalue(), long_plate_map_to_wide_bytes(long_map.getvalue()), assigned
 
 
 def validate_data_columns_are_wells(file_bytes: bytes):
