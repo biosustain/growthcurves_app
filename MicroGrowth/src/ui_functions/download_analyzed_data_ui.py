@@ -281,8 +281,6 @@ def _render_global_plots_container():
     return c_base, c_plate, c_replicates, global_width, global_height
 
 
-# Lazy function that builds ZIP only when called by download button
-@st.cache_data(show_spinner="Building ZIP file...")
 def get_export_zip(
     _plates,
     include_baseline_corrected,
