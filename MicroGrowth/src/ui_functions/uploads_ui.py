@@ -213,7 +213,6 @@ def render_plate_table(
                     "color": cell["cell_color"],
                     "border": cell.get("cell_border_color"),
                     "tooltip": cell.get("tooltip", ""),
-                    "tooltip_base": cell.get("tooltip", ""),
                     "group": "",
                     "blank": "<b>" in str(cell["label"]),
                     "fixed_blank": False,

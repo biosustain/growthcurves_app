@@ -51,6 +51,22 @@ _CSS = """
     cursor: crosshair;
     box-sizing: border-box;
     transition: background-color 80ms linear;
+    position: relative;
+}
+.cell[data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #262730;
+    color: #fff;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1;
 }
 .cell.blank { font-weight: 700; border-width: 2px; }
 .cell.sel {
@@ -82,7 +98,6 @@ function recolour(el, cell, groupColors) {
   el.style.backgroundColor = cell.blank ? darken(base, 0.88) : base
   el.style.borderColor = cell.blank ? darken(base, 0.72) : ""
   el.classList.toggle("blank", !!cell.blank)
-  el.title = cell.tooltip_base + (cell.blank ? " · BLANK well" : "") + " · " + cell.group
 }
 
 export default function (component) {
@@ -132,7 +147,7 @@ export default function (component) {
       el.dataset.y = y
       el.style.backgroundColor = cell.color
       if (cell.border) el.style.borderColor = cell.border
-      el.title = cell.tooltip
+      if (cell.tooltip) el.dataset.tip = cell.tooltip
       grid.appendChild(el)
       els[y].push(el)
     }
@@ -254,7 +269,7 @@ def plate_painter(
 ):
     """Render the drag-to-paint plate map.
 
-    cells: per well dict with label, color, border, tooltip, tooltip_base, group,
+    cells: per well dict with label, color, border, tooltip, group,
         blank, fixed_blank (blank from the plate map), painted (blank painted by
         the user) and included. When active_group is blank_option, strokes mark
         or unmark blanks instead of changing groups. on_paint runs (before the script body) when a stroke

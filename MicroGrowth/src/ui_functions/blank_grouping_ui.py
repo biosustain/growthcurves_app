@@ -12,7 +12,6 @@ from src.ui_functions.plate_painter import plate_painter
 DEFAULT_GROUP = "Group 1"
 # Permanent selector entry: painting with it marks wells as blanks (they keep their group)
 BLANK_OPTION = "Blank"
-BLANK_SWATCH = "#6b7280"
 GROUP_PALETTE = [
     "#ccebc5",
     "#8dd3c7",
@@ -162,39 +161,21 @@ def build_cells(
             well = fmt.well(y, x)
             sample = str(name_by_well.get(well, "")).strip()
             is_blank = sample.upper().startswith("BLANK") or well in painted_blanks
-            has_sample = sample not in {"", "False"} and not sample.upper().startswith(
-                "BLANK"
-            )
-            not_in_map = sample in {"", "False"}
             base_color = color_map.get(group, "#ffffff")
-            sample_suffix = f" · {sample}" if sample and sample != "False" else ""
-
-            included = True
-            exclusion_reason = ""
-            if status_mode:
-                included = False
-                if well in removed_lookup:
-                    exclusion_reason = "excluded by user"
-                elif not_in_map:
-                    exclusion_reason = "not in plate map"
-                elif present_lookup is not None and well not in present_lookup:
-                    exclusion_reason = "missing from data file"
-                elif is_blank and not blank_enabled:
-                    exclusion_reason = "blank subtraction disabled"
-                elif is_blank or has_sample:
-                    included = True
-                else:
-                    exclusion_reason = "not included"
+            included = not status_mode or (
+                well not in removed_lookup
+                and sample not in {"", "False"}
+                and (present_lookup is None or well in present_lookup)
+                and (blank_enabled or not is_blank)
+            )
 
             label = f"<b>{well}</b>" if is_blank else well
             if included:
-                blank_tag = " · BLANK well" if is_blank and status_mode else ""
                 cell_data: dict[str, Any] = {
                     "label": label,
                     "cell_color": (
                         darken_hex_color(base_color) if is_blank else base_color
                     ),
-                    "tooltip": f"{well}{sample_suffix}{blank_tag} · {group}",
                 }
                 if is_blank:
                     cell_data.update(
@@ -210,7 +191,6 @@ def build_cells(
                 cell_data = {
                     "label": label,
                     "cell_color": "#e5e7eb",
-                    "tooltip": f"{well}{sample_suffix} · {exclusion_reason}",
                     **({"html": True} if is_blank else {}),
                 }
             rendered_row.append(cell_data)
@@ -233,26 +213,16 @@ def _painter_cells(
             label = str(cell["label"])
             blank = "<b>" in label
             included = cell["cell_color"] != "#e5e7eb"
-            tooltip = str(cell["tooltip"])
             well = fmt.well(y, x)
-            fixed = (
-                str((name_by_well or {}).get(well, ""))
-                .strip()
-                .upper()
-                .startswith("BLANK")
-            )
+            sample = str((name_by_well or {}).get(well, "")).strip()
+            fixed = sample.upper().startswith("BLANK")
             out_row.append(
                 {
                     "label": re.sub(r"<[^>]+>", "", label),
                     "color": cell["cell_color"],
                     "border": cell.get("cell_border_color"),
-                    "tooltip": tooltip,
-                    # Tooltip without the trailing group, so the browser can relabel
-                    "tooltip_base": (
-                        tooltip.rsplit(" · ", 1)[0].replace(" · BLANK well", "")
-                        if included
-                        else tooltip
-                    ),
+                    # Hover shows just the sample name
+                    "tooltip": "" if sample == "False" else sample,
                     "group": assignments[y][x],
                     "blank": blank and included,
                     "fixed_blank": fixed,
@@ -427,11 +397,11 @@ def ui_blank_group_assigner(
         if selected_group != ss[actk]:
             ss[actk] = selected_group
 
-        with color_col:
-            st.markdown(
+        if ss[actk] != BLANK_OPTION:
+            color_col.markdown(
                 "<button type='button' onclick='return false;' "
                 "style='display:block;width:35px;height:35px;margin:0 auto;"
-                f"background:{ss[ck].get(ss[actk], BLANK_SWATCH)};border:1px solid #999;"
+                f"background:{ss[ck].get(ss[actk], '#ffffff')};border:1px solid #999;"
                 "border-radius:4px;cursor:default;'></button>",
                 unsafe_allow_html=True,
             )
@@ -492,12 +462,6 @@ def ui_blank_group_assigner(
             on_paint=lambda: _apply_paint(prefix, painter_key, fmt),
             aspect_ratio=grid_aspect_ratio,
         )
-        if ss[actk] == BLANK_OPTION:
-            st.caption(
-                "Drag across wells to mark them as **blanks** (shown darker; they keep "
-                "their colour group). Start on a blank you marked to unmark wells. "
-                "Blanks named BLANK in the plate map always stay blanks."
-            )
 
     return assignments_to_map(ss[ak], fmt)
 
@@ -632,7 +596,6 @@ def ui_well_selector(
                 "color": cell["cell_color"],
                 "border": None,
                 "tooltip": cell["tooltip"],
-                "tooltip_base": cell["tooltip"].split(" · ")[0],
                 "group": ss[ak][y][x],
                 "blank": False,
                 "fixed_blank": False,
