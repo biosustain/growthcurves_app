@@ -443,6 +443,9 @@ with st.container(border=True):
         min_fold_default=st.session_state["batch_analysis_options"].get(
             "min_fold", 1.5
         ),
+        default_smooth=growthcurve_app.analyze.smooth_to_number(
+            st.session_state["batch_analysis_options"].get("smooth_mode", "auto")
+        ),
     )
     render_parameter_calculation_table_upload_style(analysis_options)
     run_analysis = st.button("Run Analysis", type="primary", width="stretch")
