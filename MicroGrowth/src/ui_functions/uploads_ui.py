@@ -427,8 +427,7 @@ def ui_upload_files(ss):
                 data_bytes, plate_bytes, assigned = plate_from_column_names(data_bytes)
                 if assigned:
                     st.toast(
-                        "Plate positions are not known, so samples were assigned "
-                        "to wells in column order (A1, A2, A3, ...).",
+                        "No plate positions: samples placed in order (A1, A2, ...).",
                         duration="infinite",
                     )
 
