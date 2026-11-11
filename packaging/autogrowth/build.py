@@ -12,6 +12,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 PYTHON_VERSION = "3.12.11"
+WINDOWS_PYTHON_VERSION = "3.12.10"  # Last official 3.12 Windows embeddable release.
 EXAMPLES = (
     "batch_example/example_batch_data_od_readings.csv",
     "batch_example/example_batch_data_od_readings_calibration.csv",
@@ -99,6 +100,8 @@ def main():
     output = args.output.resolve()
     if output.exists():
         parser.error(f"Output already exists: {output}")
+    if system == "Windows" and not shutil.which("pwsh"):
+        parser.error("PowerShell 7 (pwsh) is required to verify the Windows runtime.")
     if args.desktop:
         native_tools = (
             ["clang", "sips", "iconutil"] if system == "Darwin" else ["cl", "rc"]
@@ -137,24 +140,32 @@ def main():
     env["UV_LINK_MODE"] = "copy"
     with tempfile.TemporaryDirectory(prefix="autogrowth-build-") as temp:
         staging = Path(temp)
-        install = staging / "python-download"
-        run(
-            args.uv,
-            "python",
-            "install",
-            PYTHON_VERSION,
-            "--install-dir",
-            install,
-            "--no-bin",
-            "--no-registry",
-            env=env,
-        )
-        runtimes = list(install.glob("cpython-*"))
-        if len(runtimes) != 1:
-            raise RuntimeError(f"Expected exactly one Python runtime, found {runtimes}")
         bundle = staging / "AutoGrowth"
         runtime = bundle / "runtime"
-        shutil.copytree(runtimes[0], runtime, symlinks=True)
+        python_version = WINDOWS_PYTHON_VERSION if system == "Windows" else PYTHON_VERSION
+        if system == "Windows":
+            run(
+                "pwsh", "-NoProfile", "-NonInteractive", "-File",
+                HERE / "windows_runtime.ps1",
+                "-Destination", runtime, "-Version", python_version,
+            )
+        else:
+            install = staging / "python-download"
+            run(
+                args.uv,
+                "python",
+                "install",
+                python_version,
+                "--install-dir",
+                install,
+                "--no-bin",
+                "--no-registry",
+                env=env,
+            )
+            runtimes = list(install.glob("cpython-*"))
+            if len(runtimes) != 1:
+                raise RuntimeError(f"Expected exactly one Python runtime, found {runtimes}")
+            shutil.copytree(runtimes[0], runtime, symlinks=True)
         python = runtime / ("python.exe" if system == "Windows" else "bin/python3")
         if args.refresh_lock:
             run(
@@ -296,6 +307,13 @@ def main():
                 timeout=300,
             )
         trim_runtime(moved / "runtime")
+        if system == "Windows":
+            run(
+                "pwsh", "-NoProfile", "-NonInteractive", "-File",
+                HERE / "windows_runtime.ps1",
+                "-Destination", moved / "runtime", "-Version", python_version,
+                "-VerifyOnly",
+            )
         sizes = {}
         for path in moved.rglob("*"):
             if path.is_file():
@@ -305,7 +323,7 @@ def main():
             json.dumps(
                 {
                     "target": target,
-                    "python": PYTHON_VERSION,
+                    "python": python_version,
                     "sizes_bytes": sizes,
                     "validation": "relocated imports, page renders, representative fit, and Excel round-trip",
                 },

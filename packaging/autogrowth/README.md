@@ -34,9 +34,9 @@ runtime, native libraries, and application bundle, plus a clean-machine download
 
 ## Windows x64 build
 
-Use a Windows x64 host, Python, uv, Visual Studio Build Tools (x64 Native Tools Command
-Prompt with `cl` and `rc` on PATH), and Inno Setup 6.3 or newer. Download the Evergreen
-WebView2 bootstrapper from Microsoft's official site:
+Use a Windows x64 host, Python, uv, PowerShell 7 (`pwsh`), Visual Studio Build Tools (x64
+Native Tools Command Prompt with `cl` and `rc` on PATH), and Inno Setup 6.3 or newer.
+Download the Evergreen WebView2 bootstrapper from Microsoft's official site:
 <https://developer.microsoft.com/microsoft-edge/webview2/>. The build checks its
 Authenticode signature and Microsoft publisher.
 
@@ -52,6 +52,43 @@ The output folder contains `AutoGrowth.exe`; its parent contains
 and an uninstaller, and refuses to update/uninstall a running instance. The supervisor
 retains the installer mutex until server cleanup finishes, even when the GUI dies. No
 administrator access is requested.
+
+The Windows bundle follows MyCol's portable design: a native launcher, app source,
+assets, and an official Python.org embeddable runtime installed with locked dependencies.
+AutoGrowth needs only one runtime and keeps its existing `runtime/` path:
+
+```text
+AutoGrowth/
+  AutoGrowth.exe          # native desktop launcher (desktop build)
+  AutoGrowth.cmd          # browser/debug launch using runtime/python.exe
+  bootstrap.py
+  AutoGrowth/             # app source and examples
+  src/                    # shared helpers
+  runtime/
+    python.exe
+    pythonw.exe
+    python312.dll
+    python312.zip
+    python312._pth
+    Lib/site-packages/
+```
+
+`windows_runtime.ps1` is a build-time helper. It downloads Python 3.12.10's x64
+embeddable ZIP, checks a pinned SHA-256, and requires valid Python Software Foundation
+Authenticode signatures on `python.exe`, `pythonw.exe`, `python3.dll`, and
+`python312.dll` before Python executes. It enables site-packages and bundle-relative
+imports through `python312._pth`, then checks signatures again after dependency
+installation and tests. Both the terminal fallback and desktop build use this runtime.
+
+The 3.12.10 pin matches MyCol and is the last official Windows binary release in the 3.12
+series, not the latest security-patched Python. This is a testing configuration; a newer
+Python minor version requires compatible dependency locks and Windows validation.
+
+Python's signatures do not sign `AutoGrowth.exe`, the EXE installer, or application
+source. SmartScreen/Smart App Control can still warn or block our unsigned binaries. A
+PowerShell launch script would have its own execution-policy requirements; no policy
+bypass, certificate installation, or administrator elevation is performed. Distribution
+signing for the AutoGrowth launcher and installer remains separate work.
 
 WebView2 is checked in the per-user and machine registries. If missing, the installer
 runs Microsoft's signed bootstrapper. This step requires internet. An offline WebView2
@@ -104,8 +141,9 @@ the same desktop bootstrap and command launchers.
 ## Dependencies and size
 
 The per-platform hashed locks pin runtime packages. Use `--refresh-lock` deliberately
-when updating dependencies or generating an Intel Mac lock. Python 3.12.11 is a
-standalone runtime downloaded by uv, not a copied virtual environment. Native scientific
+when updating dependencies or generating an Intel Mac lock. On macOS, Python 3.12.11 is a
+standalone runtime downloaded by uv, not a copied virtual environment. Windows uses the
+verified Python.org 3.12.10 embeddable runtime described above. Native scientific
 packages require wheels; growthcurves may build from its hashed source release. Build
 tooling and caches are not shipped.
 
@@ -188,43 +226,42 @@ succeed before publication; interactive installer/UI checks remain separate. Win
 installs Inno Setup if needed and downloads Microsoft's bootstrapper, whose signature is
 checked by the builder.
 
-Each successful run publishes a prerelease tagged
-`autogrowth-build-<run-id>-<attempt>`, targeting the exact built commit. It attaches
-`AutoGrowth-macos-arm64.zip`, `AutoGrowth-macos-arm64.dmg`,
-`AutoGrowth-windows-x64.zip`, `AutoGrowth-Setup-x64.exe`, and `SHA256SUMS.txt`.
-The macOS ZIP preserves app permissions and symlinks; the Windows ZIP contains the
-portable app folder. Uploads are staged in a draft before publication. Failed uploads
-leave a draft for inspection, and reruns use a new attempt tag. Existing stable
-releases and the Latest designation are unchanged. Assets are also retained as
-workflow artifacts for 14 days. Each DMG, Windows installer, and portable ZIP has
-its own Actions artifact, so installers are never grouped with portable archives.
-The release page provides the `.dmg` and `.exe` directly as separate assets; Actions
-artifact downloads may wrap each individual file in an additional ZIP.
+Each successful run publishes a prerelease tagged `autogrowth-build-<run-id>-<attempt>`,
+targeting the exact built commit. It attaches `AutoGrowth-macos-arm64.zip`,
+`AutoGrowth-macos-arm64.dmg`, `AutoGrowth-windows-x64.zip`, `AutoGrowth-Setup-x64.exe`,
+and `SHA256SUMS.txt`. The macOS ZIP preserves app permissions and symlinks; the Windows
+ZIP contains the portable app folder. Uploads are staged in a draft before publication.
+Failed uploads leave a draft for inspection, and reruns use a new attempt tag. Existing
+stable releases and the Latest designation are unchanged. Assets are also retained as
+workflow artifacts for 14 days. Each DMG, Windows installer, and portable ZIP has its own
+Actions artifact, so installers are never grouped with portable archives. The release
+page provides the `.dmg` and `.exe` directly as separate assets; Actions artifact
+downloads may wrap each individual file in an additional ZIP.
 
 The release job uses the built-in `GITHUB_TOKEN` with `contents: write`; no personal
-token or signing secrets are required. Repository policy must permit that permission.
-The existing Python/PyPI workflow remains independent.
+token or signing secrets are required. Repository policy must permit that permission. The
+existing Python/PyPI workflow remains independent.
 
 
 ## Terminal fallback downloads
 
 Every workflow build also saves `AutoGrowth-terminal-macos-arm64.zip` and
-`AutoGrowth-terminal-windows-x64.zip`. These contain standalone folders with the
-bundled Python runtime, independent of the native `.app`/DMG or installer.
-Extract the complete folder and run `AutoGrowth.command` on macOS or
-`AutoGrowth.cmd` on Windows. These terminal launchers explicitly use browser mode;
-the native app launcher continues to use its embedded window. Keep the terminal
-open while using AutoGrowth, and press Ctrl+C there to stop the server. Closing
-the browser tab does not stop it. No system Python installation is needed.
+`AutoGrowth-terminal-windows-x64.zip`. These contain standalone folders with the bundled
+Python runtime, independent of the native `.app`/DMG or installer. Extract the complete
+folder and run `AutoGrowth.command` on macOS or `AutoGrowth.cmd` on Windows. These
+terminal launchers explicitly use browser mode; the native app launcher continues to use
+its embedded window. Keep the terminal open while using AutoGrowth, and press Ctrl+C
+there to stop the server. Closing the browser tab does not stop it. No system Python
+installation is needed.
 
 Each fallback is built and smoke-tested separately, then uploaded as the
-`autogrowth-terminal-<platform>` Actions artifact **before native packaging**.
-It remains downloadable for 14 days even if a later native build fails. Successful
-release runs additionally attach both terminal ZIPs and include their checksums.
-The original desktop ZIPs, DMG, and Windows installer are still included.
+`autogrowth-terminal-<platform>` Actions artifact **before native packaging**. It remains
+downloadable for 14 days even if a later native build fails. Successful release runs
+additionally attach both terminal ZIPs and include their checksums. The original desktop
+ZIPs, DMG, and Windows installer are still included.
 
-This fallback does not fix signing/notarization or bypass macOS security checks.
-The reported damaged-app warning has not yet been diagnosed or resolved.
+This fallback does not fix signing/notarization or bypass macOS security checks. The
+reported damaged-app warning has not yet been diagnosed or resolved.
 
 ## Known limitations
 
