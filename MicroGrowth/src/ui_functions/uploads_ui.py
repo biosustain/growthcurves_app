@@ -440,7 +440,7 @@ def ui_upload_files(ss):
                 plate_id,
                 data_bytes=data_bytes,
                 plate_bytes=plate_bytes,
-                params=DEFAULT_PARAMS,
+                params=dict(DEFAULT_PARAMS),
             )
             st.toast(f"Successfully loaded {plate_id}", duration="infinite")
 
