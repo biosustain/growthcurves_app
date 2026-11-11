@@ -11,7 +11,7 @@ from src.ui_functions.plate_painter import plate_painter
 
 DEFAULT_GROUP = "Group 1"
 # Permanent selector entry: painting with it marks wells as blanks (they keep their group)
-BLANK_OPTION = "Blank"
+BLANK_OPTION = "Assign blank wells"
 GROUP_PALETTE = [
     "#ccebc5",
     "#8dd3c7",
