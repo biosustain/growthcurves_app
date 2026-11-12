@@ -23,6 +23,17 @@ def _plate_name_map(plate_bytes):
     return plate, {w: n for w, n in names.items() if w in VALID_WELLS}
 
 
+def is_time_column(col) -> bool:
+    """True for the Time column header, whatever its case (Time, time, TIME)."""
+    return str(col).strip().lower() == "time"
+
+
+def normalize_time_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename the Time column, whatever its case, to "Time" (in place)."""
+    df.columns = ["Time" if is_time_column(c) else c for c in df.columns]
+    return df
+
+
 def _read_table(
     data_bytes: bytes, time_unit: str = "hours", filter_to_wells: bool = True
 ) -> pd.DataFrame:
@@ -40,7 +51,7 @@ def _read_table(
     Raises:
         ValueError: If no Time column is found in the data file
     """
-    df = pd.read_excel(io.BytesIO(data_bytes), header=0)
+    df = normalize_time_column(pd.read_excel(io.BytesIO(data_bytes), header=0))
     df = df.replace(",", ".", regex=True)
 
     if "Time" not in df.columns:

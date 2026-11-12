@@ -13,7 +13,11 @@ from src.functions.constants import (
     PlateFormat,
     plate_format,
 )
-from src.functions.data_processing import analyse_plate, load_plate
+from src.functions.data_processing import (
+    analyse_plate,
+    load_plate,
+    normalize_time_column,
+)
 from src.functions.upload_functions import (
     detect_plate_map_format,
     get_plate_preview_data,
@@ -571,9 +575,9 @@ def ui_preprocessing_params(ss):
                 )
                 if _data_bytes:
                     try:
-                        _t_col = pd.read_excel(io.BytesIO(_data_bytes), header=0)[
-                            "Time"
-                        ]
+                        _t_col = normalize_time_column(
+                            pd.read_excel(io.BytesIO(_data_bytes), header=0)
+                        )["Time"]
                         if time_unit == "HH:MM:SS":
 
                             def _hhmmss_to_hours(val):

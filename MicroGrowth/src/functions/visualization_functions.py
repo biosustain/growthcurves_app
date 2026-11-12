@@ -89,20 +89,13 @@ def _build_growth_curves_long_df(plates: dict, sample_names: list[str]) -> pd.Da
     """Return a long DataFrame for mean/replicate curve plots."""
     if not sample_names:
         return pd.DataFrame(
-            columns=[
-                "Sample Name",
-                "Time",
-                "baseline_corrected",
-                "plate",
-                "well",
-                "key",
-            ]
+            columns=["Sample Name", "Time", "baseline_corrected", "plate", "well"]
         )
 
     sel = set(sample_names)
     rows = []
 
-    for pid, _, well, nm, d, key in _iter_wells(plates):
+    for pid, _, well, nm, d, _ in _iter_wells(plates):
         nm = (nm or "").strip()
         if nm in {"", "False"} or nm.upper().startswith("BLANK"):
             continue
@@ -119,21 +112,13 @@ def _build_growth_curves_long_df(plates: dict, sample_names: list[str]) -> pd.Da
                     "baseline_corrected": d["baseline_corrected"],
                     "plate": pid,
                     "well": well,
-                    "key": key,
                 }
             )
         )
 
     if not rows:
         return pd.DataFrame(
-            columns=[
-                "Sample Name",
-                "Time",
-                "baseline_corrected",
-                "plate",
-                "well",
-                "key",
-            ]
+            columns=["Sample Name", "Time", "baseline_corrected", "plate", "well"]
         )
 
     return pd.concat(rows, ignore_index=True)

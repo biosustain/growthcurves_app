@@ -8,6 +8,7 @@ import pandas as pd
 from growthcurves.inference import is_no_growth
 from growthcurves.plot import plot_derivative_metric
 from src.functions.check_growth_fits import _add_lasso_selected_points
+from src.functions.constants import DEFAULT_PARAMS
 from src.functions.plotting_functions import (
     _finite_sorted_xy,
     plot_baseline,
@@ -99,21 +100,27 @@ def _analysis_params_df(p: dict) -> pd.DataFrame:
 
     # Extract parameters with readable names
     param_mapping = {
-        "read_interval_min": "Read interval (minutes)",
+        "time_unit": "Time unit (data file)",
         "pathlength_cm_": "Pathlength (cm)",
         "clip_time_series": "Time series clip (hours)",
         "remove_wells": "Excluded wells",
         "blank": "Blank subtraction",
+        "blank_wells": "Wells marked as blanks on the plate map",
+        "blank_group_assignments": "Blank groups",
         "outlier_detection": "Outlier detection (ECOD)",
         "outlier_threshold": "Outlier threshold (MAD z-score)",
         "growth_method": "Analysis method",
         "model_family": "Parametric model type",
         "model_type": "Growth model",
         "phase_boundary_method": "Phase boundary calculation",
-        "blank_wells": "Wells marked as blanks on the plate map",
         "window_points": "Minimum window size (points)",
+        "smooth": "Spline smoothing (λ)",
         "min_data_points": "Minimum data points",
         "min_signal_to_noise": "Minimum signal-to-noise ratio",
+        "min_od_increase": "Minimum OD increase",
+        "min_growth_rate": "Minimum growth rate (1/h)",
+        "sg_window": "Savitzky-Golay window (derivative plots)",
+        "sg_poly": "Savitzky-Golay polynomial order (derivative plots)",
     }
 
     for key, label in param_mapping.items():
@@ -122,14 +129,20 @@ def _analysis_params_df(p: dict) -> pd.DataFrame:
             # Format special cases
             if key == "clip_time_series" and isinstance(value, (tuple, list)):
                 value = f"{value[0]} - {value[1]}"
-            elif key == "remove_wells":
-                if value is False or not value:
-                    value = "None"
-                else:
-                    value = ", ".join(value)
-            elif key == "blank":
-                value = "Yes" if value else "No"
-            elif key == "outlier_detection":
+            elif key in ("remove_wells", "blank_wells"):
+                value = ", ".join(value) if value else "None"
+            elif key == "blank_group_assignments":
+                wells_by_group: dict[str, list[str]] = {}
+                for well, group in (value or {}).items():
+                    wells_by_group.setdefault(group, []).append(well)
+                value = (
+                    "; ".join(
+                        f"{group}: {', '.join(wells)}"
+                        for group, wells in sorted(wells_by_group.items())
+                    )
+                    or "None"
+                )
+            elif key in ("blank", "outlier_detection"):
                 value = "Yes" if value else "No"
 
             data["Parameter"].append(label)
@@ -252,17 +265,15 @@ def build_export_zip(
 
         # ---- Baseline plots (GLOBAL) ----
         if include_baseline_plots:
-            # baseline source here matches your earlier code; adjust if your structure differs
-            test_data = plates.get("test_data", {})
-            baseline = test_data.get("baseline")
-            name_by_well = test_data.get("name", {})
-            if baseline is not None and not baseline.empty:
-                baseline_fig = plot_baseline(baseline, name_by_well=name_by_well)
-                if baseline_fig is not None:
-                    zf.writestr(
-                        "plots/baseline.png",
-                        _png(baseline_fig, baseline_width, baseline_height),
-                    )
+            for pid, p in plates.items():
+                baseline = p.get("baseline")
+                if baseline is None or baseline.empty:
+                    continue
+                baseline_fig = plot_baseline(baseline, name_by_well=p.get("name") or {})
+                zf.writestr(
+                    f"plots/{pid}/baseline.png",
+                    _png(baseline_fig, baseline_width, baseline_height),
+                )
 
         # ---- Replicates plot (GLOBAL) ----
         if include_replicates:
@@ -295,8 +306,8 @@ def build_export_zip(
                     continue
 
                 params = p.get("params") or {}
-                sg_w = int(params.get("sg_window", 11))
-                sg_p = int(params.get("sg_poly", 2))
+                sg_w = int(params.get("sg_window", DEFAULT_PARAMS["sg_window"]))
+                sg_p = int(params.get("sg_poly", DEFAULT_PARAMS["sg_poly"]))
 
                 # use requested wells; default to all available only if plate absent from dict
                 wells = wells_by_plate.get(pid, list(processed.keys()))
