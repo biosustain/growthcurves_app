@@ -99,7 +99,6 @@ def _empty_plate():
     """Create an empty plate record structure."""
     return {
         "name": {},
-        "raw_data": {},
         "processed_data": {},
         "growth_stats": {},
         "fit_parameters": {},
@@ -289,7 +288,6 @@ def analyse_plate(record: dict):
 
     plate = _empty_plate()
     plate["baseline"] = baseline
-    plate["plate_map"] = plate_map
 
     for well, g in long.groupby("well", sort=False):
         processed = g[["Time", "baseline_corrected"]].reset_index(drop=True)
@@ -307,7 +305,6 @@ def analyse_plate(record: dict):
             fit_result = None
 
         plate["name"][well] = str(g["name"].iloc[0])
-        plate["raw_data"][well] = g[["Time", "value", "od_1cm"]].reset_index(drop=True)
         plate["processed_data"][well] = processed
         plate["growth_stats"][well] = fit
         plate["fit_parameters"][well] = fit_result

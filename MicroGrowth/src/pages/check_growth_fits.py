@@ -22,7 +22,7 @@ Use the plate and well selectors to move between wells. The plot shows the raw O
 **Well-level actions**
 - **Re-analyze**: Re-run the analysis on this well using the settings from the Upload & Analyse page (useful if you changed parameters and want to refit)
 - **No growth**: Mark this well as showing no growth - all growth descriptors are set to 0 and the well is excluded from statistics
-- **Delete**: Permanently exclude this well from the analysis and all downstream results
+- **Exclude from analysis**: Remove this well from the analysis and all downstream results. To bring it back, remove it from **Exclude wells** on the Upload & Analyse page and analyse again
 
 **What to do next**
 Once you are satisfied with the fits, go to **Create Visualizations** to explore your results or **Download Analyzed Data** to export them.

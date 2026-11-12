@@ -27,11 +27,8 @@ def _cycle(items: list[str], current: str, step: int) -> str:
 
 def _delete_well_from_plate(plate: dict, well: str) -> None:
     """Remove a well from all per-well containers on a plate (in-place)."""
-
-    per_well_keys = ["name", "raw_data", "processed_data", "growth_stats"]
-    for k in per_well_keys:
-        d = plate.get(k)
-        d.pop(well, None)
+    for k in ("name", "processed_data", "growth_stats", "fit_parameters"):
+        plate.get(k, {}).pop(well, None)
     mark_changed(plate)
 
 

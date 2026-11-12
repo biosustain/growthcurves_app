@@ -782,7 +782,7 @@ def _ui_model_selection(params0: dict):
     return model_family_internal, growth_method, model_type, param_col
 
 
-def ui_model_params(growth_method: str, params0: dict, step4_prev: dict, param_col):
+def ui_model_params(growth_method: str, params0: dict, param_col):
     """Render method-specific parameters (window size or spline mode)."""
     smooth = "auto"
     try:
@@ -951,7 +951,6 @@ _PLATE_SPECIFIC_KEYS = frozenset(
 def ui_analysis_params(ss):
     """Fragment for analysis parameters and the analyse button."""
     step3_params = ss.get("step3_params", {})
-    step4_prev = ss.get("step4_params", {})
     params0 = step3_params.get("params0", DEFAULT_PARAMS)
 
     # Step 2 (preprocessing) values needed to build the final params dict
@@ -981,9 +980,7 @@ def ui_analysis_params(ss):
             )
 
             # Method-specific parameters
-            window_points, smooth = ui_model_params(
-                growth_method, params0, step4_prev, param_col
-            )
+            window_points, smooth = ui_model_params(growth_method, params0, param_col)
 
             st.write("")
             st.write("")
@@ -1122,16 +1119,3 @@ def ui_analysis_params(ss):
                 with st.spinner("Analysing plate...", show_time=True, width="stretch"):
                     ss.plates[plate_id] = analyse_plate(rec)
                 st.toast(f"Analysed {plate_id}", duration="infinite")
-
-    # Store analysis parameters in session state
-    ss.setdefault("step4_params", {})
-    ss["step4_params"]["window_points"] = window_points
-    ss["step4_params"]["min_data_points"] = min_data_points
-    ss["step4_params"]["min_signal_to_noise"] = min_signal_to_noise
-    ss["step4_params"]["min_od_increase"] = min_od_increase
-    ss["step4_params"]["min_growth_rate"] = min_growth_rate
-    ss["step4_params"]["growth_method"] = growth_method
-    ss["step4_params"]["model_family"] = model_family
-    ss["step4_params"]["model_type"] = model_type
-    ss["step4_params"]["phase_boundary_method"] = "tangent"
-    ss["step4_params"]["smooth"] = smooth
