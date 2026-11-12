@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from growthcurves.inference import bad_fit_stats
 from src.functions.constants import DEFAULT_PARAMS
+from src.functions.data_processing import mark_changed
 from src.functions.fitting_pipeline import fit_growth_series
 
 # ---------------- Selection + stats helpers ----------------
@@ -31,6 +32,7 @@ def _delete_well_from_plate(plate: dict, well: str) -> None:
     for k in per_well_keys:
         d = plate.get(k)
         d.pop(well, None)
+    mark_changed(plate)
 
 
 def _get_selected_points(event) -> tuple[np.ndarray, np.ndarray]:
@@ -262,6 +264,7 @@ def update_growth_stats_from_lasso(
         fit_parameters[well] = fit_result
     else:
         fit_parameters.pop(well, None)
+    mark_changed(plate)
 
 
 # ---------------- Data helpers ----------------

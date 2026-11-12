@@ -1226,11 +1226,8 @@ def plot_derivative_metric(
     gs = gs or {}
     used_times = gs.get("_used_fit_times")
     if used_times is not None and len(used_times) > 0:
-        used_times_arr = np.asarray(used_times)
-        time_tolerance = 0.01
-        used_mask = np.zeros(len(t_raw), dtype=bool)
-        for ut in used_times_arr:
-            used_mask |= np.abs(t_raw - ut) < time_tolerance
+        diffs = np.abs(t_raw[:, None] - np.asarray(used_times, dtype=float))
+        used_mask = (diffs < 0.01).any(axis=1)
         t_raw = t_raw[used_mask]
         y_raw = y_raw[used_mask]
 

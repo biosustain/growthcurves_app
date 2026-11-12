@@ -18,6 +18,7 @@ from src.functions.check_growth_fits import (
 )
 from src.functions.common import toast_once
 from src.functions.constants import plate_format
+from src.functions.data_processing import mark_changed
 from src.functions.plotting_functions import (
     _finite_sorted_xy,
     plot_derivative_metric,
@@ -262,9 +263,14 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             )
 
     # Persist boundaries unless we're deleting
-    growth_stats["exp_phase_start"] = float(lag_end)
-    growth_stats["exp_phase_end"] = float(exp_end)
-    growth_stats["max_od"] = float(max_od)
+    edited = {
+        "exp_phase_start": float(lag_end),
+        "exp_phase_end": float(exp_end),
+        "max_od": float(max_od),
+    }
+    if any(growth_stats.get(k) != v for k, v in edited.items()):
+        growth_stats.update(edited)
+        mark_changed(plate)
 
     c1, c2, c3 = st.columns(3)
 
@@ -274,6 +280,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         new_stats["no_growth_reason"] = "manually assigned"
         growth_stats.clear()
         growth_stats.update(new_stats)
+        mark_changed(plate)
         _sync_widgets_from_growth_stats()
 
     def _on_reanalyse():
@@ -365,7 +372,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
                 _sv if isinstance(_sv, (int, float)) and _sv > 0 else "auto"
             )
         growth_stats["_analysis_params"] = analysis_params
-
+        mark_changed(plate)
         _sync_widgets_from_growth_stats()
 
     def _on_defaults():
@@ -374,6 +381,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         new_stats = analyse_well(plate, well, params_override=None)
         growth_stats.clear()
         growth_stats.update(new_stats)
+        mark_changed(plate)
         _sync_widgets_from_growth_stats()
 
     def _on_delete():

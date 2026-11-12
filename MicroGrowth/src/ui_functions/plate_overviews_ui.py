@@ -1,6 +1,8 @@
 """UI helpers for the Plate Overviews page."""
 
+import plotly.graph_objects as go
 import streamlit as st
+from src.functions.common import session_cache
 from src.functions.plotting_functions import (
     highlight_wells,
     plot_baseline_by_group,
@@ -14,21 +16,32 @@ from src.functions.plotting_functions import (
 HOVER_ONLY = {"displayModeBar": False, "scrollZoom": False}
 
 
-# Cached figure builders: reruns (e.g. moving a slider) reuse the figures.
-# st.cache_data returns a copy, so callers may modify the figure.
-@st.cache_data(show_spinner=False)
+# Figures cached per session, one version per slot, keyed on the plate revision
+# ids (data_processing.mark_changed). A copy is returned, as callers modify it.
 def _replicates_plot(plates: dict):
-    return plot_replicates_by_sample(plates)
+    key = tuple((pid, p.get("rev")) for pid, p in plates.items())
+    return go.Figure(
+        session_cache("replicates", key, lambda: plot_replicates_by_sample(plates))
+    )
 
 
-@st.cache_data(show_spinner=False)
-def _blanks_plot(baseline, blank_group_map: dict):
-    return plot_baseline_by_group(baseline, blank_group_map=blank_group_map)
+def _blanks_plot(plate_id: str, plate: dict):
+    groups = (plate.get("params") or {}).get("blank_group_assignments") or {}
+    return go.Figure(
+        session_cache(
+            f"blanks::{plate_id}",
+            plate.get("rev"),
+            lambda: plot_baseline_by_group(plate["baseline"], blank_group_map=groups),
+        )
+    )
 
 
-@st.cache_data(show_spinner=False)
-def _plate_fits_plot(plate: dict):
-    return plot_window_plate(plate)
+def _plate_fits_plot(plate_id: str, plate: dict):
+    return go.Figure(
+        session_cache(
+            f"fits::{plate_id}", plate.get("rev"), lambda: plot_window_plate(plate)
+        )
+    )
 
 
 def _section_header(title: str, key: str) -> bool:
@@ -89,12 +102,8 @@ def ui_window_fits_plate_overview(plates: dict):
             "group mean used for baseline correction. Hover over points to see the "
             "well."
         )
-        params = plate.get("params") or {}
-        blanks = _blanks_plot(
-            plate["baseline"], params.get("blank_group_assignments") or {}
-        )
         st.plotly_chart(
-            _scaled(blanks, shared),
+            _scaled(_blanks_plot(plate_id, plate), shared),
             width="stretch",
             config=HOVER_ONLY,
         )
@@ -124,6 +133,6 @@ def ui_plate_fits(plate: dict, plate_id: str, shared: bool):
         ),
     )
     with st.spinner("Creating Plate Fits Overview..."):
-        fig = _scaled(_plate_fits_plot(plate), shared)
+        fig = _scaled(_plate_fits_plot(plate_id, plate), shared)
         fig = highlight_wells(fig, plate, worst_fit_wells(plate, pct))
     st.plotly_chart(fig, width="stretch", config={"staticPlot": True})
