@@ -1,5 +1,6 @@
 """Data loading, preprocessing, and growth-curve fitting utilities."""
 
+import re
 from datetime import datetime, timedelta
 from uuid import uuid4
 
@@ -10,6 +11,12 @@ from .constants import VALID_WELLS, detect_plate_format
 from .fitting_pipeline import fit_growth_series
 
 DEFAULT_BLANK_GROUP = "Group 1"
+
+
+def group_sort_key(name: str) -> tuple[int, str]:
+    """Sort blank groups numerically (Group 2 before Group 10); unnumbered last."""
+    match = re.search(r"(\d+)", str(name))
+    return (int(match.group(1)) if match else 10**9), str(name)
 
 
 # ---------- I/O + shaping ----------

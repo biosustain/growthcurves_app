@@ -7,6 +7,7 @@ from typing import Any
 
 import streamlit as st
 from src.functions.constants import PlateFormat
+from src.functions.data_processing import group_sort_key
 from src.ui_functions.plate_painter import plate_painter
 
 DEFAULT_GROUP = "Group 1"
@@ -34,10 +35,6 @@ def _state_key(prefix: str, suffix: str) -> str:
 def group_number(name: str) -> int:
     match = re.search(r"(\d+)", str(name))
     return int(match.group(1)) if match else 1
-
-
-def _group_sort_key(name: str) -> tuple[int, str]:
-    return group_number(name), str(name)
 
 
 def next_group_name(groups: list[str]) -> str:
@@ -105,7 +102,7 @@ def assignments_to_map(
 def _group_names_from_assignments(assignments: list[list[str]]) -> list[str]:
     groups = sorted(
         {str(cell).strip() or DEFAULT_GROUP for row in assignments for cell in row},
-        key=_group_sort_key,
+        key=group_sort_key,
     )
     if DEFAULT_GROUP not in groups:
         groups.insert(0, DEFAULT_GROUP)
@@ -119,7 +116,7 @@ def _normalize_group_labels(
     all_groups = sorted(
         {str(c).strip() or DEFAULT_GROUP for row in assignments for c in row}
         | {str(g).strip() or DEFAULT_GROUP for g in groups},
-        key=_group_sort_key,
+        key=group_sort_key,
     )
     if DEFAULT_GROUP in all_groups:
         all_groups.remove(DEFAULT_GROUP)
@@ -278,7 +275,7 @@ def _remove_group(prefix: str) -> None:
     ss[gk].remove(old)
     ss[ak] = [[DEFAULT_GROUP if c == old else c for c in row] for row in ss[ak]]
     ss[ck].pop(old, None)
-    ss[actk] = max(ss[gk], key=_group_sort_key) if ss[gk] else DEFAULT_GROUP
+    ss[actk] = max(ss[gk], key=group_sort_key) if ss[gk] else DEFAULT_GROUP
     ss[_state_key(prefix, "assigned_group_select")] = ss[actk]
 
 

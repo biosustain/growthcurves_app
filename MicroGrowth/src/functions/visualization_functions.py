@@ -35,10 +35,7 @@ def _build_growth_stats_long_df(
         nm = nm.strip()
         if gs and (pid, nm) in selected:
             for m in metrics:
-                if m == "mu_max":
-                    raw_val = gs.get("mu_max", gs.get("specific_growth_rate", np.nan))
-                else:
-                    raw_val = gs.get(m, np.nan)
+                raw_val = gs.get(m, np.nan)
                 try:
                     val = float(raw_val)
                 except (TypeError, ValueError):

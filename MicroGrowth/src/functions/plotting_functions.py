@@ -1,7 +1,5 @@
 """Plotting utilities for growth curves, stats, and window fits."""
 
-import re
-
 import growthcurves.plot as gc_plot
 import numpy as np
 import pandas as pd
@@ -21,8 +19,10 @@ from growthcurves.models import (
     spline_from_params,
 )
 from plotly.subplots import make_subplots
+from src.functions.check_growth_fits import _match_selected_times
 from src.functions.common import _iter_wells
 from src.functions.constants import DEFAULT_PARAMS, PlateFormat, plate_format
+from src.functions.data_processing import group_sort_key
 
 # --- fit-quality highlights ---------------------------------------------------
 # Wells are ranked by RMSE relative to their OD increase (model_rmse is in OD
@@ -280,53 +280,116 @@ def _finite_sorted_xy(time_s, y_s):
     return t, y
 
 
-# --- blanks ----------------------------------------------------------------
-def plot_baseline(baseline, name_by_well: dict | None = None):
-    """Plot blank wells and mean baseline over time.
+def _add_lasso_selected_points(
+    fig: go.Figure,
+    t_arr: np.ndarray,
+    y_arr: np.ndarray,
+    selected_times: list[float] | None,
+    *,
+    scale: str,
+) -> go.Figure:
+    """Overlay the points used in the fit (lasso-selected) on an existing figure."""
+    if not selected_times:
+        return fig
 
-    Args:
-        baseline: DataFrame with Time index and wells as columns (plus 'Mean' column)
-        name_by_well: Optional dict mapping well IDs to sample names for color coding
-    """
-    fig = go.Figure()
+    sel = np.asarray(selected_times, dtype=float)
+    sel = sel[np.isfinite(sel)]
+    if sel.size == 0:
+        return fig
 
-    # Build color map based on sample names if available
-    name_by_well = name_by_well or {}
-    palette = px.colors.qualitative.Plotly
+    refit_indices = _match_selected_times(t_arr, sel)
+    if refit_indices.size == 0:
+        return fig
 
-    # Get unique sample names from the wells in baseline (excluding 'Mean')
-    well_cols = [c for c in baseline.columns if c != "Mean"]
-    sample_names = list(dict.fromkeys([name_by_well.get(w, w) for w in well_cols]))
-    color_map = {n: palette[i % len(palette)] for i, n in enumerate(sample_names)}
+    t_sel = t_arr[refit_indices]
+    y_sel = y_arr[refit_indices]
+    valid = np.isfinite(y_sel) & ((y_sel > 0) if scale == "log" else True)
+    t_sel, y_sel = t_sel[valid], y_sel[valid]
+    if t_sel.size == 0:
+        return fig
 
-    time_display = baseline.index.to_numpy()
-
-    for col in baseline.columns:
-        sample_name = name_by_well.get(col, col) if col != "Mean" else "Mean"
-        color = color_map.get(sample_name, "black")
-
-        fig.add_scatter(
-            x=time_display,
-            y=baseline[col],
-            mode="markers" if col != "Mean" else "lines+markers",
-            name=sample_name if col != "Mean" else "Mean",
-            marker=dict(color=color) if col != "Mean" else None,
-            line=dict(color=color) if col == "Mean" else None,
+    fig.add_trace(
+        go.Scatter(
+            x=t_sel,
+            y=np.log(y_sel) if scale == "log" else y_sel,
+            mode="markers",
+            name="Selected",
+            marker=dict(size=8, color="#ef5350", symbol="circle"),
+            showlegend=False,
         )
-    fig.update_xaxes(title="Time (hours)")
-    fig.update_yaxes(showgrid=False)
-
+    )
     return fig
 
 
-def _group_sort_key(name: str) -> tuple[int, str]:
-    """Sort group labels like Group 1, Group 2 numerically."""
-    match = re.search(r"(\d+)", str(name))
-    if match:
-        return int(match.group(1)), str(name)
-    return 10**9, str(name)
+# --- single well -----------------------------------------------------------
+def plot_well_curve(
+    plate: dict,
+    well: str,
+    *,
+    log_scale: bool = False,
+    phase_boundaries: bool = True,
+    umax_point: bool = True,
+    max_od: bool = True,
+    baseline_od: bool = True,
+    tangent: bool = False,
+    fitted_model: bool = True,
+) -> go.Figure:
+    """Annotated growth curve of one well, as on Check Growth Fits and in exports.
+
+    Points used in the fit (lasso-selected, default all) are drawn darker.
+    Returns an empty figure if the well has no data.
+    """
+    d = (plate.get("processed_data") or {}).get(well)
+    if d is None or d.empty:
+        return go.Figure()
+    t, y = _finite_sorted_xy(d["Time"], d["baseline_corrected"])
+    if t.size == 0:
+        return go.Figure()
+
+    gs = (plate.get("growth_stats") or {}).get(well) or {}
+    scale = "log" if log_scale else "linear"
+    fig = gc_plot.create_base_plot(t, y, scale=scale)
+    fig = _add_lasso_selected_points(
+        fig, t, y, gs.get("_used_fit_times") or t.tolist(), scale=scale
+    )
+    if gs and not is_no_growth(gs):
+        fig = gc_plot.annotate_plot(
+            fig,
+            fit_result=(plate.get("fit_parameters") or {}).get(well),
+            stats=gs,
+            show_fitted_curve=fitted_model,
+            show_phase_boundaries=phase_boundaries,
+            show_crosshairs=umax_point,
+            show_od_max_line=max_od,
+            show_n0_line=baseline_od,
+            show_umax_marker=umax_point,
+            show_tangent=tangent,
+            scale=scale,
+        )
+
+    # x-axis range matches the data exactly (no gap at the y-axis)
+    fig.update_xaxes(
+        title="Time (hours)",
+        showgrid=False,
+        type="linear",
+        range=[float(t.min()), float(t.max())],
+    )
+    fig.update_yaxes(
+        title="ln(OD600)" if log_scale else "OD600 (baseline-corrected)",
+        showgrid=False,
+    )
+    fig.update_layout(
+        showlegend=False,
+        title=f"Fitted growth curve – {well}",
+        margin=dict(l=20, r=20, t=60, b=20),
+        height=600,
+    )
+    return style_like_info_plots(
+        fig, fit_window=(gs.get("fit_t_min"), gs.get("fit_t_max"))
+    )
 
 
+# --- blanks ----------------------------------------------------------------
 def plot_baseline_by_group(
     baseline: pd.DataFrame,
     *,
@@ -356,7 +419,7 @@ def plot_baseline_by_group(
     by_group: dict[str, list] = {}
     for w in wells:
         by_group.setdefault(group_of.get(str(w).upper(), "Group 1"), []).append(w)
-    groups = sorted(set(by_group) | set(mean_cols), key=_group_sort_key)
+    groups = sorted(set(by_group) | set(mean_cols), key=group_sort_key)
 
     # At most BLANK_COLS per row; extra groups wrap onto new rows
     cols = min(len(groups), BLANK_COLS)
@@ -708,7 +771,6 @@ def plot_replicates_by_sample(plates: dict):
 # Mapping of metric names to their units for y-axis labels.
 METRIC_UNITS = {
     "mu_max": "h⁻¹",
-    "specific_growth_rate": "h⁻¹",
     "intrinsic_growth_rate": "h⁻¹",
     "doubling_time": "hours",
     "max_od": "OD600",
@@ -721,7 +783,6 @@ METRIC_UNITS = {
 # Mapping of metric names to display titles
 METRIC_TITLES = {
     "mu_max": "Maximum specific growth rate",
-    "specific_growth_rate": "Maximum specific growth rate",
     "intrinsic_growth_rate": "Intrinsic growth rate",
     "doubling_time": "Doubling time",
     "max_od": "Maximum OD",
@@ -734,7 +795,6 @@ METRIC_TITLES = {
 # Mapping of metric names to y-axis labels (using Greek letters where appropriate)
 METRIC_Y_LABELS = {
     "mu_max": "μ",
-    "specific_growth_rate": "μ",
     "intrinsic_growth_rate": "μᵢ",
     "doubling_time": "tᵈ",
 }
@@ -1346,4 +1406,4 @@ def plot_derivative_metric(
         pad = 0.05 * (hi - lo) or 0.05 * abs(hi) or 0.05
         y_range = [lo - pad, hi + pad]
     fig.update_yaxes(showgrid=False, title=y_axis_title, range=y_range)
-    return fig
+    return style_like_info_plots(fig)

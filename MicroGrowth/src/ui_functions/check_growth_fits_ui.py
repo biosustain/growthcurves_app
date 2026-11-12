@@ -1,29 +1,23 @@
 """UI helpers for the Check Growth Fits page."""
 
-import growthcurves.plot as gc_plot
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 from growthcurves.inference import bad_fit_stats, is_no_growth
 from src.functions.check_growth_fits import (
-    _add_lasso_selected_points,
     _analyse_series_with_plate_params,
     _collect_lasso_series,
     _cycle,
     _delete_well_from_plate,
     _sg_params_for_plate,
     analyse_well,
+    reanalysis_params,
     update_growth_stats_from_lasso,
 )
 from src.functions.common import toast_once
 from src.functions.constants import plate_format
 from src.functions.data_processing import mark_changed
-from src.functions.plotting_functions import (
-    _finite_sorted_xy,
-    plot_derivative_metric,
-    style_like_info_plots,
-)
+from src.functions.plotting_functions import plot_derivative_metric, plot_well_curve
 
 
 def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
@@ -74,9 +68,6 @@ def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
 
     for key, label, formatter in metrics:
         value = gs.get(key)
-        # Backward compatibility for previously exported/serialized stats.
-        if key == "mu_max" and value is None:
-            value = gs.get("specific_growth_rate")
         try:
             formatted_value = formatter(value) if value is not None else "--"
         except (ValueError, TypeError):
@@ -283,26 +274,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         If lasso points are selected, re-analyses only that subset.
         Otherwise re-analyses all data for the well.
         """
-        # The popover's values (initialised from the plate params on first view)
-        ss = st.session_state
-        params_override = {
-            "min_od_increase": float(ss[_rp_min_od_key]),
-            "min_growth_rate": float(ss[_rp_min_gr_key]),
-            "min_signal_to_noise": float(ss[_rp_min_snr_key]),
-            "min_data_points": int(ss[_rp_min_dp_key]),
-        }
-        if growth_method == "Sliding Window":
-            params_override["window_points"] = int(ss[_rp_window_key])
-        elif growth_method == "Spline":
-            if ss[_rp_smooth_key] == "manual":
-                params_override["smooth"] = float(
-                    st.session_state.get(_rp_spline_s_key) or 0.0
-                )
-            else:
-                params_override["smooth"] = "auto"
-
-        effective_p = dict(plate_params)
-        effective_p.update(params_override)
+        effective_p, analysis_params = reanalysis_params(plate, key)
 
         used_fit_times = growth_stats.get("_used_fit_times")
         if used_fit_times:
@@ -328,24 +300,11 @@ def _phase_controls(plate: dict, well: str, *, key: str):
                 used_fit_times = None  # fall through to full analysis
 
         if not used_fit_times:
-            new_stats = analyse_well(plate, well, params_override=params_override)
+            new_stats = analyse_well(plate, well, params_override=effective_p)
             growth_stats.clear()
             growth_stats.update(new_stats)
 
         # Record the params actually used for display in the stats table
-        analysis_params = {
-            "min_od_increase": effective_p.get("min_od_increase"),
-            "min_growth_rate": effective_p.get("min_growth_rate"),
-            "min_signal_to_noise": effective_p.get("min_signal_to_noise"),
-            "min_data_points": effective_p.get("min_data_points"),
-        }
-        if growth_method == "Sliding Window":
-            analysis_params["window_points"] = effective_p.get("window_points")
-        elif growth_method == "Spline":
-            _sv = growth_stats.get("smooth", effective_p["smooth"])
-            analysis_params["smooth"] = (
-                _sv if isinstance(_sv, (int, float)) and _sv > 0 else "auto"
-            )
         growth_stats["_analysis_params"] = analysis_params
         mark_changed(plate)
         _sync_widgets_from_growth_stats()
@@ -613,10 +572,7 @@ def ui_window_fits_well_editor(plates: dict):
         return
 
     sg_w, sg_p = _sg_params_for_plate(plates, plate_id)
-    processed = plate.get("processed_data") or {}
-    growth_stats = plate.get("growth_stats") or {}
-    fit_parameters = plate.get("fit_parameters") or {}
-    gs = growth_stats.get(well) or {}
+    gs = (plate.get("growth_stats") or {}).get(well) or {}
 
     # Display growth status indicator and stats table
     status_col, expander_col = st.columns([2, 5])
@@ -634,7 +590,7 @@ def ui_window_fits_well_editor(plates: dict):
 
         table_key_base = (
             f"{plate_id}_{well}_"
-            f"{gs.get('mu_max', gs.get('specific_growth_rate', 0))}_"
+            f"{gs.get('mu_max', 0)}_"
             f"{gs.get('max_od', 0)}_"
             f"{gs.get('exp_phase_start', 0)}_"
             f"{gs.get('exp_phase_end', 0)}_"
@@ -680,81 +636,17 @@ def ui_window_fits_well_editor(plates: dict):
 
     chart_key = f"lasso_fit_{plate_id}_{well}"
 
-    # Get the processed data for this well
-    d = processed.get(well)
-    if d is not None and not d.empty:
-        # Get time and OD data
-        t_raw, y_raw = _finite_sorted_xy(
-            d["Time"].to_numpy(), d["baseline_corrected"].to_numpy()
-        )
-
-        if t_raw.size > 0:
-            # Determine scale
-            scale = "log" if log_scale else "linear"
-
-            # Create base plot using growthcurves - this matches the notebook pattern
-            fig_main = gc_plot.create_base_plot(t_raw, y_raw, scale=scale)
-
-            # Highlight lasso-selected points (default: all points)
-            selected_times = gs.get("_used_fit_times")
-            if not selected_times:
-                selected_times = t_raw.tolist()
-            fig_main = _add_lasso_selected_points(
-                fig_main,
-                t_raw,
-                y_raw,
-                selected_times,
-                scale=scale,
-            )
-
-            # Annotate plot with growth stats if available
-            if not is_no_growth(gs) and gs:
-                # Get fit result from session state
-                fit_result = fit_parameters.get(well)
-
-                # Pass the stored growth stats and fit result directly
-                # No need to reconstruct - use the original values from the fit
-                fig_main = gc_plot.annotate_plot(
-                    fig_main,
-                    fit_result=fit_result,
-                    stats=gs,
-                    show_fitted_curve=show_fitted_model,
-                    show_phase_boundaries=show_phase_boundaries,
-                    show_crosshairs=show_umax_point,
-                    show_od_max_line=show_max_od,
-                    show_n0_line=show_baseline_od,
-                    show_umax_marker=show_umax_point,
-                    show_tangent=show_tangent,
-                    scale=scale,
-                )
-
-            # Update axis labels
-            y_label = "ln(OD600)" if log_scale else "OD600 (baseline-corrected)"
-            # Set x-axis range to exactly match data range (removes gap at y-axis)
-            fig_main.update_xaxes(
-                title="Time (hours)",
-                showgrid=False,
-                type="linear",
-                range=[float(t_raw.min()), float(t_raw.max())],
-            )
-            fig_main.update_yaxes(title=y_label, showgrid=False)
-
-            # Apply layout for lasso selection functionality
-            fig_main.update_layout(
-                uirevision="keep",
-                dragmode="lasso",
-                showlegend=False,
-                title=f"Fitted growth curve – {well}",
-                margin=dict(l=20, r=20, t=60, b=20),
-                height=600,
-            )
-            style_like_info_plots(
-                fig_main, fit_window=(gs.get("fit_t_min"), gs.get("fit_t_max"))
-            )
-        else:
-            fig_main = go.Figure()
-    else:
-        fig_main = go.Figure()
+    fig_main = plot_well_curve(
+        plate,
+        well,
+        log_scale=log_scale,
+        phase_boundaries=show_phase_boundaries,
+        umax_point=show_umax_point,
+        max_od=show_max_od,
+        baseline_od=show_baseline_od,
+        tangent=show_tangent,
+        fitted_model=show_fitted_model,
+    ).update_layout(uirevision="keep", dragmode="lasso")
 
     # Grey cards with transparent plot backgrounds, as on the Upload & Analyse page
     with st.container(border=True, key="card_check_growth_fits_3"):
@@ -776,6 +668,5 @@ def ui_window_fits_well_editor(plates: dict):
         plate, well, metric="mu", sg_window=sg_w, sg_poly=sg_p, gs=gs
     )
     for i, fig in enumerate((fig_dndt, fig_mu), start=4):
-        style_like_info_plots(fig)
         with st.container(border=True, key=f"card_check_growth_fits_{i}"):
             st.plotly_chart(fig, width="stretch")
