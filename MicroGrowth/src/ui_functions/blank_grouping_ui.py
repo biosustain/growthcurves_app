@@ -171,9 +171,11 @@ def _painter_cells(
             out_row.append(
                 {
                     "label": well,
-                    "color": (darken_hex_color(base) if blank else base)
-                    if included
-                    else "#e5e7eb",
+                    "color": (
+                        (darken_hex_color(base) if blank else base)
+                        if included
+                        else "#e5e7eb"
+                    ),
                     "border": darken_hex_color(base, factor=0.72) if blank else None,
                     # Hover shows just the sample name
                     "tooltip": "" if sample == "False" else sample,
@@ -499,15 +501,17 @@ def ui_well_selector(
     # Wells without data are grey and cannot be changed
     cells = [
         [
-            {
-                "label": well,
-                "color": _WELL_SEL_COLORS[state],
-                "tooltip": f"{well} · {state}",
-                "group": state,
-                "included": True,
-            }
-            if (well := fmt.well(y, x)) in available_set
-            else {"label": well, "color": "#d1d5db", "tooltip": f"{well} · no data"}
+            (
+                {
+                    "label": well,
+                    "color": _WELL_SEL_COLORS[state],
+                    "tooltip": f"{well} · {state}",
+                    "group": state,
+                    "included": True,
+                }
+                if (well := fmt.well(y, x)) in available_set
+                else {"label": well, "color": "#d1d5db", "tooltip": f"{well} · no data"}
+            )
             for x, state in enumerate(row)
         ]
         for y, row in enumerate(ss[ak])
