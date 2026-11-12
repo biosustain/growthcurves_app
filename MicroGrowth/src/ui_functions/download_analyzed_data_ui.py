@@ -35,7 +35,7 @@ def _render_tabulated_data_container():
     with cb_col:
         c_params = st.checkbox("Analysis parameters", value=True, key="table_params")
     with desc_col:
-        st.caption("All analysis settings used (read interval, pathlength, etc.)")
+        st.caption("All analysis settings used (time unit, pathlength, blanks, method, thresholds, etc.)")
 
     return c_baseline_corrected, c_stats_per_well, c_stats_per_sample, c_params
 

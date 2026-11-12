@@ -22,7 +22,7 @@ from growthcurves.models import (
 )
 from plotly.subplots import make_subplots
 from src.functions.common import _iter_wells
-from src.functions.constants import PlateFormat, plate_format
+from src.functions.constants import DEFAULT_PARAMS, PlateFormat, plate_format
 
 # --- fit-quality highlights ---------------------------------------------------
 # Wells are ranked by RMSE relative to their OD increase (model_rmse is in OD
@@ -570,7 +570,7 @@ def plot_replicates_scatter(
         x="Time_display",
         y="baseline_corrected",
         color="Sample Name",
-        hover_data=["plate", "well", "key"],
+        hover_data=["plate", "well"],
         category_orders={"Sample Name": names},
         color_discrete_map=color_map,
     ).update_layout(
@@ -1181,8 +1181,8 @@ def plot_derivative_metric(
     plate: dict,
     well: str,
     metric: str,
-    sg_window=11,
-    sg_poly=2,
+    sg_window=DEFAULT_PARAMS["sg_window"],
+    sg_poly=DEFAULT_PARAMS["sg_poly"],
     time_unit: str = "hours",
     gs: dict | None = None,
 ):

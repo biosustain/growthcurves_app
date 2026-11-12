@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from growthcurves.inference import bad_fit_stats
+from src.functions.constants import DEFAULT_PARAMS
 from src.functions.fitting_pipeline import fit_growth_series
 
 # ---------------- Selection + stats helpers ----------------
@@ -268,9 +269,9 @@ def _sg_params_for_plate(plates: dict, plate_id: str) -> tuple[int, int, int]:
     """Return Savitzky-Golay and window parameters for a plate."""
     params = (plates.get(plate_id, {}) or {}).get("params") or {}
     return (
-        int(params.get("sg_window", 11)),
-        int(params.get("sg_poly", 2)),
-        int(params.get("window_points", 5)),
+        int(params.get("sg_window", DEFAULT_PARAMS["sg_window"])),
+        int(params.get("sg_poly", DEFAULT_PARAMS["sg_poly"])),
+        int(params.get("window_points", DEFAULT_PARAMS["window_points"])),
     )
 
 

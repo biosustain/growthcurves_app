@@ -12,6 +12,7 @@ from .constants import (
     VALID_WELLS,
     detect_plate_format,
 )
+from .data_processing import is_time_column
 
 
 def init_state():
@@ -233,7 +234,7 @@ def long_plate_map_to_wide_bytes(file_bytes: bytes) -> bytes:
 def plate_from_column_names(data_bytes: bytes) -> tuple[bytes, bytes, bool]:
     """Return (data, plate map, positions assigned) with the headers as sample names."""
     df = pd.read_excel(BytesIO(data_bytes), header=None, dtype=object)
-    header = [str(c).strip() for c in df.iloc[0]]
+    header = ["Time" if is_time_column(c) else str(c).strip() for c in df.iloc[0]]
     names = [c for c in header if c != "Time"]
     assigned = not all(n.upper() in VALID_WELLS for n in names)
     if not assigned:
