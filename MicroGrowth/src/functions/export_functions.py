@@ -20,22 +20,15 @@ from src.functions.plotting_functions import (
 # ---------------- Export helpers ----------------
 def _processed_wide_for_plate(p: dict, *, value_col: str) -> pd.DataFrame:
     """Return a wide, time-indexed DataFrame with one column per well."""
-    frames = []
-    for well, d in (p.get("processed_data") or {}).items():
-        if d is None or d.empty:
-            continue
-        if "Time" not in d.columns or value_col not in d.columns:
-            continue
-        frames.append(d[["Time", value_col]].rename(columns={value_col: well}))
-
-    if not frames:
+    columns = {
+        well: d.set_index("Time")[value_col]
+        for well, d in (p.get("processed_data") or {}).items()
+        if d is not None and not d.empty and {"Time", value_col} <= set(d.columns)
+    }
+    if not columns:
         return pd.DataFrame()
-
-    out = frames[0]
-    for f in frames[1:]:
-        out = out.merge(f, on="Time", how="outer")
-
-    return out.sort_values("Time").reset_index(drop=True)
+    # One outer join on Time for all wells
+    return pd.concat(columns, axis=1).sort_index().rename_axis("Time").reset_index()
 
 
 def _growth_stats_per_well_df(p: dict) -> pd.DataFrame:
@@ -193,7 +186,6 @@ def build_export_zip(
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-
         # ---- Tables (GLOBAL) ----
         # Combine all plates into single tables with a Plate column
         if include_baseline_corrected:

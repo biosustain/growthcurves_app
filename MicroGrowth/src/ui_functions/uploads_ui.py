@@ -13,17 +13,14 @@ from src.functions.constants import (
     PlateFormat,
     plate_format,
 )
-from src.functions.data_processing import (
-    analyse_plate,
-    load_plate,
-    normalize_time_column,
-)
+from src.functions.data_processing import analyse_plate, load_plate, time_to_hours
 from src.functions.upload_functions import (
     detect_plate_map_format,
-    get_plate_preview_data,
-    long_plate_map_to_wide_bytes,
+    long_plate_map_to_wide,
     plate_from_column_names,
+    plate_map_frame,
     plate_params,
+    read_data_file,
     validate_data_columns_are_wells,
     validate_data_file,
     validate_long_plate_map_file,
@@ -384,7 +381,17 @@ def ui_upload_files(ss):
             width="stretch",
             disabled=not data_file,
         ):
-            is_valid_data, data_error = validate_data_file(data_file.getvalue())
+            # Each file is parsed once, here; the plate keeps the parsed tables
+            try:
+                data = read_data_file(data_file.getvalue())
+                map_df = (
+                    pd.read_excel(io.BytesIO(map_file.getvalue())) if map_file else None
+                )
+            except Exception as e:
+                st.toast(f"Failed to read Excel file: {e}", duration="infinite")
+                st.stop()
+
+            is_valid_data, data_error = validate_data_file(data)
             if not is_valid_data:
                 st.toast(
                     f"Data file validation failed: {data_error}",
@@ -392,42 +399,28 @@ def ui_upload_files(ss):
                 )
                 st.stop()
 
-            data_bytes = data_file.getvalue()
-            plate_bytes = None
-            if map_file:
-                map_format = detect_plate_map_format(map_file.getvalue())
-                if map_format == "long":
-                    is_valid_map, map_error = validate_long_plate_map_file(
-                        map_file.getvalue()
-                    )
-                    if not is_valid_map:
-                        st.toast(
-                            f"Plate map validation failed: {map_error}",
-                            duration="infinite",
-                        )
-                        st.stop()
-                    plate_bytes = long_plate_map_to_wide_bytes(map_file.getvalue())
-                else:
-                    is_valid_map, map_error = validate_plate_map_file(
-                        map_file.getvalue()
-                    )
-                    if not is_valid_map:
-                        st.toast(
-                            f"Plate map validation failed: {map_error}",
-                            duration="infinite",
-                        )
-                        st.stop()
-                    plate_bytes = map_file.getvalue()
-
-                is_valid_cols, cols_error = validate_data_columns_are_wells(
-                    data_file.getvalue()
+            if map_df is not None:
+                is_long = detect_plate_map_format(map_df) == "long"
+                validate = (
+                    validate_long_plate_map_file if is_long else validate_plate_map_file
                 )
+                is_valid_map, map_error = validate(map_df)
+                if not is_valid_map:
+                    st.toast(
+                        f"Plate map validation failed: {map_error}",
+                        duration="infinite",
+                    )
+                    st.stop()
+                if is_long:
+                    map_df = long_plate_map_to_wide(map_df)
+
+                is_valid_cols, cols_error = validate_data_columns_are_wells(data)
                 if not is_valid_cols:
                     st.toast(cols_error, duration="infinite")
                     st.stop()
             else:
                 # Column headers are the sample names
-                data_bytes, plate_bytes, assigned = plate_from_column_names(data_bytes)
+                data, map_df, assigned = plate_from_column_names(data)
                 if assigned:
                     st.toast(
                         "No plate positions: samples placed in order (A1, A2, ...).",
@@ -442,8 +435,8 @@ def ui_upload_files(ss):
             load_plate(
                 ss.plates,
                 plate_id,
-                data_bytes=data_bytes,
-                plate_bytes=plate_bytes,
+                data=data,
+                plate_map=plate_map_frame(map_df),
                 params=dict(DEFAULT_PARAMS),
             )
             st.toast(f"Successfully loaded {plate_id}", duration="infinite")
@@ -514,10 +507,8 @@ def ui_preprocessing_params(ss):
             fmt = plate_format(rec)
             if rec.get("uploads"):
                 uploads = rec["uploads"]
-                plate_map, present = get_plate_preview_data(
-                    plate_bytes=uploads["plate_bytes"],
-                    data_bytes=uploads["data_bytes"],
-                )
+                plate_map = uploads["plate_map"]
+                present = set(uploads["data"].columns) - {"Time"}
                 if plate_map is not None:
                     name_by_well = _name_by_well_from_plate_map(plate_map, fmt)
                     # Blanks: BLANK names in the plate map plus wells painted as blanks
@@ -569,45 +560,12 @@ def ui_preprocessing_params(ss):
             # Derive min/max time in hours from the uploaded data file
             _min_time_h = 0.0
             _max_time_h = 1e6
-            if plate_id:
-                _data_bytes = (
-                    (ss.plates.get(plate_id) or {}).get("uploads", {}).get("data_bytes")
-                )
-                if _data_bytes:
-                    try:
-                        _t_col = normalize_time_column(
-                            pd.read_excel(io.BytesIO(_data_bytes), header=0)
-                        )["Time"]
-                        if time_unit == "HH:MM:SS":
-
-                            def _hhmmss_to_hours(val):
-                                parts = str(val).strip().split(":")
-                                if len(parts) == 3:
-                                    return (
-                                        int(parts[0])
-                                        + int(parts[1]) / 60.0
-                                        + float(parts[2]) / 3600.0
-                                    )
-                                return float("nan")
-
-                            _t_hours = _t_col.map(_hhmmss_to_hours).dropna()
-                        else:
-                            _t_raw = pd.to_numeric(_t_col, errors="coerce").dropna()
-                            _divisor = (
-                                3600.0
-                                if time_unit == "seconds"
-                                else (
-                                    60.0
-                                    if time_unit == "minutes"
-                                    else 1 / 24.0 if time_unit == "days" else 1.0
-                                )
-                            )
-                            _t_hours = _t_raw / _divisor
-                        if not _t_hours.empty:
-                            _min_time_h = float(_t_hours.min())
-                            _max_time_h = float(_t_hours.max())
-                    except Exception:
-                        pass
+            _data = ((ss.plates.get(plate_id) or {}).get("uploads") or {}).get("data")
+            if _data is not None:
+                _t_hours = time_to_hours(_data["Time"], time_unit).dropna()
+                if not _t_hours.empty:
+                    _min_time_h = float(_t_hours.min())
+                    _max_time_h = float(_t_hours.max())
 
             _clip = params0.get("clip_time_series") or (None, None)
             _clip_start = (
@@ -824,7 +782,7 @@ def _ui_model_selection(params0: dict):
     return model_family_internal, growth_method, model_type, param_col
 
 
-def ui_model_params(growth_method: str, params0: dict, step4_prev: dict, param_col):
+def ui_model_params(growth_method: str, params0: dict, param_col):
     """Render method-specific parameters (window size or spline mode)."""
     smooth = "auto"
     try:
@@ -993,7 +951,6 @@ _PLATE_SPECIFIC_KEYS = frozenset(
 def ui_analysis_params(ss):
     """Fragment for analysis parameters and the analyse button."""
     step3_params = ss.get("step3_params", {})
-    step4_prev = ss.get("step4_params", {})
     params0 = step3_params.get("params0", DEFAULT_PARAMS)
 
     # Step 2 (preprocessing) values needed to build the final params dict
@@ -1023,9 +980,7 @@ def ui_analysis_params(ss):
             )
 
             # Method-specific parameters
-            window_points, smooth = ui_model_params(
-                growth_method, params0, step4_prev, param_col
-            )
+            window_points, smooth = ui_model_params(growth_method, params0, param_col)
 
             st.write("")
             st.write("")
@@ -1164,16 +1119,3 @@ def ui_analysis_params(ss):
                 with st.spinner("Analysing plate...", show_time=True, width="stretch"):
                     ss.plates[plate_id] = analyse_plate(rec)
                 st.toast(f"Analysed {plate_id}", duration="infinite")
-
-    # Store analysis parameters in session state
-    ss.setdefault("step4_params", {})
-    ss["step4_params"]["window_points"] = window_points
-    ss["step4_params"]["min_data_points"] = min_data_points
-    ss["step4_params"]["min_signal_to_noise"] = min_signal_to_noise
-    ss["step4_params"]["min_od_increase"] = min_od_increase
-    ss["step4_params"]["min_growth_rate"] = min_growth_rate
-    ss["step4_params"]["growth_method"] = growth_method
-    ss["step4_params"]["model_family"] = model_family
-    ss["step4_params"]["model_type"] = model_type
-    ss["step4_params"]["phase_boundary_method"] = "tangent"
-    ss["step4_params"]["smooth"] = smooth

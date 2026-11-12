@@ -1,6 +1,7 @@
 """Data loading, preprocessing, and growth-curve fitting utilities."""
 
-import io
+from datetime import datetime, timedelta
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
@@ -13,14 +14,18 @@ DEFAULT_BLANK_GROUP = "Group 1"
 
 
 # ---------- I/O + shaping ----------
-def _plate_name_map(plate_bytes):
-    """Return (plate_df, well_name_map) from a plate map Excel file."""
-    plate = pd.read_excel(io.BytesIO(plate_bytes)).fillna("False").set_index("rows")
+def mark_changed(plate: dict) -> None:
+    """Give the plate a new revision id, so per-session cached figures rebuild."""
+    plate["rev"] = uuid4().hex
+
+
+def _plate_name_map(plate_map: pd.DataFrame) -> dict[str, str]:
+    """Return the well -> sample name mapping of a plate map (see plate_map_frame)."""
     names = {
         f"{str(r).strip().upper()}{str(c).strip()}": str(v).strip()
-        for (r, c), v in plate.stack().items()
+        for (r, c), v in plate_map.stack().items()
     }
-    return plate, {w: n for w, n in names.items() if w in VALID_WELLS}
+    return {w: n for w, n in names.items() if w in VALID_WELLS}
 
 
 def is_time_column(col) -> bool:
@@ -28,19 +33,35 @@ def is_time_column(col) -> bool:
     return str(col).strip().lower() == "time"
 
 
-def normalize_time_column(df: pd.DataFrame) -> pd.DataFrame:
-    """Rename the Time column, whatever its case, to "Time" (in place)."""
-    df.columns = ["Time" if is_time_column(c) else c for c in df.columns]
-    return df
+def time_to_hours(t_raw: pd.Series, time_unit: str) -> pd.Series:
+    """Convert a raw Time column in time_unit to hours (NaN where unparseable)."""
+    if time_unit == "HH:MM:SS":
+
+        def _hhmmss_to_hours(val):
+            if isinstance(val, datetime):  # Excel times of 24 h or more
+                val -= datetime(1899, 12, 31)
+            if isinstance(val, timedelta):  # Excel [h]:mm:ss durations
+                return val.total_seconds() / 3600.0
+            try:
+                h, m, s = str(val).strip().split(":")
+                return int(h) + int(m) / 60.0 + float(s) / 3600.0
+            except ValueError:
+                return float("nan")
+
+        return t_raw.map(_hhmmss_to_hours)
+    t = pd.to_numeric(t_raw, errors="coerce")
+    return {"seconds": t / 3600.0, "minutes": t / 60.0, "days": t * 24.0}.get(
+        time_unit, t
+    )
 
 
 def _read_table(
-    data_bytes: bytes, time_unit: str = "hours", filter_to_wells: bool = True
+    data: pd.DataFrame, time_unit: str = "hours", filter_to_wells: bool = True
 ) -> pd.DataFrame:
-    """Read plate time series data (rows=timepoints, cols=wells) with Time in hours.
+    """Shape plate time series data (rows=timepoints, cols=wells) with Time in hours.
 
     Args:
-        data_bytes: Excel file bytes
+        data: Parsed data file (see read_data_file); not modified
         time_unit: Unit of time in the data file ("seconds", "minutes", "hours", "days", or "HH:MM:SS")
         filter_to_wells: If True, keep only valid well columns (A1–P24) and uppercase them.
                          If False, keep all non-Time columns with their original names.
@@ -51,8 +72,8 @@ def _read_table(
     Raises:
         ValueError: If no Time column is found in the data file
     """
-    df = normalize_time_column(pd.read_excel(io.BytesIO(data_bytes), header=0))
-    df = df.replace(",", ".", regex=True)
+    # Repeated headers: keep the first column
+    df = data.loc[:, ~data.columns.duplicated()].replace(",", ".", regex=True)
 
     if "Time" not in df.columns:
         raise ValueError(
@@ -60,28 +81,8 @@ def _read_table(
             "Please add a Time column with numeric values."
         )
 
-    t_raw = df["Time"]
+    t_hours = time_to_hours(df["Time"], time_unit)
     df = df.drop(columns=["Time"])
-
-    if time_unit == "HH:MM:SS":
-
-        def _hhmmss_to_hours(val):
-            parts = str(val).strip().split(":")
-            if len(parts) == 3:
-                return int(parts[0]) + int(parts[1]) / 60.0 + float(parts[2]) / 3600.0
-            return float("nan")
-
-        t_hours = t_raw.map(_hhmmss_to_hours)
-    else:
-        t = pd.to_numeric(t_raw, errors="coerce")
-        if time_unit == "seconds":
-            t_hours = t / 3600.0
-        elif time_unit == "minutes":
-            t_hours = t / 60.0
-        elif time_unit == "days":
-            t_hours = t * 24.0
-        else:
-            t_hours = t
 
     if filter_to_wells:
         well_cols = [c for c in df.columns if str(c).strip().upper() in VALID_WELLS]
@@ -98,7 +99,6 @@ def _empty_plate():
     """Create an empty plate record structure."""
     return {
         "name": {},
-        "raw_data": {},
         "processed_data": {},
         "growth_stats": {},
         "fit_parameters": {},
@@ -109,8 +109,8 @@ def load_plate(
     plates: dict,
     plate_id: str,
     *,
-    data_bytes: bytes,
-    plate_bytes: bytes | None,
+    data: pd.DataFrame,
+    plate_map: pd.DataFrame | None,
     params: dict,
 ):
     """Store uploads and params for a plate and return the record.
@@ -118,13 +118,13 @@ def load_plate(
     The plate format (96 or 384 wells) is detected here, once, from the data
     column names and the named wells of the plate map.
     """
-    wells = set(pd.read_excel(io.BytesIO(data_bytes), nrows=0).columns)
-    if plate_bytes is not None:
-        _, name_map = _plate_name_map(plate_bytes)
+    wells = set(data.columns)
+    if plate_map is not None:
+        name_map = _plate_name_map(plate_map)
         wells |= {w for w, n in name_map.items() if n not in {"", "False"}}
 
     rec = plates.setdefault(plate_id, {})
-    rec["uploads"] = {"data_bytes": data_bytes, "plate_bytes": plate_bytes}
+    rec["uploads"] = {"data": data, "plate_map": plate_map}
     rec["n_wells"] = detect_plate_format(wells).n_wells
     rec["params"] = params
     return rec
@@ -186,19 +186,16 @@ def analyse_plate(record: dict):
     u = (record or {}).get("uploads") or {}
     p = (record or {}).get("params") or {}
 
-    plate_bytes = u.get("plate_bytes")
-    if plate_bytes is not None:
-        plate_map, name_map = _plate_name_map(plate_bytes)
-        df = _read_table(u["data_bytes"], p.get("time_unit", "hours"))
+    plate_map = u.get("plate_map")
+    if plate_map is not None:
+        name_map = _plate_name_map(plate_map)
+        df = _read_table(u["data"], p.get("time_unit", "hours"))
         long = df.melt(id_vars="Time", var_name="well", value_name="value")
         long["well"] = long["well"].astype(str).str.upper()
         long["name"] = long["well"].map(name_map).fillna("False")
         long = long[long["name"] != "False"].copy()
     else:
-        plate_map = None
-        df = _read_table(
-            u["data_bytes"], p.get("time_unit", "hours"), filter_to_wells=False
-        )
+        df = _read_table(u["data"], p.get("time_unit", "hours"), filter_to_wells=False)
         long = df.melt(id_vars="Time", var_name="well", value_name="value")
         long["name"] = long["well"]
 
@@ -291,7 +288,6 @@ def analyse_plate(record: dict):
 
     plate = _empty_plate()
     plate["baseline"] = baseline
-    plate["plate_map"] = plate_map
 
     for well, g in long.groupby("well", sort=False):
         processed = g[["Time", "baseline_corrected"]].reset_index(drop=True)
@@ -309,10 +305,10 @@ def analyse_plate(record: dict):
             fit_result = None
 
         plate["name"][well] = str(g["name"].iloc[0])
-        plate["raw_data"][well] = g[["Time", "value", "od_1cm"]].reset_index(drop=True)
         plate["processed_data"][well] = processed
         plate["growth_stats"][well] = fit
         plate["fit_parameters"][well] = fit_result
 
     record.update(plate)
+    mark_changed(record)
     return record
