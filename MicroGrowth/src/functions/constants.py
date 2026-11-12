@@ -69,7 +69,6 @@ DEFAULT_PARAMS = {
     "min_signal_to_noise": 1.0,
     "min_od_increase": 0.05,
     "min_growth_rate": 0.001,
-    "rmse_threshold": 0.05,
     "growth_method": "Spline",
     "model_family": "phenomenological",
     "model_type": "phenom_logistic",

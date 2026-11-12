@@ -1,7 +1,13 @@
 from pathlib import Path
 
 import streamlit as st
-from src.styling import card_containers, green_gradient, green_navbar, red_buttons
+from src.styling import (
+    card_containers,
+    green_gradient,
+    green_navbar,
+    prominent_select,
+    red_buttons,
+)
 
 # set the default plotly chart config to export as svg
 if not getattr(st.plotly_chart, "_svg_default", False):
@@ -54,5 +60,6 @@ red_buttons()
 green_gradient()
 green_navbar()
 card_containers()
+prominent_select()
 
 nav.run()

@@ -62,6 +62,25 @@ def card_containers():
     )
 
 
+# large selectbox with a green border, for page-level choices such as the plate
+# (st.container(key="prominent_select_..."))
+def prominent_select():
+    return st.markdown(
+        """
+        <style>
+        [class*="st-key-prominent_select_"] [data-baseweb="select"] > div {
+            min-height: 3rem;
+            font-size: 1.15rem;
+            font-weight: 600;
+            border: 2px solid #66BB6A !important;
+            background-color: #FFFFFF !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # adds a green gradient background at the top of the page
 def green_gradient():
     return st.markdown(

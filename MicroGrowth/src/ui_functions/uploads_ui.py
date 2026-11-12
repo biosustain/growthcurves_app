@@ -1031,21 +1031,9 @@ def ui_analysis_params(ss):
                 ui_qc_filters(params0)
             )
 
-            # Outlier removal before fitting, and the fit-quality flag shown as
-            # red outlines on the plate overview
-            out_cb_col, out_thr_col, _, rmse_col = st.columns(
+            # Outlier removal before fitting
+            out_cb_col, out_thr_col, _, _ = st.columns(
                 4, vertical_alignment="bottom"
-            )
-            rmse_threshold = rmse_col.number_input(
-                "Fit flag threshold",
-                min_value=0.0,
-                value=float(params0.get("rmse_threshold", 0.05)),
-                step=0.01,
-                format="%.3f",
-                help=(
-                    "Wells whose fit RMSE divided by their OD increase exceeds this "
-                    "are flagged as poor fits (red outline on the plate overview)."
-                ),
             )
             outlier_detection = out_cb_col.checkbox(
                 "Remove outliers",
@@ -1097,7 +1085,6 @@ def ui_analysis_params(ss):
         min_signal_to_noise=float(min_signal_to_noise),
         min_od_increase=float(min_od_increase),
         min_growth_rate=float(min_growth_rate),
-        rmse_threshold=float(rmse_threshold),
         growth_method=str(growth_method),
         model_family=str(model_family),
         model_type=str(model_type),
@@ -1183,7 +1170,6 @@ def ui_analysis_params(ss):
     ss["step4_params"]["min_signal_to_noise"] = min_signal_to_noise
     ss["step4_params"]["min_od_increase"] = min_od_increase
     ss["step4_params"]["min_growth_rate"] = min_growth_rate
-    ss["step4_params"]["rmse_threshold"] = rmse_threshold
     ss["step4_params"]["growth_method"] = growth_method
     ss["step4_params"]["model_family"] = model_family
     ss["step4_params"]["model_type"] = model_type
