@@ -1032,9 +1032,7 @@ def ui_analysis_params(ss):
             )
 
             # Outlier removal before fitting
-            out_cb_col, out_thr_col, _, _ = st.columns(
-                4, vertical_alignment="bottom"
-            )
+            out_cb_col, out_thr_col, _, _ = st.columns(4, vertical_alignment="bottom")
             outlier_detection = out_cb_col.checkbox(
                 "Remove outliers",
                 value=outlier_detection,
