@@ -2,8 +2,6 @@
 
 import io
 import re
-from typing import Any
-
 import pandas as pd
 import streamlit as st
 from growthcurves.models import MODEL_REGISTRY
@@ -28,9 +26,6 @@ from src.functions.upload_functions import (
 )
 from src.styling import growth_param_table_style, plate_title_row_style
 from src.ui_functions.blank_grouping_ui import (
-    DEFAULT_GROUP,
-    color_for_group,
-    darken_hex_color,
     painted_blank_wells,
     ui_blank_group_assigner,
 )
@@ -81,157 +76,6 @@ Click the button to run the analysis. Once complete, navigate to the other pages
 """)
 
     st.divider()
-
-
-def _build_plate_preview_cells(
-    *,
-    fmt: PlateFormat,
-    plate_map: pd.DataFrame | None,
-    present: set[str],
-    remove_wells: list[str] | bool,
-    blank: bool,
-    blank_group_assignments: dict[str, str] | bool,
-) -> list[list[dict[str, Any]]]:
-    """Build the cell payload (label, colour, tooltip) for the upload preview."""
-    present_wells = {str(well).strip().upper() for well in present}
-    removed_wells = {str(well).strip().upper() for well in (remove_wells or [])}
-    group_map = (
-        {
-            str(well).strip().upper(): str(group).strip() or DEFAULT_GROUP
-            for well, group in blank_group_assignments.items()
-        }
-        if isinstance(blank_group_assignments, dict)
-        else {}
-    )
-
-    cells: list[list[dict[str, Any]]] = []
-    for row in fmt.rows:
-        rendered_row: list[dict[str, Any]] = []
-        for col in fmt.cols:
-            well = f"{row}{col}"
-            group_name = group_map.get(well, DEFAULT_GROUP)
-
-            if plate_map is None:
-                rendered_row.append(
-                    {
-                        "label": well,
-                        "cell_color": "#e5e7eb",
-                        "tooltip": f"{well} · No uploaded files",
-                    }
-                )
-                continue
-
-            sample = _plate_cell_name(plate_map, row, col).strip()
-            is_blank_well = sample.upper().startswith("BLANK")
-            cell_label = f"<b>{well}</b>" if is_blank_well else well
-            has_sample_name = sample not in {
-                "",
-                "False",
-            } and not sample.upper().startswith("BLANK")
-            is_not_in_plate_map = sample in {"", "False"}
-
-            included = False
-            exclusion_reason = ""
-            if well in removed_wells:
-                exclusion_reason = "excluded by user"
-            elif is_not_in_plate_map:
-                exclusion_reason = "not in plate map"
-            elif well not in present_wells:
-                exclusion_reason = "missing from data file"
-            elif is_blank_well and not blank:
-                exclusion_reason = "blank subtraction disabled"
-            elif is_blank_well and blank:
-                included = True
-            elif has_sample_name:
-                included = True
-            else:
-                exclusion_reason = "not included"
-
-            sample_suffix = f" · {sample}" if sample and sample != "False" else ""
-            if included:
-                base_color = color_for_group(group_name)
-                cell_data: dict[str, Any] = {
-                    "label": cell_label,
-                    "cell_color": (
-                        darken_hex_color(base_color) if is_blank_well else base_color
-                    ),
-                    "tooltip": (
-                        f"{well}{sample_suffix}"
-                        f"{' · BLANK well' if is_blank_well else ''} · {group_name}"
-                    ),
-                }
-                if is_blank_well:
-                    cell_data["html"] = True
-                if is_blank_well:
-                    cell_data["cell_border_width"] = 2
-                    cell_data["cell_border_color"] = darken_hex_color(
-                        base_color, factor=0.72
-                    )
-                rendered_row.append(cell_data)
-            else:
-                rendered_row.append(
-                    {
-                        "label": cell_label,
-                        "cell_color": "#e5e7eb",
-                        "tooltip": f"{well}{sample_suffix} · {exclusion_reason}",
-                        **({"html": True} if is_blank_well else {}),
-                    }
-                )
-        cells.append(rendered_row)
-    return cells
-
-
-def render_plate_table(
-    *,
-    key: str,
-    plate_map: pd.DataFrame | None,
-    fmt: PlateFormat = PLATE_96,
-    present: set[str] | None = None,
-    remove_wells: list[str] | bool = False,
-    blank: bool = True,
-    blank_group_assignments: dict[str, str] | bool = False,
-    grid_height: int = 440,
-    grid_aspect_ratio: float = 1.0,
-):
-    """Render plate preview with the blank-linker style table."""
-    cells = _build_plate_preview_cells(
-        fmt=fmt,
-        plate_map=plate_map,
-        present=present or set(),
-        remove_wells=remove_wells,
-        blank=blank,
-        blank_group_assignments=blank_group_assignments,
-    )
-
-    # Read-only version of the shared drag-to-paint plate map
-    plate_painter(
-        rows=fmt.rows,
-        cols=fmt.cols,
-        cells=[
-            [
-                {
-                    "label": re.sub(r"<[^>]+>", "", str(cell["label"])),
-                    "color": cell["cell_color"],
-                    "border": cell.get("cell_border_color"),
-                    "tooltip": cell.get("tooltip", ""),
-                    "group": "",
-                    "blank": "<b>" in str(cell["label"]),
-                    "fixed_blank": False,
-                    "painted": False,
-                    "included": False,
-                }
-                for cell in row
-            ]
-            for row in cells
-        ],
-        group_colors={},
-        active_group="",
-        default_group="",
-        key=f"uploads_preview::{key}",
-        on_paint=lambda: None,
-        aspect_ratio=grid_aspect_ratio,
-        interactive=False,
-    )
 
 
 def _plate_cell_name(plate_map: pd.DataFrame, row: str, col: int) -> str:
@@ -530,7 +374,6 @@ def ui_preprocessing_params(ss):
                     has_blank_wells = blank_well_count > 0
 
         controls_col, plate_col = st.columns([1.0, 1.35], gap="large")
-        plate_grid_height = 380
         # Wider, shorter cells so the plate map fills the column width
         plate_grid_aspect_ratio = 0.58
         initial_group_map: dict[str, str] | None = None
@@ -626,7 +469,6 @@ def ui_preprocessing_params(ss):
                 show_controls=True,
                 controls_disabled=blank_well_count <= 1,
                 show_grid=False,
-                grid_height=plate_grid_height,
                 grid_aspect_ratio=plate_grid_aspect_ratio,
             )
 
@@ -644,15 +486,31 @@ def ui_preprocessing_params(ss):
                     show_caption=False,
                     show_controls=False,
                     show_grid=True,
-                    grid_height=plate_grid_height,
                     grid_aspect_ratio=plate_grid_aspect_ratio,
                 )
             else:
-                render_plate_table(
-                    key="empty",
-                    plate_map=None,
-                    grid_height=plate_grid_height,
-                    grid_aspect_ratio=plate_grid_aspect_ratio,
+                # Read-only empty plate until a file is imported
+                plate_painter(
+                    rows=fmt.rows,
+                    cols=fmt.cols,
+                    cells=[
+                        [
+                            {
+                                "label": f"{r}{c}",
+                                "color": "#e5e7eb",
+                                "tooltip": f"{r}{c} · No uploaded files",
+                            }
+                            for c in fmt.cols
+                        ]
+                        for r in fmt.rows
+                    ],
+                    group_colors={},
+                    active_group="",
+                    default_group="",
+                    key="uploads_preview::empty",
+                    on_paint=lambda: None,
+                    aspect_ratio=plate_grid_aspect_ratio,
+                    interactive=False,
                 )
 
     # Store selected values in session state for access by other fragments

@@ -183,16 +183,6 @@ def _analyse_series_with_plate_params(
         return bad_fit_stats(), None
 
 
-# ---------------- Plot helpers ----------------
-def _as_finite_float(value) -> float | None:
-    """Return a finite float or None."""
-    try:
-        num = float(value)
-    except (TypeError, ValueError):
-        return None
-    return num if np.isfinite(num) else None
-
-
 def update_growth_stats_from_lasso(
     plates: dict, pid: str, well: str, chart_key: str
 ) -> None:
@@ -265,13 +255,12 @@ def update_growth_stats_from_lasso(
 
 
 # ---------------- Data helpers ----------------
-def _sg_params_for_plate(plates: dict, plate_id: str) -> tuple[int, int, int]:
-    """Return Savitzky-Golay and window parameters for a plate."""
+def _sg_params_for_plate(plates: dict, plate_id: str) -> tuple[int, int]:
+    """Return the Savitzky-Golay window and polynomial order for a plate."""
     params = (plates.get(plate_id, {}) or {}).get("params") or {}
     return (
         int(params.get("sg_window", DEFAULT_PARAMS["sg_window"])),
         int(params.get("sg_poly", DEFAULT_PARAMS["sg_poly"])),
-        int(params.get("window_points", DEFAULT_PARAMS["window_points"])),
     )
 
 

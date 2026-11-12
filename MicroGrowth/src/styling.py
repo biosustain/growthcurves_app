@@ -133,32 +133,6 @@ def red_buttons():
     )
 
 
-# styles plate status grid tables
-def plate_table_style():
-    return st.markdown(
-        """
-        <style>
-        .plate-wrap { width: 100%; overflow: hidden; }
-        table.plate {
-            width: 100%;
-            table-layout: fixed;
-            border-collapse: collapse;
-            font-size: 18px;
-        }
-        table.plate th, table.plate td {
-            border: 1px solid rgba(49,51,63,0.2);
-            text-align: center;
-            padding: 6px 0;
-            line-height: 1.2;
-        }
-        table.plate th { font-weight: 600; }
-        table.plate th.row { width: 2.2rem; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 # makes the Delete plate button as tall as the plate name box beside it
 def plate_title_row_style():
     return st.markdown(

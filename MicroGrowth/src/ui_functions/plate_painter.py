@@ -269,9 +269,9 @@ def plate_painter(
 ):
     """Render the drag-to-paint plate map.
 
-    cells: per well dict with label, color, border, tooltip, group,
-        blank, fixed_blank (blank from the plate map), painted (blank painted by
-        the user) and included. When active_group is blank_option, strokes mark
+    cells: per well dict with label and color, and optionally border, tooltip,
+        group, blank, fixed_blank (blank from the plate map), painted (blank
+        painted by the user) and included (missing keys are empty / False). When active_group is blank_option, strokes mark
         or unmark blanks instead of changing groups. on_paint runs (before the script body) when a stroke
         finishes; read the rectangle from ``st.session_state[key].painted`` as
         {"r0", "r1", "c0", "c1", "erase"}.

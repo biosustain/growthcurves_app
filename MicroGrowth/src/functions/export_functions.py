@@ -49,8 +49,6 @@ def _growth_stats_per_well_df(p: dict) -> pd.DataFrame:
         # Remove internal columns not meant for export
         internal_cols = [
             "_lasso_update_time",
-            "lasso_t_min",
-            "lasso_t_max",
             "_used_fit_times",
             "_analysis_params",
         ]
@@ -62,12 +60,10 @@ def _growth_stats_per_well_df(p: dict) -> pd.DataFrame:
 
 def _growth_stats_mean_for_sample_df(p: dict) -> pd.DataFrame:
     """Return growth stats averaged per sample name with mean and std columns."""
-    nm_by_well = p.get("name") or {}
     gs = _growth_stats_per_well_df(p)
     if gs.empty:
         return gs
 
-    gs["Sample Name"] = gs["well"].map(lambda w: (nm_by_well.get(w) or "").strip())
     num = [c for c in gs.columns if pd.api.types.is_numeric_dtype(gs[c])]
 
     # Calculate both mean and std
@@ -161,7 +157,6 @@ def build_export_zip(
     ) = None,  # e.g. ["Raw OD", "dOD/dt", "Specific Growth Rate"]
     selected_plate_ids: list[str] | None = None,  # plates to include for well plots
     wells_by_plate: dict[str, list[str]] | None = None,  # {plate_id: [well,...]}
-    add_annotations: bool = True,
     annot_phase: bool = True,
     annot_umax_point: bool = True,
     annot_od_max: bool = True,
@@ -325,12 +320,9 @@ def build_export_zip(
                             )
 
                             if t_raw.size > 0:
-                                # Convert time to display unit
-                                t_display = t_raw
-
                                 # Create base plot using growthcurves
                                 fig = gc_plot.create_base_plot(
-                                    t_display, y_raw, scale="linear"
+                                    t_raw, y_raw, scale="linear"
                                 )
 
                                 # Highlight data points used in analysis with red overlay
@@ -346,7 +338,7 @@ def build_export_zip(
                                 )
 
                                 # Annotate plot if requested
-                                if add_annotations and not is_no_growth(gs) and gs:
+                                if not is_no_growth(gs) and gs:
                                     # Get fit result from stored parameters
                                     fit_result = fit_parameters.get(well)
 
@@ -367,8 +359,7 @@ def build_export_zip(
                                     )
 
                                 # Update axis labels
-                                time_label = "Time (hours)"
-                                fig.update_xaxes(title=time_label, showgrid=False)
+                                fig.update_xaxes(title="Time (hours)", showgrid=False)
                                 fig.update_yaxes(
                                     title="OD600 (baseline-corrected)", showgrid=False
                                 )

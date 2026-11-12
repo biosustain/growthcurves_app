@@ -546,7 +546,6 @@ def ui_window_fits_well_editor(plates: dict):
         or st.session_state["winfit_well"] not in wells
     ):
         st.session_state["winfit_well"] = wells[0]
-    st.session_state["winfit_well"]
 
     def _move_well(step: int):
         """Move the active well forward/backward."""
@@ -641,7 +640,7 @@ def ui_window_fits_well_editor(plates: dict):
     if no_growth:
         return
 
-    sg_w, sg_p, _ = _sg_params_for_plate(plates, plate_id)
+    sg_w, sg_p = _sg_params_for_plate(plates, plate_id)
     processed = plate.get("processed_data") or {}
     growth_stats = plate.get("growth_stats") or {}
     fit_parameters = plate.get("fit_parameters") or {}
@@ -718,14 +717,11 @@ def ui_window_fits_well_editor(plates: dict):
         )
 
         if t_raw.size > 0:
-            # Use hours throughout (no display conversion)
-            t_display = t_raw
-
             # Determine scale
             scale = "log" if log_scale else "linear"
 
             # Create base plot using growthcurves - this matches the notebook pattern
-            fig_main = gc_plot.create_base_plot(t_display, y_raw, scale=scale)
+            fig_main = gc_plot.create_base_plot(t_raw, y_raw, scale=scale)
 
             # Highlight lasso-selected points (default: all points)
             selected_times = gs.get("_used_fit_times")
@@ -761,14 +757,13 @@ def ui_window_fits_well_editor(plates: dict):
                 )
 
             # Update axis labels
-            time_label = "Time (hours)"
             y_label = "ln(OD600)" if log_scale else "OD600 (baseline-corrected)"
             # Set x-axis range to exactly match data range (removes gap at y-axis)
             fig_main.update_xaxes(
-                title=time_label,
+                title="Time (hours)",
                 showgrid=False,
                 type="linear",
-                range=[float(t_display.min()), float(t_display.max())],
+                range=[float(t_raw.min()), float(t_raw.max())],
             )
             fig_main.update_yaxes(title=y_label, showgrid=False)
 
