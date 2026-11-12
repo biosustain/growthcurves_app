@@ -294,10 +294,6 @@ def ui_preprocessing_params(ss):
     params0 = DEFAULT_PARAMS
     blank = False
     blank_group_assignments: dict[str, str] | bool = False
-    remove_wells = False
-    clip_time_series = (None, None)
-    time_unit = "hours"
-    pl_cm = float(DEFAULT_PARAMS["pathlength_cm_"])
     plate_map = None
     present: set[str] = set()
     name_by_well: dict[str, str] = {}
@@ -382,15 +378,10 @@ def ui_preprocessing_params(ss):
             _row_cols = st.columns([1.0, 0.8, 1.8], vertical_alignment="bottom")
             a, b = _row_cols[0], _row_cols[1]
             _time_unit_options = ["seconds", "minutes", "hours", "days", "HH:MM:SS"]
-            _saved_time_unit = params0.get("time_unit", "hours")
             time_unit = a.selectbox(
                 "Time unit",
                 options=_time_unit_options,
-                index=_time_unit_options.index(
-                    _saved_time_unit
-                    if _saved_time_unit in _time_unit_options
-                    else "hours"
-                ),
+                index=_time_unit_options.index(params0["time_unit"]),
                 help="Select the unit of time values in your data file's Time column. Use HH:MM:SS if your Time column contains values like 01:30:00.",
             )
             pl_cm = b.number_input(
@@ -434,10 +425,9 @@ def ui_preprocessing_params(ss):
             # Get default excluded wells from params0
             # Blank wells are offered too: excluding one drops it from blank subtraction
             exclude_options = list(fmt.wells)
-            default_excluded = params0.get("remove_wells", [])
-            if default_excluded is False or not default_excluded:
-                default_excluded = []
-            default_excluded = [w for w in default_excluded if w in exclude_options]
+            default_excluded = [
+                w for w in params0["remove_wells"] or [] if w in exclude_options
+            ]
 
             remove_wells = st.multiselect(
                 "Exclude wells",
@@ -514,17 +504,17 @@ def ui_preprocessing_params(ss):
                 )
 
     # Store selected values in session state for access by other fragments
-    if plate_id:
-        ss.setdefault("step3_params", {})
-        ss["step3_params"]["plate_id"] = plate_id
-        ss["step3_params"]["time_unit"] = time_unit
-        ss["step3_params"]["pl_cm"] = pl_cm
-        ss["step3_params"]["blank"] = blank
-        ss["step3_params"]["blank_wells"] = painted_blanks
-        ss["step3_params"]["blank_group_assignments"] = blank_group_assignments
-        ss["step3_params"]["clip_time_series"] = clip_time_series
-        ss["step3_params"]["remove_wells"] = remove_wells
-        ss["step3_params"]["params0"] = params0
+    ss["step3_params"] = dict(
+        plate_id=plate_id,
+        time_unit=time_unit,
+        pl_cm=pl_cm,
+        blank=blank,
+        blank_wells=painted_blanks,
+        blank_group_assignments=blank_group_assignments,
+        clip_time_series=clip_time_series,
+        remove_wells=remove_wells,
+        params0=params0,
+    )
 
 
 # Helper functions for analysis parameters
@@ -547,9 +537,9 @@ def _get_model_display_name(model_code: str) -> str:
 
 def _ui_model_selection(params0: dict):
     """Render model family and growth method selection UI."""
-    stored_method = params0.get("growth_method", "Sliding Window")
-    stored_model_family = params0.get("model_family", "mechanistic")
-    stored_model_type = params0.get("model_type", "mech_logistic")
+    stored_method = params0["growth_method"]
+    stored_model_family = params0["model_family"]
+    stored_model_type = params0["model_type"]
 
     st.caption("Select the model family and growth descriptor method:")
 
@@ -644,7 +634,7 @@ def ui_model_params(growth_method: str, params0: dict, param_col):
     """Render method-specific parameters (window size or spline mode)."""
     smooth = "auto"
     try:
-        manual_smooth = float(params0.get("smooth", "auto"))
+        manual_smooth = float(params0["smooth"])
     except (TypeError, ValueError):
         manual_smooth = 0.0
 
@@ -700,7 +690,7 @@ def ui_qc_filters(params0: dict):
         "Minimum data points",
         1,
         100,
-        int(params0.get("min_data_points", 5)),
+        int(params0["min_data_points"]),
         1,
         help="Minimum number of valid data points required for growth analysis",
     )
@@ -708,7 +698,7 @@ def ui_qc_filters(params0: dict):
         "Minimum signal:noise",
         0.1,
         100.0,
-        float(params0.get("min_signal_to_noise", 1.0)),
+        float(params0["min_signal_to_noise"]),
         0.1,
         help="Minimum ratio of maximum to minimum OD600 signal (filters out flat curves)",
     )
@@ -716,7 +706,7 @@ def ui_qc_filters(params0: dict):
         "Minimum OD increase",
         0.0,
         None,
-        float(params0.get("min_od_increase", 0.05)),
+        float(params0["min_od_increase"]),
         0.001,
         format="%.3f",
         help="Minimum absolute increase in OD600 from baseline to be considered growth",
@@ -725,7 +715,7 @@ def ui_qc_filters(params0: dict):
         "Minimum growth rate",
         0.0,
         None,
-        float(params0.get("min_growth_rate", 0.001)),
+        float(params0["min_growth_rate"]),
         0.0001,
         format="%.4f",
         help="Minimum specific growth rate to be considered growth (wells with lower rates are marked as no growth)",
@@ -808,22 +798,18 @@ _PLATE_SPECIFIC_KEYS = frozenset(
 @st.fragment
 def ui_analysis_params(ss):
     """Fragment for analysis parameters and the analyse button."""
-    step3_params = ss.get("step3_params", {})
-    params0 = step3_params.get("params0", DEFAULT_PARAMS)
-
     # Step 2 (preprocessing) values needed to build the final params dict
-    plate_id = step3_params.get("plate_id")
-    time_unit = step3_params.get("time_unit", "hours")
-    pl_cm = step3_params.get("pl_cm", 0.42)
-    blank = step3_params.get("blank", True)
-    blank_group_assignments = step3_params.get("blank_group_assignments", False)
-    outlier_detection = bool(params0.get("outlier_detection", False))
-    try:
-        outlier_threshold = float(params0.get("outlier_threshold", 3.5))
-    except (TypeError, ValueError):
-        outlier_threshold = 3.5
-    clip_time_series = step3_params.get("clip_time_series", (None, None))
-    remove_wells = step3_params.get("remove_wells", False)
+    step3_params = ss["step3_params"]
+    params0 = step3_params["params0"]
+    plate_id = step3_params["plate_id"]
+    time_unit = step3_params["time_unit"]
+    pl_cm = step3_params["pl_cm"]
+    blank = step3_params["blank"]
+    blank_group_assignments = step3_params["blank_group_assignments"]
+    outlier_detection = bool(params0["outlier_detection"])
+    outlier_threshold = float(params0["outlier_threshold"])
+    clip_time_series = step3_params["clip_time_series"]
+    remove_wells = step3_params["remove_wells"]
 
     with st.container(border=True, key="card_uploads_5"):
         st.header("Step 3. Select the curve fitting parameters")
@@ -890,12 +876,12 @@ def ui_analysis_params(ss):
         remove_wells=remove_wells,
         blank=bool(blank),
         blank_group_assignments=blank_group_assignments if blank else False,
-        blank_wells=list(step3_params.get("blank_wells", [])) if blank else [],
+        blank_wells=list(step3_params["blank_wells"]) if blank else [],
         outlier_detection=bool(outlier_detection),
         outlier_threshold=float(outlier_threshold),
         window_points=int(window_points),
-        sg_window=int(params0.get("sg_window", 15)),
-        sg_poly=int(params0.get("sg_poly", 2)),
+        sg_window=int(params0["sg_window"]),
+        sg_poly=int(params0["sg_poly"]),
         min_data_points=int(min_data_points),
         min_signal_to_noise=float(min_signal_to_noise),
         min_od_increase=float(min_od_increase),

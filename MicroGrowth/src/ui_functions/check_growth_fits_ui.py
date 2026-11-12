@@ -98,7 +98,7 @@ def _format_analysis_params_table(
     # Use stored custom params if present, otherwise fall back to plate defaults
     analysis_params = gs.get("_analysis_params") or {}
     used_fit_times = gs.get("_used_fit_times")
-    growth_method = plate_params.get("growth_method", "Sliding Window")
+    growth_method = plate_params["growth_method"]
 
     n_selected = len(used_fit_times) if used_fit_times else n_total
     total_str = str(n_total) if n_total is not None else "?"
@@ -170,8 +170,8 @@ def _phase_controls(plate: dict, well: str, *, key: str):
     step = float(max((t_max - t_min) / 200.0, 0.01))
 
     growth_stats = (plate.get("growth_stats") or {}).setdefault(well, {})
-    plate_params = (plate or {}).get("params") or {}
-    growth_method = plate_params.get("growth_method", "Sliding Window")
+    plate_params = plate["params"]
+    growth_method = plate_params["growth_method"]
 
     ss_key = f"phase__{key}"
     maxod_key = f"maxod__{key}"
@@ -210,17 +210,11 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
     def _init_reanalyse_params():
         """Reset re-analysis param overrides to the original plate values."""
-        st.session_state[_rp_min_od_key] = float(
-            plate_params.get("min_od_increase", 0.05)
-        )
-        st.session_state[_rp_min_gr_key] = float(
-            plate_params.get("min_growth_rate", 0.001)
-        )
-        st.session_state[_rp_min_snr_key] = float(
-            plate_params.get("min_signal_to_noise", 1.0)
-        )
-        st.session_state[_rp_min_dp_key] = int(plate_params.get("min_data_points", 5))
-        st.session_state[_rp_window_key] = int(plate_params.get("window_points", 5))
+        st.session_state[_rp_min_od_key] = float(plate_params["min_od_increase"])
+        st.session_state[_rp_min_gr_key] = float(plate_params["min_growth_rate"])
+        st.session_state[_rp_min_snr_key] = float(plate_params["min_signal_to_noise"])
+        st.session_state[_rp_min_dp_key] = int(plate_params["min_data_points"])
+        st.session_state[_rp_window_key] = int(plate_params["window_points"])
         st.session_state[_rp_smooth_key] = "auto"
         st.session_state[_rp_spline_s_key] = None
 
@@ -289,37 +283,18 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         If lasso points are selected, re-analyses only that subset.
         Otherwise re-analyses all data for the well.
         """
+        # The popover's values (initialised from the plate params on first view)
+        ss = st.session_state
         params_override = {
-            "min_od_increase": float(
-                st.session_state.get(
-                    _rp_min_od_key, plate_params.get("min_od_increase", 0.05)
-                )
-            ),
-            "min_growth_rate": float(
-                st.session_state.get(
-                    _rp_min_gr_key, plate_params.get("min_growth_rate", 0.001)
-                )
-            ),
-            "min_signal_to_noise": float(
-                st.session_state.get(
-                    _rp_min_snr_key, plate_params.get("min_signal_to_noise", 1.0)
-                )
-            ),
-            "min_data_points": int(
-                st.session_state.get(
-                    _rp_min_dp_key, plate_params.get("min_data_points", 5)
-                )
-            ),
+            "min_od_increase": float(ss[_rp_min_od_key]),
+            "min_growth_rate": float(ss[_rp_min_gr_key]),
+            "min_signal_to_noise": float(ss[_rp_min_snr_key]),
+            "min_data_points": int(ss[_rp_min_dp_key]),
         }
         if growth_method == "Sliding Window":
-            params_override["window_points"] = int(
-                st.session_state.get(
-                    _rp_window_key, plate_params.get("window_points", 5)
-                )
-            )
+            params_override["window_points"] = int(ss[_rp_window_key])
         elif growth_method == "Spline":
-            smooth_mode = st.session_state.get(_rp_smooth_key, "auto")
-            if smooth_mode == "manual":
+            if ss[_rp_smooth_key] == "manual":
                 params_override["smooth"] = float(
                     st.session_state.get(_rp_spline_s_key) or 0.0
                 )
@@ -367,7 +342,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         if growth_method == "Sliding Window":
             analysis_params["window_points"] = effective_p.get("window_points")
         elif growth_method == "Spline":
-            _sv = growth_stats.get("smooth", effective_p.get("smooth", "auto"))
+            _sv = growth_stats.get("smooth", effective_p["smooth"])
             analysis_params["smooth"] = (
                 _sv if isinstance(_sv, (int, float)) and _sv > 0 else "auto"
             )
@@ -402,12 +377,9 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             st.session_state.pop(k, None)
 
         # Update params to include this well in remove_wells list
-        params = plate.setdefault("params", {})
-        remove_wells = params.get("remove_wells", False)
-        if remove_wells is False or not remove_wells:
-            params["remove_wells"] = [well]
-        elif well not in remove_wells:
-            params["remove_wells"] = list(remove_wells) + [well]
+        remove_wells = list(plate["params"]["remove_wells"] or [])
+        if well not in remove_wells:
+            plate["params"]["remove_wells"] = remove_wells + [well]
 
     with c1:
         st.button(
@@ -690,7 +662,7 @@ def ui_window_fits_well_editor(plates: dict):
                     else None
                 )
                 params_df = _format_analysis_params_table(
-                    gs, plate.get("params") or {}, n_total=n_total
+                    gs, plate["params"], n_total=n_total
                 )
                 st.dataframe(
                     params_df,

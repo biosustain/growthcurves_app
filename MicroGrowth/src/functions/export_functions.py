@@ -8,7 +8,6 @@ import pandas as pd
 from growthcurves.inference import is_no_growth
 from growthcurves.plot import plot_derivative_metric
 from src.functions.check_growth_fits import _add_lasso_selected_points
-from src.functions.constants import DEFAULT_PARAMS
 from src.functions.plotting_functions import (
     _finite_sorted_xy,
     plot_baseline,
@@ -293,8 +292,8 @@ def build_export_zip(
                     continue
 
                 params = p.get("params") or {}
-                sg_w = int(params.get("sg_window", DEFAULT_PARAMS["sg_window"]))
-                sg_p = int(params.get("sg_poly", DEFAULT_PARAMS["sg_poly"]))
+                sg_w = int(params["sg_window"])
+                sg_p = int(params["sg_poly"])
 
                 # use requested wells; default to all available only if plate absent from dict
                 wells = wells_by_plate.get(pid, list(processed.keys()))

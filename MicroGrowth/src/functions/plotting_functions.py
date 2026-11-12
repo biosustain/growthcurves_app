@@ -1236,7 +1236,10 @@ def plot_derivative_metric(
         else:
             if model_type == "sliding_window":
                 # For sliding window, calculate from raw data (as growthcurves does)
-                window_points = params.get("window_points", 15)
+                # The window used in the analysis (the fit result does not store it)
+                window_points = int(
+                    gs.get("window_points", plate["params"]["window_points"])
+                )
                 if metric == "dndt":
                     # For dN/dt, we need to smooth first then compute derivative
                     _, metric_model = compute_first_derivative(t_model, y_model_smooth)

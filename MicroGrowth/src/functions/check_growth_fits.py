@@ -7,7 +7,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from growthcurves.inference import bad_fit_stats
-from src.functions.constants import DEFAULT_PARAMS
 from src.functions.data_processing import mark_changed
 from src.functions.fitting_pipeline import fit_growth_series
 
@@ -210,7 +209,7 @@ def update_growth_stats_from_lasso(
         return
 
     # Merge plate params with any custom overrides set in the re-analyse popover
-    params = dict(plate.get("params", {}))
+    params = dict(plate["params"])
     well_key = f"{pid}_{well}"
     for param_key, ss_key in [
         ("min_od_increase", f"rp_min_od__{well_key}"),
@@ -228,7 +227,7 @@ def update_growth_stats_from_lasso(
     fit, fit_result = _analyse_series_with_plate_params(refit_t, refit_y, params)
 
     # Build the params record that was actually used
-    growth_method = params.get("growth_method", "Sliding Window")
+    growth_method = params["growth_method"]
     analysis_params = {
         "min_od_increase": params.get("min_od_increase"),
         "min_growth_rate": params.get("min_growth_rate"),
@@ -238,7 +237,7 @@ def update_growth_stats_from_lasso(
     if growth_method == "Sliding Window":
         analysis_params["window_points"] = params.get("window_points")
     elif growth_method == "Spline":
-        analysis_params["smooth"] = fit.get("smooth", params.get("smooth"))
+        analysis_params["smooth"] = fit.get("smooth", params["smooth"])
 
     # Update gs in-place so all references stay valid
     gs.clear()
@@ -257,16 +256,13 @@ def update_growth_stats_from_lasso(
 # ---------------- Data helpers ----------------
 def _sg_params_for_plate(plates: dict, plate_id: str) -> tuple[int, int]:
     """Return the Savitzky-Golay window and polynomial order for a plate."""
-    params = (plates.get(plate_id, {}) or {}).get("params") or {}
-    return (
-        int(params.get("sg_window", DEFAULT_PARAMS["sg_window"])),
-        int(params.get("sg_poly", DEFAULT_PARAMS["sg_poly"])),
-    )
+    params = plates[plate_id]["params"]
+    return int(params["sg_window"]), int(params["sg_poly"])
 
 
 def analyse_well(plate: dict, well: str, params_override: dict | None = None) -> dict:
     """Recompute growth statistics for a single well using existing processed data."""
-    p = dict((plate or {}).get("params") or {})
+    p = dict(plate["params"])
     if params_override:
         p.update(params_override)
     processed_data = (plate or {}).get("processed_data") or {}
