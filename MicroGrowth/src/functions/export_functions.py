@@ -3,16 +3,13 @@
 import io
 import zipfile
 
-import growthcurves.plot as gc_plot
 import pandas as pd
-from growthcurves.inference import is_no_growth
-from growthcurves.plot import plot_derivative_metric
-from src.functions.check_growth_fits import _add_lasso_selected_points
-from src.functions.constants import DEFAULT_PARAMS
+from src.functions.check_growth_fits import _sg_params_for_plate
 from src.functions.plotting_functions import (
-    _finite_sorted_xy,
-    plot_baseline,
+    plot_baseline_by_group,
+    plot_derivative_metric,
     plot_replicates_by_sample,
+    plot_well_curve,
     plot_window_plate,
 )
 
@@ -49,8 +46,6 @@ def _growth_stats_per_well_df(p: dict) -> pd.DataFrame:
         # Remove internal columns not meant for export
         internal_cols = [
             "_lasso_update_time",
-            "lasso_t_min",
-            "lasso_t_max",
             "_used_fit_times",
             "_analysis_params",
         ]
@@ -62,12 +57,10 @@ def _growth_stats_per_well_df(p: dict) -> pd.DataFrame:
 
 def _growth_stats_mean_for_sample_df(p: dict) -> pd.DataFrame:
     """Return growth stats averaged per sample name with mean and std columns."""
-    nm_by_well = p.get("name") or {}
     gs = _growth_stats_per_well_df(p)
     if gs.empty:
         return gs
 
-    gs["Sample Name"] = gs["well"].map(lambda w: (nm_by_well.get(w) or "").strip())
     num = [c for c in gs.columns if pd.api.types.is_numeric_dtype(gs[c])]
 
     # Calculate both mean and std
@@ -161,7 +154,6 @@ def build_export_zip(
     ) = None,  # e.g. ["Raw OD", "dOD/dt", "Specific Growth Rate"]
     selected_plate_ids: list[str] | None = None,  # plates to include for well plots
     wells_by_plate: dict[str, list[str]] | None = None,  # {plate_id: [well,...]}
-    add_annotations: bool = True,
     annot_phase: bool = True,
     annot_umax_point: bool = True,
     annot_od_max: bool = True,
@@ -182,6 +174,8 @@ def build_export_zip(
     wells_by_plate = wells_by_plate or {}
 
     def _png(fig, width: int, height: int) -> bytes:
+        # White background: the app figures are transparent, for its grey cards
+        fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
         return fig.to_image(format="png", width=width, height=height, scale=scale)
 
     buf = io.BytesIO()
@@ -261,7 +255,11 @@ def build_export_zip(
                 baseline = p.get("baseline")
                 if baseline is None or baseline.empty:
                     continue
-                baseline_fig = plot_baseline(baseline, name_by_well=p.get("name") or {})
+                # As on Plate Overviews: one panel per blank group
+                baseline_fig = plot_baseline_by_group(
+                    baseline,
+                    blank_group_map=p["params"].get("blank_group_assignments") or {},
+                )
                 zf.writestr(
                     f"plots/{pid}/baseline.png",
                     _png(baseline_fig, baseline_width, baseline_height),
@@ -297,148 +295,43 @@ def build_export_zip(
                 if not processed:
                     continue
 
-                params = p.get("params") or {}
-                sg_w = int(params.get("sg_window", DEFAULT_PARAMS["sg_window"]))
-                sg_p = int(params.get("sg_poly", DEFAULT_PARAMS["sg_poly"]))
+                sg_w, sg_p = _sg_params_for_plate(plates, pid)
 
                 # use requested wells; default to all available only if plate absent from dict
                 wells = wells_by_plate.get(pid, list(processed.keys()))
 
+                # The same figures as on Check Growth Fits
+                plate_dir = f"plots/{pid}/wells"
                 for well in wells:
                     if well not in processed:
                         continue
-
-                    plate_dir = f"plots/{pid}/wells"
-
+                    figs = {}
                     if "Raw OD" in well_graphs:
-                        all_growth_stats = p.get("growth_stats") or {}
-                        gs = all_growth_stats.get(well) or {}
-                        fit_parameters = p.get("fit_parameters") or {}
-
-                        # Get the processed data for this well
-                        d = processed.get(well)
-
-                        if d is not None and not d.empty:
-                            # Get time and OD data
-                            t_raw, y_raw = _finite_sorted_xy(
-                                d["Time"].to_numpy(), d["baseline_corrected"].to_numpy()
+                        figs["growth_curves"] = plot_well_curve(
+                            p,
+                            well,
+                            phase_boundaries=annot_phase,
+                            umax_point=annot_umax_point,
+                            max_od=annot_od_max,
+                            baseline_od=annot_baseline_od,
+                            tangent=annot_tangent,
+                            fitted_model=annot_fitted_model,
+                        )
+                    gs = (p.get("growth_stats") or {}).get(well) or {}
+                    for label, metric, folder in (
+                        ("dOD/dt", "dndt", "curves_d1"),
+                        ("Specific Growth Rate", "mu", "curves_mu"),
+                    ):
+                        if label in well_graphs:
+                            figs[folder] = plot_derivative_metric(
+                                p, well, metric, sg_w, sg_p, gs=gs
                             )
-
-                            if t_raw.size > 0:
-                                # Convert time to display unit
-                                t_display = t_raw
-
-                                # Create base plot using growthcurves
-                                fig = gc_plot.create_base_plot(
-                                    t_display, y_raw, scale="linear"
-                                )
-
-                                # Highlight data points used in analysis with red overlay
-                                selected_times = gs.get("_used_fit_times")
-                                if not selected_times:
-                                    selected_times = t_raw.tolist()
-                                fig = _add_lasso_selected_points(
-                                    fig,
-                                    t_raw,
-                                    y_raw,
-                                    selected_times,
-                                    scale="linear",
-                                )
-
-                                # Annotate plot if requested
-                                if add_annotations and not is_no_growth(gs) and gs:
-                                    # Get fit result from stored parameters
-                                    fit_result = fit_parameters.get(well)
-
-                                    # Pass the stored growth stats and fit result directly
-                                    # No need to reconstruct - use the original values from the fit
-                                    fig = gc_plot.annotate_plot(
-                                        fig,
-                                        fit_result=fit_result,
-                                        stats=gs,
-                                        show_fitted_curve=annot_fitted_model,
-                                        show_phase_boundaries=annot_phase,
-                                        show_crosshairs=annot_umax_point,
-                                        show_od_max_line=annot_od_max,
-                                        show_n0_line=annot_baseline_od,
-                                        show_umax_marker=annot_umax_point,
-                                        show_tangent=annot_tangent,
-                                        scale="linear",
-                                    )
-
-                                # Update axis labels
-                                time_label = "Time (hours)"
-                                fig.update_xaxes(title=time_label, showgrid=False)
-                                fig.update_yaxes(
-                                    title="OD600 (baseline-corrected)", showgrid=False
-                                )
-
-                                zf.writestr(
-                                    f"{plate_dir}/growth_curves/{well}.png",
-                                    _png(fig, well_width, well_height),
-                                )
-
-                    # Export derivative and growth rate plots
-                    if "dOD/dt" in well_graphs or "Specific Growth Rate" in well_graphs:
-                        d = processed.get(well)
-                        all_growth_stats = p.get("growth_stats") or {}
-                        gs = all_growth_stats.get(well) or {}
-                        fit_parameters = p.get("fit_parameters") or {}
-
-                        if d is not None and not d.empty:
-                            t_raw, y_raw = _finite_sorted_xy(
-                                d["Time"].to_numpy(), d["baseline_corrected"].to_numpy()
+                    for folder, fig in figs.items():
+                        if fig.data:  # empty when the well has too little data
+                            zf.writestr(
+                                f"{plate_dir}/{folder}/{well}.png",
+                                _png(fig, well_width, well_height),
                             )
-
-                            if t_raw.size > 0:
-                                phase_boundaries = None
-                                if not is_no_growth(gs) and gs:
-                                    exp_phase_start = gs.get("exp_phase_start")
-                                    exp_phase_end = gs.get("exp_phase_end")
-                                    if (
-                                        exp_phase_start is not None
-                                        and exp_phase_end is not None
-                                    ):
-                                        phase_boundaries = (
-                                            exp_phase_start,
-                                            exp_phase_end,
-                                        )
-
-                                fit_result = fit_parameters.get(well)
-
-                                if "dOD/dt" in well_graphs:
-                                    fig = plot_derivative_metric(
-                                        t=t_raw,
-                                        N=y_raw,
-                                        metric="dndt",
-                                        fit_result=fit_result,
-                                        sg_window=sg_w,
-                                        sg_poly=sg_p,
-                                        phase_boundaries=phase_boundaries,
-                                        title=f"dN/dt – {well}",
-                                    )
-                                    if fig is not None:
-                                        zf.writestr(
-                                            f"{plate_dir}/curves_d1/{well}.png",
-                                            _png(fig, well_width, well_height),
-                                        )
-
-                                if "Specific Growth Rate" in well_graphs:
-                                    fig = plot_derivative_metric(
-                                        t=t_raw,
-                                        N=y_raw,
-                                        metric="mu",
-                                        fit_result=fit_result,
-                                        sg_window=sg_w,
-                                        sg_poly=sg_p,
-                                        phase_boundaries=phase_boundaries,
-                                        title=f"Specific growth rate – {well}",
-                                    )
-                                    if fig is not None:
-                                        zf.writestr(
-                                            f"{plate_dir}/curves_mu/{well}.png",
-                                            _png(fig, well_width, well_height),
-                                        )
 
     buf.seek(0)
     return buf.getvalue()

@@ -1,9 +1,9 @@
 """Data loading, preprocessing, and growth-curve fitting utilities."""
 
+import re
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-import numpy as np
 import pandas as pd
 from growthcurves.preprocessing import blank_subtraction, detect_outliers, path_correct
 
@@ -11,6 +11,12 @@ from .constants import VALID_WELLS, detect_plate_format
 from .fitting_pipeline import fit_growth_series
 
 DEFAULT_BLANK_GROUP = "Group 1"
+
+
+def group_sort_key(name: str) -> tuple[int, str]:
+    """Sort blank groups numerically (Group 2 before Group 10); unnumbered last."""
+    match = re.search(r"(\d+)", str(name))
+    return (int(match.group(1)) if match else 10**9), str(name)
 
 
 # ---------- I/O + shaping ----------
@@ -154,17 +160,10 @@ def _analysis_group_for_wells(
 
 def _apply_outlier_detection(processed: pd.DataFrame, params: dict) -> pd.DataFrame:
     """Optionally remove outlier points from a baseline-corrected well trace."""
-    if not bool(params.get("outlier_detection", False)):
-        return processed
-    if processed.empty:
+    if not params["outlier_detection"] or processed.empty:
         return processed
 
-    try:
-        factor = float(params.get("outlier_threshold", 3.5))
-    except (TypeError, ValueError):
-        factor = 3.5
-    if not np.isfinite(factor) or factor <= 0:
-        factor = 3.5
+    factor = float(params["outlier_threshold"])
 
     y_arr = processed["baseline_corrected"].to_numpy(float)
     if y_arr.size < 5:
@@ -184,24 +183,24 @@ def _apply_outlier_detection(processed: pd.DataFrame, params: dict) -> pd.DataFr
 def analyse_plate(record: dict):
     """Process a plate record into cleaned, baseline-corrected per-well data."""
     u = (record or {}).get("uploads") or {}
-    p = (record or {}).get("params") or {}
+    p = record["params"]
 
     plate_map = u.get("plate_map")
     if plate_map is not None:
         name_map = _plate_name_map(plate_map)
-        df = _read_table(u["data"], p.get("time_unit", "hours"))
+        df = _read_table(u["data"], p["time_unit"])
         long = df.melt(id_vars="Time", var_name="well", value_name="value")
         long["well"] = long["well"].astype(str).str.upper()
         long["name"] = long["well"].map(name_map).fillna("False")
         long = long[long["name"] != "False"].copy()
     else:
-        df = _read_table(u["data"], p.get("time_unit", "hours"), filter_to_wells=False)
+        df = _read_table(u["data"], p["time_unit"], filter_to_wells=False)
         long = df.melt(id_vars="Time", var_name="well", value_name="value")
         long["name"] = long["well"]
 
     long["value"] = pd.to_numeric(long["value"], errors="coerce")
 
-    clip = p.get("clip_time_series", False)
+    clip = p["clip_time_series"]
     if clip:
         a, b = clip
         if a is not None and b is not None:
@@ -211,7 +210,7 @@ def analyse_plate(record: dict):
         elif b is not None:
             long = long[long["Time"] <= b].copy()
 
-    rm = p.get("remove_wells", False)
+    rm = p["remove_wells"]
     if rm:
         long = long[~long["well"].isin([w.upper() for w in rm])].copy()
 
@@ -228,7 +227,7 @@ def analyse_plate(record: dict):
     is_blank = long["name"].astype(str).str.upper().str.startswith("BLANK") | long[
         "well"
     ].str.upper().isin(painted_blanks)
-    if p.get("blank", True):
+    if p["blank"]:
         blanks_long = long[is_blank].copy()
 
         # one column per blank well (values are Mean), indexed by Time

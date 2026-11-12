@@ -1,6 +1,5 @@
 import streamlit as st
 from src.functions.constants import plate_format
-from src.functions.export_functions import build_export_zip
 from src.ui_functions.blank_grouping_ui import get_well_selector_wells, ui_well_selector
 
 
@@ -35,7 +34,9 @@ def _render_tabulated_data_container():
     with cb_col:
         c_params = st.checkbox("Analysis parameters", value=True, key="table_params")
     with desc_col:
-        st.caption("All analysis settings used (time unit, pathlength, blanks, method, thresholds, etc.)")
+        st.caption(
+            "All analysis settings used (time unit, pathlength, blanks, method, thresholds, etc.)"
+        )
 
     return c_baseline_corrected, c_stats_per_well, c_stats_per_sample, c_params
 
@@ -53,7 +54,6 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
             c_well = st.checkbox("Include well plots", value=False, key="well_checkbox")
 
         if c_well:
-            c_add_annotations = True
             wells_by_plate: dict[str, list[str]] = {}
 
             options_col, map_col = st.columns([1, 2])
@@ -185,7 +185,6 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
                         plate_id=pid,
                         fmt=plate_format(plate_data),
                         available_wells=available_wells,
-                        name_by_well=plate_data.get("name") or {},
                     )
                     # Plates not currently displayed: use stored selection if available,
                     # otherwise fall back to all wells (plate never visited)
@@ -205,7 +204,6 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
                 "Individual well growth curves with annotations and derivative plots"
             )
             # Set defaults when well plots are not included
-            c_add_annotations = True
             annot_phase = True
             annot_umax_point = True
             annot_od_max = True
@@ -220,7 +218,6 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
 
     return (
         c_well,
-        c_add_annotations,
         annot_phase,
         annot_umax_point,
         annot_od_max,
@@ -279,62 +276,3 @@ def _render_global_plots_container():
         global_height = 800
 
     return c_base, c_plate, c_replicates, global_width, global_height
-
-
-def get_export_zip(
-    _plates,
-    include_baseline_corrected,
-    include_stats_per_well,
-    include_stats_per_sample,
-    include_params,
-    include_plate_view,
-    include_baseline_plots,
-    include_replicates,
-    include_well_plots,
-    well_graphs_tuple,
-    selected_plates_tuple,
-    wells_tuple,
-    add_annotations,
-    annot_phase,
-    annot_umax_point,
-    annot_od_max,
-    annot_baseline_od,
-    annot_tangent,
-    annot_fitted_model,
-    global_w,
-    global_h,
-    well_w,
-    well_h,
-):
-    # Convert tuples back to appropriate types
-    wells_dict = {}
-    for k, v in wells_tuple:
-        wells_dict[k] = list(v)
-
-    return build_export_zip(
-        _plates,
-        include_baseline_corrected=include_baseline_corrected,
-        include_stats_per_well=include_stats_per_well,
-        include_stats_per_sample=include_stats_per_sample,
-        include_params=include_params,
-        include_plate_view=include_plate_view,
-        include_baseline_plots=include_baseline_plots,
-        include_replicates=include_replicates,
-        include_well_plots=include_well_plots,
-        well_graphs=list(well_graphs_tuple) if well_graphs_tuple else [],
-        selected_plate_ids=list(selected_plates_tuple) if selected_plates_tuple else [],
-        wells_by_plate=wells_dict,
-        add_annotations=add_annotations,
-        annot_phase=annot_phase,
-        annot_umax_point=annot_umax_point,
-        annot_od_max=annot_od_max,
-        annot_baseline_od=annot_baseline_od,
-        annot_tangent=annot_tangent,
-        annot_fitted_model=annot_fitted_model,
-        baseline_width=global_w,
-        baseline_height=global_h,
-        plate_width=global_w,
-        plate_height=global_h,
-        well_width=well_w,
-        well_height=well_h,
-    )
