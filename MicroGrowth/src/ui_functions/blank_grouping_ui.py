@@ -7,6 +7,7 @@ from typing import Any
 
 import streamlit as st
 from src.functions.constants import PlateFormat
+from src.functions.data_processing import group_sort_key
 from src.ui_functions.plate_painter import plate_painter
 
 DEFAULT_GROUP = "Group 1"
@@ -34,10 +35,6 @@ def _state_key(prefix: str, suffix: str) -> str:
 def group_number(name: str) -> int:
     match = re.search(r"(\d+)", str(name))
     return int(match.group(1)) if match else 1
-
-
-def _group_sort_key(name: str) -> tuple[int, str]:
-    return group_number(name), str(name)
 
 
 def next_group_name(groups: list[str]) -> str:
@@ -105,7 +102,7 @@ def assignments_to_map(
 def _group_names_from_assignments(assignments: list[list[str]]) -> list[str]:
     groups = sorted(
         {str(cell).strip() or DEFAULT_GROUP for row in assignments for cell in row},
-        key=_group_sort_key,
+        key=group_sort_key,
     )
     if DEFAULT_GROUP not in groups:
         groups.insert(0, DEFAULT_GROUP)
@@ -119,7 +116,7 @@ def _normalize_group_labels(
     all_groups = sorted(
         {str(c).strip() or DEFAULT_GROUP for row in assignments for c in row}
         | {str(g).strip() or DEFAULT_GROUP for g in groups},
-        key=_group_sort_key,
+        key=group_sort_key,
     )
     if DEFAULT_GROUP in all_groups:
         all_groups.remove(DEFAULT_GROUP)
@@ -132,7 +129,7 @@ def _normalize_group_labels(
     return normalized, [rename_map[g] for g in all_groups], rename_map
 
 
-def build_cells(
+def _painter_cells(
     assignments: list[list[str]],
     color_map: dict[str, str],
     fmt: PlateFormat,
@@ -142,6 +139,7 @@ def build_cells(
     blank_enabled: bool = True,
     painted_blanks: set[str] | None = None,
 ) -> list[list[dict[str, Any]]]:
+    """Cells for the drag-to-paint plate map; excluded wells are grey."""
     name_by_well = name_by_well or {}
     painted_blanks = painted_blanks or set()
     present_lookup = (
@@ -154,84 +152,42 @@ def build_cells(
         present_lookup is not None or bool(removed_lookup) or not blank_enabled
     )
 
-    rows: list[list[dict[str, Any]]] = []
+    rows = []
     for y, row in enumerate(assignments):
-        rendered_row = []
+        out_row = []
         for x, group in enumerate(row):
             well = fmt.well(y, x)
             sample = str(name_by_well.get(well, "")).strip()
-            is_blank = sample.upper().startswith("BLANK") or well in painted_blanks
-            base_color = color_map.get(group, "#ffffff")
+            fixed = sample.upper().startswith("BLANK")
+            painted = well in painted_blanks
             included = not status_mode or (
                 well not in removed_lookup
                 and sample not in {"", "False"}
                 and (present_lookup is None or well in present_lookup)
-                and (blank_enabled or not is_blank)
+                and (blank_enabled or not (fixed or painted))
             )
-
-            label = f"<b>{well}</b>" if is_blank else well
-            if included:
-                cell_data: dict[str, Any] = {
-                    "label": label,
-                    "cell_color": (
-                        darken_hex_color(base_color) if is_blank else base_color
-                    ),
-                }
-                if is_blank:
-                    cell_data.update(
-                        {
-                            "html": True,
-                            "cell_border_width": 2,
-                            "cell_border_color": darken_hex_color(
-                                base_color, factor=0.72
-                            ),
-                        }
-                    )
-            else:
-                cell_data = {
-                    "label": label,
-                    "cell_color": "#e5e7eb",
-                    **({"html": True} if is_blank else {}),
-                }
-            rendered_row.append(cell_data)
-        rows.append(rendered_row)
-    return rows
-
-
-def _painter_cells(
-    assignments: list[list[str]],
-    styled: list[list[dict[str, Any]]],
-    name_by_well: dict[str, str] | None,
-    painted_blanks: set[str],
-    fmt: PlateFormat,
-) -> list[list[dict[str, Any]]]:
-    """Cells for the drag-to-paint plate map, from build_cells styling."""
-    out = []
-    for y, row in enumerate(styled):
-        out_row = []
-        for x, cell in enumerate(row):
-            label = str(cell["label"])
-            blank = "<b>" in label
-            included = cell["cell_color"] != "#e5e7eb"
-            well = fmt.well(y, x)
-            sample = str((name_by_well or {}).get(well, "")).strip()
-            fixed = sample.upper().startswith("BLANK")
+            blank = included and (fixed or painted)
+            base = color_map.get(group, "#ffffff")
             out_row.append(
                 {
-                    "label": re.sub(r"<[^>]+>", "", label),
-                    "color": cell["cell_color"],
-                    "border": cell.get("cell_border_color"),
+                    "label": well,
+                    "color": (
+                        (darken_hex_color(base) if blank else base)
+                        if included
+                        else "#e5e7eb"
+                    ),
+                    "border": darken_hex_color(base, factor=0.72) if blank else None,
                     # Hover shows just the sample name
                     "tooltip": "" if sample == "False" else sample,
-                    "group": assignments[y][x],
-                    "blank": blank and included,
+                    "group": group,
+                    "blank": blank,
                     "fixed_blank": fixed,
-                    "painted": well in painted_blanks,
+                    "painted": painted,
                     "included": included,
                 }
             )
-        out.append(out_row)
-    return out
+        rows.append(out_row)
+    return rows
 
 
 def _apply_paint(prefix: str, painter_key: str, fmt: PlateFormat) -> None:
@@ -321,7 +277,7 @@ def _remove_group(prefix: str) -> None:
     ss[gk].remove(old)
     ss[ak] = [[DEFAULT_GROUP if c == old else c for c in row] for row in ss[ak]]
     ss[ck].pop(old, None)
-    ss[actk] = max(ss[gk], key=_group_sort_key) if ss[gk] else DEFAULT_GROUP
+    ss[actk] = max(ss[gk], key=group_sort_key) if ss[gk] else DEFAULT_GROUP
     ss[_state_key(prefix, "assigned_group_select")] = ss[actk]
 
 
@@ -339,7 +295,6 @@ def ui_blank_group_assigner(
     show_controls: bool = True,
     controls_disabled: bool = False,
     show_grid: bool = True,
-    grid_height: int = 440,
     grid_aspect_ratio: float = 1.0,
 ) -> dict[str, str]:
     """Render the analysis-group assignment UI and return well->group mapping."""
@@ -433,26 +388,19 @@ def ui_blank_group_assigner(
         )
 
     if show_grid:
-        styled = build_cells(
-            ss[ak],
-            ss[ck],
-            fmt,
-            name_by_well,
-            present_wells=present_wells,
-            remove_wells=remove_wells,
-            blank_enabled=blank_enabled,
-            painted_blanks=set(ss[_state_key(prefix, "painted_blanks")]),
-        )
         painter_key = _state_key(prefix, "plate_painter")
         plate_painter(
             rows=fmt.rows,
             cols=fmt.cols,
             cells=_painter_cells(
                 ss[ak],
-                styled,
-                name_by_well,
-                set(ss[_state_key(prefix, "painted_blanks")]),
+                ss[ck],
                 fmt,
+                name_by_well,
+                present_wells=present_wells,
+                remove_wells=remove_wells,
+                blank_enabled=blank_enabled,
+                painted_blanks=set(ss[_state_key(prefix, "painted_blanks")]),
             ),
             group_colors=ss[ck],
             active_group=ss[actk],
@@ -472,6 +420,7 @@ def ui_blank_group_assigner(
 
 _WELL_SEL_INCLUDED = "included"
 _WELL_SEL_EXCLUDED = "excluded"
+_WELL_SEL_COLORS = {_WELL_SEL_INCLUDED: "#ccebc5", _WELL_SEL_EXCLUDED: "#fb8072"}
 
 
 def _init_well_selector_state(
@@ -491,43 +440,6 @@ def _init_well_selector_state(
             ]
             for y in range(len(fmt.rows))
         ]
-
-
-def _build_well_selector_cells(
-    grid: list[list[str]],
-    available_set: set[str],
-    fmt: PlateFormat,
-    name_by_well: dict[str, str] | None = None,
-) -> list[list[dict[str, Any]]]:
-    name_by_well = name_by_well or {}
-    rows: list[list[dict[str, Any]]] = []
-    for y, row in enumerate(grid):
-        rendered_row: list[dict[str, Any]] = []
-        for x, state in enumerate(row):
-            well = fmt.well(y, x)
-            sample = str(name_by_well.get(well, "")).strip()
-            is_blank = sample.upper().startswith("BLANK")
-            if well not in available_set:
-                cell: dict[str, Any] = {
-                    "label": well,
-                    "cell_color": "#d1d5db",
-                    "tooltip": f"{well} · no data",
-                }
-            elif state == _WELL_SEL_EXCLUDED:
-                cell = {
-                    "label": well,
-                    "cell_color": "#fb8072",
-                    "tooltip": f"{well} · excluded",
-                }
-            else:
-                cell = {
-                    "label": well,
-                    "cell_color": "#ccebc5",
-                    "tooltip": f"{well} · included",
-                }
-            rendered_row.append(cell)
-        rows.append(rendered_row)
-    return rows
 
 
 def _fill_rect_available(
@@ -573,8 +485,6 @@ def ui_well_selector(
     plate_id: str,
     fmt: PlateFormat,
     available_wells: list[str],
-    name_by_well: dict[str, str] | None = None,
-    grid_height: int = 400,
     grid_aspect_ratio: float = 0.75,
 ) -> list[str]:
     """Render a drag-to-paint well selector and return the list of included wells.
@@ -588,31 +498,30 @@ def ui_well_selector(
     ss = st.session_state
     ak = _state_key(prefix, "grid")
 
-    styled = _build_well_selector_cells(ss[ak], available_set, fmt, name_by_well)
+    # Wells without data are grey and cannot be changed
     cells = [
         [
-            {
-                "label": cell["label"],
-                "color": cell["cell_color"],
-                "border": None,
-                "tooltip": cell["tooltip"],
-                "group": ss[ak][y][x],
-                "blank": False,
-                "fixed_blank": False,
-                "painted": False,
-                # Wells without data cannot be changed
-                "included": fmt.well(y, x) in available_set,
-            }
-            for x, cell in enumerate(row)
+            (
+                {
+                    "label": well,
+                    "color": _WELL_SEL_COLORS[state],
+                    "tooltip": f"{well} · {state}",
+                    "group": state,
+                    "included": True,
+                }
+                if (well := fmt.well(y, x)) in available_set
+                else {"label": well, "color": "#d1d5db", "tooltip": f"{well} · no data"}
+            )
+            for x, state in enumerate(row)
         ]
-        for y, row in enumerate(styled)
+        for y, row in enumerate(ss[ak])
     ]
     painter_key = _state_key(prefix, "plate_painter")
     plate_painter(
         rows=fmt.rows,
         cols=fmt.cols,
         cells=cells,
-        group_colors={_WELL_SEL_INCLUDED: "#ccebc5", _WELL_SEL_EXCLUDED: "#fb8072"},
+        group_colors=_WELL_SEL_COLORS,
         active_group=_WELL_SEL_INCLUDED,
         default_group=_WELL_SEL_EXCLUDED,
         blank_option="__none__",

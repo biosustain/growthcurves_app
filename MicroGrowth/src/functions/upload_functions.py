@@ -12,6 +12,7 @@ from .constants import (
     VALID_WELLS,
     detect_plate_format,
 )
+from .data_processing import is_time_column, time_to_hours
 
 
 def init_state():
@@ -25,45 +26,48 @@ def plate_params(ss, plate_id: str) -> dict:
     return (ss.plates.get(plate_id, {}) or {}).get("params", DEFAULT_PARAMS)
 
 
-def validate_data_file(file_bytes):
-    """Validate that the data file has the correct format and data types.
+def read_data_file(file_bytes: bytes) -> pd.DataFrame:
+    """Parse a plate reader Excel file once, keeping duplicate headers as they are.
 
-    Args:
-        file_bytes: Bytes from uploaded file
+    The Time column (any case) is renamed to "Time".
+    """
+    raw = pd.read_excel(BytesIO(file_bytes), header=None, dtype=object)
+    df = raw.iloc[1:].reset_index(drop=True)
+    df.columns = ["Time" if is_time_column(c) else str(c).strip() for c in raw.iloc[0]]
+    return df.infer_objects()
+
+
+def plate_map_frame(wide: pd.DataFrame) -> pd.DataFrame:
+    """Wide plate map indexed by row letter, with "False" for wells without a name."""
+    rows_col = next(c for c in wide.columns if str(c).strip().lower() == "rows")
+    return wide.set_index(rows_col).fillna("False").replace("", "False")
+
+
+def validate_data_file(df: pd.DataFrame):
+    """Validate that the data file has the correct format and data types.
 
     Returns:
         tuple: (is_valid: bool, error_message: str or None)
     """
-    try:
-        df = pd.read_excel(BytesIO(file_bytes))
-    except Exception as e:
-        return False, f"Failed to read Excel file: {str(e)}"
-
     if df.empty:
         return False, "Data file is empty"
 
-    # Check for 'Time' column (case-insensitive)
-    time_col = None
-    for col in df.columns:
-        if str(col).strip().lower() == "time":
-            time_col = col
-            break
-
-    if time_col is None:
+    if "Time" not in df.columns:
         return False, "Data file must contain a 'Time' column"
 
-    # Check if Time column has numeric values
-    try:
-        time_values = pd.to_numeric(df[time_col], errors="coerce")
-        if time_values.isna().all():
-            return (
-                False,
-                "Time column must contain numeric values (integers or decimals)",
-            )
-        if time_values.isna().any():
-            return False, "Time column contains non-numeric values"
-    except Exception:
-        return False, "Failed to validate Time column data type"
+    # Time must be all numbers or all HH:MM:SS (the unit is chosen in Step 2)
+    if all(
+        parsed.isna().any()
+        for parsed in (
+            pd.to_numeric(df["Time"], errors="coerce"),
+            time_to_hours(df["Time"], "HH:MM:SS"),
+        )
+    ):
+        return (
+            False,
+            "Time column must contain only numbers (e.g. 0, 0.5) "
+            "or only HH:MM:SS times (e.g. 01:30:00)",
+        )
 
     # Check that there are other columns besides Time (well data)
     if len(df.columns) < 2:
@@ -72,30 +76,17 @@ def validate_data_file(file_bytes):
     return True, None
 
 
-def validate_plate_map_file(file_bytes):
-    """Validate that the plate map file has the correct format and structure.
-
-    Args:
-        file_bytes: Bytes from uploaded file
+def validate_plate_map_file(df: pd.DataFrame):
+    """Validate that the plate map has the correct format and structure.
 
     Returns:
         tuple: (is_valid: bool, error_message: str or None)
     """
-    try:
-        df = pd.read_excel(BytesIO(file_bytes))
-    except Exception as e:
-        return False, f"Failed to read Excel file: {str(e)}"
-
     if df.empty:
         return False, "Plate map file is empty"
 
     # Check for 'rows' column (case-insensitive)
-    rows_col = None
-    for col in df.columns:
-        if str(col).strip().lower() == "rows":
-            rows_col = col
-            break
-
+    rows_col = next((c for c in df.columns if str(c).strip().lower() == "rows"), None)
     if rows_col is None:
         return False, "Plate map must contain a 'rows' column"
 
@@ -129,19 +120,14 @@ def validate_plate_map_file(file_bytes):
     return True, None
 
 
-def detect_plate_map_format(file_bytes: bytes) -> str:
-    """Detect whether a plate map file is in wide or long format.
+def detect_plate_map_format(df: pd.DataFrame) -> str:
+    """Detect whether a plate map is in wide or long format.
 
     Returns:
         "wide" if the file has a 'rows' column (standard plate layout),
         "long" if it has two columns where the first looks like well IDs,
         "unknown" otherwise.
     """
-    try:
-        df = pd.read_excel(BytesIO(file_bytes))
-    except Exception:
-        return "unknown"
-
     if df.empty:
         return "unknown"
 
@@ -160,20 +146,12 @@ def detect_plate_map_format(file_bytes: bytes) -> str:
     return "unknown"
 
 
-def validate_long_plate_map_file(file_bytes: bytes):
-    """Validate a plate map file in long format (well, sample name per row).
-
-    Args:
-        file_bytes: Bytes from uploaded file
+def validate_long_plate_map_file(df: pd.DataFrame):
+    """Validate a plate map in long format (well, sample name per row).
 
     Returns:
         tuple: (is_valid: bool, error_message: str or None)
     """
-    try:
-        df = pd.read_excel(BytesIO(file_bytes))
-    except Exception as e:
-        return False, f"Failed to read Excel file: {str(e)}"
-
     if df.empty:
         return False, "Plate map file is empty"
 
@@ -199,20 +177,13 @@ def validate_long_plate_map_file(file_bytes: bytes):
     return True, None
 
 
-def long_plate_map_to_wide_bytes(file_bytes: bytes) -> bytes:
-    """Convert a long-format plate map to wide-format Excel bytes.
+def long_plate_map_to_wide(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert a long-format plate map to the wide format of an uploaded plate map.
 
     Long format: first column = well ID (e.g. A1), second column = sample name.
     Wide format: 'rows' column + one column per plate column, with sample names.
     The plate size (96 or 384 wells) is detected from the well IDs.
-
-    Args:
-        file_bytes: Bytes of the long-format Excel file
-
-    Returns:
-        Bytes of a wide-format Excel file compatible with the standard plate map format
     """
-    df = pd.read_excel(BytesIO(file_bytes), header=0)
     wells = df.iloc[:, 0].astype(str).str.strip().str.upper()
     names = df.iloc[:, 1]
     fmt = detect_plate_format(wells)
@@ -225,16 +196,14 @@ def long_plate_map_to_wide_bytes(file_bytes: bytes) -> bytes:
         if pt:
             wide.iat[pt] = str(name).strip() if pd.notna(name) else ""
 
-    buf = BytesIO()
-    wide.reset_index().to_excel(buf, index=False)
-    return buf.getvalue()
+    return wide.reset_index()
 
 
-def plate_from_column_names(data_bytes: bytes) -> tuple[bytes, bytes, bool]:
-    """Return (data, plate map, positions assigned) with the headers as sample names."""
-    df = pd.read_excel(BytesIO(data_bytes), header=None, dtype=object)
-    header = [str(c).strip() for c in df.iloc[0]]
-    names = [c for c in header if c != "Time"]
+def plate_from_column_names(
+    df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, bool]:
+    """Return (data, wide plate map, positions assigned) with the headers as sample names."""
+    names = [c for c in df.columns if c != "Time"]
     assigned = not all(n.upper() in VALID_WELLS for n in names)
     if not assigned:
         wells = [n.upper() for n in names]
@@ -242,28 +211,19 @@ def plate_from_column_names(data_bytes: bytes) -> tuple[bytes, bytes, bool]:
         fmt = next(f for f in PLATE_FORMATS.values() if len(names) <= f.n_wells)
         wells = list(fmt.wells[: len(names)])
 
-    long_map = BytesIO()
-    pd.DataFrame({"well": wells, "name": names}).to_excel(long_map, index=False)
-
+    long_map = pd.DataFrame({"well": wells, "name": names})
     well_ids = iter(wells)
-    df.iloc[0] = [c if c == "Time" else next(well_ids) for c in header]
-    data = BytesIO()
-    df.to_excel(data, index=False, header=False)
-    return data.getvalue(), long_plate_map_to_wide_bytes(long_map.getvalue()), assigned
+    df = df.set_axis([c if c == "Time" else next(well_ids) for c in df.columns], axis=1)
+    return df, long_plate_map_to_wide(long_map), assigned
 
 
-def validate_data_columns_are_wells(file_bytes: bytes):
+def validate_data_columns_are_wells(df: pd.DataFrame):
     """Check that all non-Time columns are valid well IDs (A1–H12, or A1–P24).
 
     Returns:
         tuple: (is_valid: bool, error_message: str or None)
     """
-    try:
-        df = pd.read_excel(BytesIO(file_bytes))
-    except Exception as e:
-        return False, f"Failed to read Excel file: {str(e)}"
-
-    non_time = [c for c in df.columns if str(c).strip().lower() != "time"]
+    non_time = [c for c in df.columns if c != "Time"]
     invalid = [c for c in non_time if str(c).strip().upper() not in VALID_WELLS]
     if invalid:
         sample = ", ".join(str(c) for c in invalid[:5])
@@ -272,27 +232,3 @@ def validate_data_columns_are_wells(file_bytes: bytes):
             f"When a plate map is provided, all data columns must be well IDs (A1–H12, or A1–P24 for 384-well plates). Invalid columns: {sample}",
         )
     return True, None
-
-
-@st.cache_data(show_spinner="Loading plate preview...")
-def get_plate_preview_data(plate_bytes: bytes | None, data_bytes: bytes):
-    """Get plate map and present wells without full analysis.
-
-    Args:
-        plate_bytes: Bytes of the plate map Excel file, or None if no plate map
-        data_bytes: Bytes of the data Excel file
-
-    Returns:
-        tuple: (plate_map DataFrame or None, set of present column names)
-    """
-    data_df = pd.read_excel(BytesIO(data_bytes))
-    time_col = next(
-        (c for c in data_df.columns if str(c).strip().lower() == "time"), None
-    )
-    present = set(data_df.columns) - {time_col} if time_col else set(data_df.columns)
-
-    if plate_bytes is None:
-        return None, present
-
-    plate_map = pd.read_excel(BytesIO(plate_bytes), index_col=0).fillna("False")
-    return plate_map, present

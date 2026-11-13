@@ -1,7 +1,5 @@
 """Plotting utilities for growth curves, stats, and window fits."""
 
-import re
-
 import growthcurves.plot as gc_plot
 import numpy as np
 import pandas as pd
@@ -21,40 +19,68 @@ from growthcurves.models import (
     spline_from_params,
 )
 from plotly.subplots import make_subplots
+from src.functions.check_growth_fits import _match_selected_times
 from src.functions.common import _iter_wells
-from src.functions.constants import PlateFormat, plate_format
+from src.functions.constants import DEFAULT_PARAMS, PlateFormat, plate_format
+from src.functions.data_processing import group_sort_key
 
-# --- fit-quality outlines -----------------------------------------------------
-# model_rmse is in OD units, so it is divided by the growth amplitude first.
-RMSE_THRESHOLD = 0.05
+# --- fit-quality highlights ---------------------------------------------------
+# Wells are ranked by RMSE relative to their OD increase (model_rmse is in OD
+# units); the worst x % get a tinted background on the plate overview.
+HIGHLIGHT_FILL = "rgba(239, 83, 80, 0.15)"  # app red (#ef5350), faint
 
-FIT_COLOR_PASS = "rgb(76, 175, 80)"
-FIT_COLOR_FAIL = "rgb(211, 47, 47)"
-FIT_COLOR_NONE = "rgb(204, 204, 204)"
-SUBPLOT_BOX_COLOR = "rgb(204, 204, 204)"
+# Panel figures (plate overview, replicates, blanks)
+PLATE_ROW_PX = 112.5  # 900 px for a 96-well plate
+PLATE_MARGIN = dict(l=30, r=5, t=30, b=5)  # room for the row/column headers
+PANEL_MARGIN = dict(l=5, r=5, t=5, b=5)
+BLANK_COLS, BLANK_ROW_PX = 4, 260
+# Axis padding, as fractions of the data span: (x each side, y below, y above).
+# Keeps points inside the rounded cells; panels get headroom for their titles.
+PANEL_PAD = (0.04, 0.1, 0.25)
+PLATE_PAD = (0.06, 0.1, 0.1)
+# App theme (.streamlit/config.toml)
+APP_HOVERLABEL = dict(
+    bgcolor="white", bordercolor="#66BB6A", font=dict(size=12, color="#262730")
+)
 
 
-def fit_quality_color(gs: dict | None, threshold: float = RMSE_THRESHOLD) -> str:
-    """Green if the well's fit meets threshold, red if not, grey if unfitted."""
+def relative_rmse(gs: dict | None) -> float | None:
+    """Fit RMSE / OD increase, or None for unfitted or no-growth wells."""
     if not gs or is_no_growth(gs):
-        return FIT_COLOR_NONE
-
-    rmse = gs.get("model_rmse")
-    if rmse is None or not np.isfinite(rmse):
-        return FIT_COLOR_NONE
-    rmse = float(rmse)
-
-    max_od, n0 = gs.get("max_od"), gs.get("N0")
-    if max_od is None or n0 is None:
-        return FIT_COLOR_NONE
-    if not (np.isfinite(max_od) and np.isfinite(n0)):
-        return FIT_COLOR_NONE
-    amplitude = float(max_od) - float(n0)
+        return None
+    vals = [gs.get(k) for k in ("model_rmse", "max_od", "N0")]
+    if any(v is None or not np.isfinite(v) for v in vals):
+        return None
+    rmse, max_od, n0 = (float(v) for v in vals)
+    amplitude = max_od - n0
     if amplitude <= 0:
-        return FIT_COLOR_NONE
-    rmse /= amplitude
+        return None
+    return rmse / amplitude
 
-    return FIT_COLOR_PASS if rmse <= threshold else FIT_COLOR_FAIL
+
+def worst_fit_wells(plate: dict, pct: float) -> list[str]:
+    """The pct % of ranked wells with the highest relative RMSE, worst first."""
+    scores = {
+        w: r
+        for w, gs in (plate.get("growth_stats") or {}).items()
+        if (r := relative_rmse(gs)) is not None
+    }
+    n = round(pct / 100 * len(scores))
+    return sorted(scores, key=scores.get, reverse=True)[:n]
+
+
+def highlight_wells(fig: go.Figure, plate: dict, wells: list[str]) -> go.Figure:
+    """Fill the given wells on a plot_window_plate figure.
+
+    The well cells are the figure's first shapes, in plate order (_plate_frame).
+    """
+    index = {w: i for i, w in enumerate(plate_format(plate).wells)}
+    shapes = list(fig.layout.shapes)
+    for w in wells:
+        if w in index:
+            shapes[index[w]].fillcolor = HIGHLIGHT_FILL
+    fig.layout.shapes = shapes
+    return fig
 
 
 def _axis_suffix(i: int) -> str:
@@ -97,60 +123,46 @@ def _subplot_bounds(fig, i: int):
     return x0, x1, y0, y1
 
 
-def _subplot_box(fig, i: int, color: str, width: int = 2) -> dict:
-    """Rectangle outlining subplot i.
+def _rounded_cell(fig, i: int, height: float, radius: float = 6) -> dict:
+    """Rounded white cell behind subplot i, as in the upload plate map.
 
-    Paper coordinates: a subplot with no traces drops domain-referenced shapes.
+    radius is in px, for a figure of the given plot height and ~1400 px wide.
     """
     x0, x1, y0, y1 = _subplot_bounds(fig, i)
+    rx, ry = radius / 1400, radius / height
     return dict(
-        type="rect",
+        type="path",
+        path=(
+            f"M{x0 + rx},{y0} L{x1 - rx},{y0} Q{x1},{y0} {x1},{y0 + ry} "
+            f"L{x1},{y1 - ry} Q{x1},{y1} {x1 - rx},{y1} L{x0 + rx},{y1} "
+            f"Q{x0},{y1} {x0},{y1 - ry} L{x0},{y0 + ry} Q{x0},{y0} {x0 + rx},{y0} Z"
+        ),
         xref="paper",
         yref="paper",
-        x0=x0,
-        x1=x1,
-        y0=y0,
-        y1=y1,
-        line=dict(color=color, width=width),
-        fillcolor="rgba(0,0,0,0)",
-        layer="above",
+        line=dict(color="rgba(0, 0, 0, 0.18)", width=1),
+        fillcolor="white",
+        layer="below",
     )
 
 
-def _well_box(fig, i: int, well: str, color: str, muted: bool = False):
-    """Return the (shape, annotation) dicts outlining and labelling subplot i."""
-    x0, x1, y0, y1 = _subplot_bounds(fig, i)
-    box = _subplot_box(fig, i, color)
-    label = dict(
-        text=well,
-        xref="paper",
-        yref="paper",
-        x=x0 + 0.05 * (x1 - x0),
-        y=y1 - 0.05 * (y1 - y0),
-        showarrow=False,
-        font=dict(size=9, color="lightgray" if muted else "black"),
-        xanchor="left",
-        yanchor="top",
+def _plate_frame(fig, fmt: PlateFormat):
+    """Rounded well cells and row/column headers, styled like the upload plate map."""
+    height = PLATE_ROW_PX * len(fmt.rows) - PLATE_MARGIN["t"] - PLATE_MARGIN["b"]
+    cells = [_rounded_cell(fig, i, height) for i in range(1, len(fmt.wells) + 1)]
+    headers = []
+    header = dict(
+        xref="paper", yref="paper", showarrow=False, font=dict(size=13, color=INFO_INK)
     )
-    return box, label
-
-
-def convert_hours_to_unit(hours: float | np.ndarray, time_unit: str = "hours"):
-    """Convert time from hours to the specified display unit.
-
-    Args:
-        hours: Time value(s) in hours
-        time_unit: Target unit ("seconds", "minutes", or "hours")
-
-    Returns:
-        Time value(s) in the target unit
-    """
-    if time_unit == "seconds":
-        return hours * 3600.0
-    elif time_unit == "minutes":
-        return hours * 60.0
-    else:  # hours
-        return hours
+    n_cols = len(fmt.cols)
+    for c, col in enumerate(fmt.cols, 1):  # numbers above the top row
+        x0, x1, _, y1 = _subplot_bounds(fig, c)
+        top = dict(x=(x0 + x1) / 2, y=y1, yanchor="bottom", yshift=4)
+        headers.append(header | top | dict(text=f"<b>{col}</b>"))
+    for r, row in enumerate(fmt.rows):  # letters left of the first column
+        x0, _, y0, y1 = _subplot_bounds(fig, r * n_cols + 1)
+        left = dict(x=x0, y=(y0 + y1) / 2, xanchor="right", xshift=-6)
+        headers.append(header | left | dict(text=f"<b>{row}</b>"))
+    return cells, headers
 
 
 # --- info-plot style ----------------------------------------------------------
@@ -268,157 +280,289 @@ def _finite_sorted_xy(time_s, y_s):
     return t, y
 
 
-# --- blanks ----------------------------------------------------------------
-def plot_baseline(baseline, name_by_well: dict | None = None, time_unit: str = "hours"):
-    """Plot blank wells and mean baseline over time.
+def _add_lasso_selected_points(
+    fig: go.Figure,
+    t_arr: np.ndarray,
+    y_arr: np.ndarray,
+    selected_times: list[float] | None,
+    *,
+    scale: str,
+) -> go.Figure:
+    """Overlay the points used in the fit (lasso-selected) on an existing figure."""
+    if not selected_times:
+        return fig
 
-    Args:
-        baseline: DataFrame with Time index and wells as columns (plus 'Mean' column)
-        name_by_well: Optional dict mapping well IDs to sample names for color coding
-        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
-    """
-    fig = go.Figure()
+    sel = np.asarray(selected_times, dtype=float)
+    sel = sel[np.isfinite(sel)]
+    if sel.size == 0:
+        return fig
 
-    # Build color map based on sample names if available
-    name_by_well = name_by_well or {}
-    palette = px.colors.qualitative.Plotly
+    refit_indices = _match_selected_times(t_arr, sel)
+    if refit_indices.size == 0:
+        return fig
 
-    # Get unique sample names from the wells in baseline (excluding 'Mean')
-    well_cols = [c for c in baseline.columns if c != "Mean"]
-    sample_names = list(dict.fromkeys([name_by_well.get(w, w) for w in well_cols]))
-    color_map = {n: palette[i % len(palette)] for i, n in enumerate(sample_names)}
+    t_sel = t_arr[refit_indices]
+    y_sel = y_arr[refit_indices]
+    valid = np.isfinite(y_sel) & ((y_sel > 0) if scale == "log" else True)
+    t_sel, y_sel = t_sel[valid], y_sel[valid]
+    if t_sel.size == 0:
+        return fig
 
-    # Convert time index to display unit
-    time_display = convert_hours_to_unit(baseline.index.to_numpy(), time_unit)
-
-    for col in baseline.columns:
-        sample_name = name_by_well.get(col, col) if col != "Mean" else "Mean"
-        color = color_map.get(sample_name, "black")
-
-        fig.add_scatter(
-            x=time_display,
-            y=baseline[col],
-            mode="markers" if col != "Mean" else "lines+markers",
-            name=sample_name if col != "Mean" else "Mean",
-            marker=dict(color=color) if col != "Mean" else None,
-            line=dict(color=color) if col == "Mean" else None,
+    fig.add_trace(
+        go.Scatter(
+            x=t_sel,
+            y=np.log(y_sel) if scale == "log" else y_sel,
+            mode="markers",
+            name="Selected",
+            marker=dict(size=8, color="#ef5350", symbol="circle"),
+            showlegend=False,
         )
-    fig.update_xaxes(title=f"Time ({time_unit})")
-    fig.update_yaxes(showgrid=False)
-
+    )
     return fig
 
 
-def _group_sort_key(name: str) -> tuple[int, str]:
-    """Sort group labels like Group 1, Group 2 numerically."""
-    match = re.search(r"(\d+)", str(name))
-    if match:
-        return int(match.group(1)), str(name)
-    return 10**9, str(name)
+# --- single well -----------------------------------------------------------
+def plot_well_curve(
+    plate: dict,
+    well: str,
+    *,
+    log_scale: bool = False,
+    phase_boundaries: bool = True,
+    umax_point: bool = True,
+    max_od: bool = True,
+    baseline_od: bool = True,
+    tangent: bool = False,
+    fitted_model: bool = True,
+) -> go.Figure:
+    """Annotated growth curve of one well, as on Check Growth Fits and in exports.
+
+    Points used in the fit (lasso-selected, default all) are drawn darker.
+    Returns an empty figure if the well has no data.
+    """
+    d = (plate.get("processed_data") or {}).get(well)
+    if d is None or d.empty:
+        return go.Figure()
+    t, y = _finite_sorted_xy(d["Time"], d["baseline_corrected"])
+    if t.size == 0:
+        return go.Figure()
+
+    gs = (plate.get("growth_stats") or {}).get(well) or {}
+    scale = "log" if log_scale else "linear"
+    fig = gc_plot.create_base_plot(t, y, scale=scale)
+    fig = _add_lasso_selected_points(
+        fig, t, y, gs.get("_used_fit_times") or t.tolist(), scale=scale
+    )
+    if gs and not is_no_growth(gs):
+        fig = gc_plot.annotate_plot(
+            fig,
+            fit_result=(plate.get("fit_parameters") or {}).get(well),
+            stats=gs,
+            show_fitted_curve=fitted_model,
+            show_phase_boundaries=phase_boundaries,
+            show_crosshairs=umax_point,
+            show_od_max_line=max_od,
+            show_n0_line=baseline_od,
+            show_umax_marker=umax_point,
+            show_tangent=tangent,
+            scale=scale,
+        )
+
+    # x-axis range matches the data exactly (no gap at the y-axis)
+    fig.update_xaxes(
+        title="Time (hours)",
+        showgrid=False,
+        type="linear",
+        range=[float(t.min()), float(t.max())],
+    )
+    fig.update_yaxes(
+        title="ln(OD600)" if log_scale else "OD600 (baseline-corrected)",
+        showgrid=False,
+    )
+    fig.update_layout(
+        showlegend=False,
+        title=f"Fitted growth curve – {well}",
+        margin=dict(l=20, r=20, t=60, b=20),
+        height=600,
+    )
+    return style_like_info_plots(
+        fig, fit_window=(gs.get("fit_t_min"), gs.get("fit_t_max"))
+    )
 
 
+# --- blanks ----------------------------------------------------------------
 def plot_baseline_by_group(
     baseline: pd.DataFrame,
     *,
     blank_group_map: dict[str, str] | None = None,
-    time_unit: str = "hours",
 ):
-    """Plot grouped blank baselines: per-group mean lines + per-well scatter.
+    """One cell per blank group: each blank well's points plus the group mean.
 
     Args:
         baseline: DataFrame indexed by Time. Contains blank well columns and optional
             per-group mean columns named "{Group Name} Mean".
         blank_group_map: Optional mapping of blank well ID -> group name.
-        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
     """
-    fig = go.Figure()
-    fig.update_xaxes(title=f"Time ({time_unit})")
-    fig.update_yaxes(showgrid=False)
-
     if baseline is None or baseline.empty:
-        return fig
+        return go.Figure()
 
-    blank_group_map = {
-        str(well).strip().upper(): str(group).strip()
-        for well, group in (blank_group_map or {}).items()
-        if str(well).strip() and str(group).strip()
+    group_of = {
+        str(w).strip().upper(): str(g).strip()
+        for w, g in (blank_group_map or {}).items()
+        if str(w).strip() and str(g).strip()
     }
+    mean_cols = {
+        str(c)[: -len(" Mean")].strip(): c
+        for c in baseline.columns
+        if str(c).endswith(" Mean")
+    }
+    wells = [c for c in baseline.columns if c != "Mean" and c not in mean_cols.values()]
+    by_group: dict[str, list] = {}
+    for w in wells:
+        by_group.setdefault(group_of.get(str(w).upper(), "Group 1"), []).append(w)
+    groups = sorted(set(by_group) | set(mean_cols), key=group_sort_key)
 
-    group_mean_cols = [
-        c for c in baseline.columns if str(c).endswith(" Mean") and str(c) != "Mean"
-    ]
-    mean_col_to_group = {c: str(c)[: -len(" Mean")].strip() for c in group_mean_cols}
-    group_names = sorted(set(mean_col_to_group.values()), key=_group_sort_key)
-
-    excluded_cols = {"Mean"} | set(group_mean_cols)
-    well_cols = [c for c in baseline.columns if c not in excluded_cols]
-
-    # Fallback for legacy analyses with no stored per-group means.
-    if not group_names:
-        inferred_groups = sorted(
-            {blank_group_map.get(str(w).upper(), "Group 1") for w in well_cols},
-            key=_group_sort_key,
+    # At most BLANK_COLS per row; extra groups wrap onto new rows
+    cols = min(len(groups), BLANK_COLS)
+    rows = -(-len(groups) // cols)
+    height = BLANK_ROW_PX * rows
+    fig = make_subplots(
+        rows=rows,
+        cols=cols,
+        shared_xaxes=True,
+        shared_yaxes=True,
+        horizontal_spacing=0.01,
+        vertical_spacing=10 / height,  # 10 px, whatever the number of rows
+    )
+    t = baseline.index.to_numpy()
+    traces, titles, lims = [], [], {}
+    for i, group in enumerate(groups, 1):
+        suffix = _axis_suffix(i)
+        axes = dict(xaxis=f"x{suffix}", yaxis=f"y{suffix}")
+        members = by_group.get(group, [])
+        mean = (
+            baseline[mean_cols[group]]
+            if group in mean_cols
+            else baseline[members].mean(axis=1)
         )
-        if inferred_groups:
-            group_names = inferred_groups
-            for group in inferred_groups:
-                group_wells = [
-                    w
-                    for w in well_cols
-                    if blank_group_map.get(str(w).upper(), "Group 1") == group
-                ]
-                if group_wells:
-                    mean_col_to_group[group] = group
-
-    palette = px.colors.qualitative.Plotly
-    group_colors = {g: palette[i % len(palette)] for i, g in enumerate(group_names)}
-    time_display = convert_hours_to_unit(baseline.index.to_numpy(), time_unit)
-
-    for group in group_names:
-        mean_col = None
-        for col, col_group in mean_col_to_group.items():
-            if col_group == group and col in baseline.columns:
-                mean_col = col
-                break
-
-        if mean_col is not None:
-            group_mean = baseline[mean_col]
-        else:
-            group_wells = [
-                w
-                for w in well_cols
-                if blank_group_map.get(str(w).upper(), "Group 1") == group
-            ]
-            if not group_wells:
-                continue
-            group_mean = baseline[group_wells].mean(axis=1)
-
-        color = group_colors[group]
-        fig.add_scatter(
-            x=time_display,
-            y=group_mean,
-            mode="lines",
-            name=f"{group} Mean",
-            legendgroup=group,
-            line=dict(color=color, width=3),
-        )
-
-        group_wells = [
-            w
-            for w in well_cols
-            if blank_group_map.get(str(w).upper(), "Group 1") == group
-        ]
-        for well in group_wells:
-            fig.add_scatter(
-                x=time_display,
-                y=baseline[well],
-                mode="markers",
-                name=well,
-                legendgroup=group,
-                marker=dict(color=color, size=7),
-                showlegend=False,
+        for k, w in enumerate(members):
+            traces.append(
+                dict(
+                    type="scatter",
+                    x=t,
+                    y=baseline[w].to_numpy(),
+                    mode="markers",
+                    marker=dict(size=4, color=APP_PALETTE[k % len(APP_PALETTE)]),
+                    hovertemplate=(
+                        f"<b>{group}</b><br>Well: {w}<br>Time: %{{x:.2f}} "
+                        "hours<br>OD: %{y:.4f}<extra></extra>"
+                    ),
+                    **axes,
+                )
             )
+        traces.append(
+            dict(
+                type="scatter",
+                x=t,
+                y=mean.to_numpy(),
+                mode="lines",
+                line=dict(color=INFO_INK_2, width=2),
+                hovertemplate=(
+                    f"<b>{group} mean</b><br>Time: %{{x:.2f}} hours"
+                    f"<br>OD: %{{y:.4f}}<extra></extra>"
+                ),
+                **axes,
+            )
+        )
+        titles.append(f"<b>{group}</b>")
+        for y in [baseline[w] for w in members] + [mean]:
+            _extend(lims, suffix, t, y)
+    fig.add_traces(traces)
+    return _style_panels(fig, titles, height, lims)
 
+
+def _padded(lo: float, hi: float, below: float, above: float) -> list[float]:
+    """[lo, hi] widened by fractions of its span (1 if the span is zero)."""
+    span = (hi - lo) or 1.0
+    return [lo - below * span, hi + above * span]
+
+
+def _extend(lims: dict, suffix: str, x, y) -> None:
+    """Grow panel `suffix`'s data limits [x0, x1, y0, y1] to cover x, y."""
+    x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+    x, y = x[np.isfinite(x)], y[np.isfinite(y)]
+    if x.size and y.size:
+        x0, x1, y0, y1 = lims.get(suffix, (np.inf, -np.inf, np.inf, -np.inf))
+        lims[suffix] = [
+            min(x0, float(x.min())),
+            max(x1, float(x.max())),
+            min(y0, float(y.min())),
+            max(y1, float(y.max())),
+        ]
+
+
+def _set_ranges(fig: go.Figure, lims: dict, pad) -> None:
+    """Shared, padded ranges over all panels; lims and pad kept in layout.meta
+    for unshare_axes."""
+    v = np.array(list(lims.values()) or [[0, 1, 0, 1]])
+    x0, x1, y0, y1 = v[:, 0].min(), v[:, 1].max(), v[:, 2].min(), v[:, 3].max()
+    px_, below, above = pad
+    fig.update_layout(meta=dict(pad=list(pad), lims=lims))
+    fig.update_xaxes(fixedrange=True, range=_padded(x0, x1, px_, px_))
+    fig.update_yaxes(fixedrange=True, range=_padded(y0, y1, below, above))
+
+
+def unshare_axes(fig: go.Figure) -> go.Figure:
+    """Give each panel its own padded ranges, from the limits _set_ranges kept."""
+    meta = fig.layout.meta or {}
+    px_, below, above = meta.get("pad", PANEL_PAD)
+    # Figures without stored limits (e.g. cached before they were added) autoscale
+    auto = "lims" not in meta
+    fig.update_xaxes(matches=None, autorange=auto or None)
+    fig.update_yaxes(matches=None, autorange=auto or None)
+    layout = {}
+    for suffix, (x0, x1, y0, y1) in (meta.get("lims") or {}).items():
+        layout[f"xaxis{suffix}"] = dict(range=_padded(x0, x1, px_, px_))
+        layout[f"yaxis{suffix}"] = dict(range=_padded(y0, y1, below, above))
+    fig.update_layout(layout)
+    return fig
+
+
+def _style_panels(fig, titles: list[str], height: int, lims: dict) -> go.Figure:
+    """Rounded cells titled top left, no axes, hover only (no zoom).
+
+    lims holds each panel's data limits (see _extend), for the axis ranges.
+    """
+    plot_height = height - PANEL_MARGIN["t"] - PANEL_MARGIN["b"]
+    fig.update_layout(
+        height=height,
+        margin=PANEL_MARGIN,
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        hovermode="closest",
+        dragmode=False,
+        showlegend=False,
+        hoverlabel=APP_HOVERLABEL,
+        shapes=[_rounded_cell(fig, i, plot_height) for i in range(1, len(titles) + 1)],
+        annotations=[
+            dict(
+                text=t,
+                xref="paper",
+                yref="paper",
+                x=_subplot_bounds(fig, i)[0],
+                y=_subplot_bounds(fig, i)[3],
+                xanchor="left",
+                yanchor="top",
+                xshift=8,
+                yshift=-6,
+                showarrow=False,
+                font=dict(size=13, color=INFO_INK),
+            )
+            for i, t in enumerate(titles, 1)
+        ],
+    )
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False)
+    _set_ranges(fig, lims, PANEL_PAD)
     return fig
 
 
@@ -438,7 +582,6 @@ def plot_replicates_scatter(
     sample_order: list[str] | None = None,
     t_start=0.0,
     t_end=72.0,
-    time_unit: str = "hours",
 ):
     """Scatter plot of replicate curves for selected samples and time window.
 
@@ -447,9 +590,8 @@ def plot_replicates_scatter(
         sample_order: Optional list of sample names for ordering
         t_start: Start time for filtering (in hours)
         t_end: End time for filtering (in hours)
-        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
     """
-    time_label = f"Time ({time_unit})"
+    time_label = "Time (hours)"
     fig = go.Figure()
     fig.update_layout(
         xaxis_title=time_label, yaxis_title="OD600 (baseline-corrected)", height=600
@@ -457,17 +599,15 @@ def plot_replicates_scatter(
     if curves_df is None or curves_df.empty:
         return fig
 
-    d = curves_df[(curves_df["Time"] >= t_start) & (curves_df["Time"] <= t_end)].copy()
-    # Convert time to display unit
-    d["Time_display"] = convert_hours_to_unit(d["Time"].to_numpy(), time_unit)
+    d = curves_df[(curves_df["Time"] >= t_start) & (curves_df["Time"] <= t_end)]
     names, color_map = _order_and_colors(d, sample_order)
 
     return px.scatter(
         d,
-        x="Time_display",
+        x="Time",
         y="baseline_corrected",
         color="Sample Name",
-        hover_data=["plate", "well", "key"],
+        hover_data=["plate", "well"],
         category_orders={"Sample Name": names},
         color_discrete_map=color_map,
     ).update_layout(
@@ -480,7 +620,6 @@ def plot_mean_growth(
     sample_order: list[str] | None,
     t_start=0.0,
     t_end=72.0,
-    time_unit: str = "hours",
 ):
     """Plot mean curve with +/-1 SD shading for each sample.
 
@@ -489,9 +628,8 @@ def plot_mean_growth(
         sample_order: Optional list of sample names for ordering
         t_start: Start time for filtering (in hours)
         t_end: End time for filtering (in hours)
-        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
     """
-    time_label = f"Time ({time_unit})"
+    time_label = "Time (hours)"
     fig = go.Figure()
     fig.update_layout(
         xaxis_title=time_label, yaxis_title="OD600 (baseline-corrected)", height=600
@@ -509,8 +647,6 @@ def plot_mean_growth(
     )
     agg["upper"] = agg["mean"] + agg["sd"]
     agg["lower"] = agg["mean"] - agg["sd"]
-    # Convert time to display unit
-    agg["Time_display"] = convert_hours_to_unit(agg["Time"].to_numpy(), time_unit)
 
     for nm in names:
         sub = agg[agg["Sample Name"] == nm].sort_values("Time")
@@ -520,7 +656,7 @@ def plot_mean_growth(
 
         fig.add_trace(
             go.Scatter(
-                x=pd.concat([sub["Time_display"], sub["Time_display"][::-1]]),
+                x=pd.concat([sub["Time"], sub["Time"][::-1]]),
                 y=pd.concat([sub["upper"], sub["lower"][::-1]]),
                 fill="toself",
                 fillcolor=c,
@@ -532,13 +668,13 @@ def plot_mean_growth(
         )
         fig.add_trace(
             go.Scatter(
-                x=sub["Time_display"],
+                x=sub["Time"],
                 y=sub["mean"],
                 mode="lines",
                 name=nm,
                 line=dict(color=c),
                 text=[nm] * len(sub),
-                hovertemplate=f"Sample=%{{text}}<br>Time=%{{x:.2f}} {time_unit}<br>Mean=%{{y:.4f}}<extra></extra>",
+                hovertemplate="Sample=%{text}<br>Time=%{x:.2f} hours<br>Mean=%{y:.4f}<extra></extra>",
             )
         )
 
@@ -548,13 +684,8 @@ def plot_mean_growth(
     return fig
 
 
-def plot_replicates_by_sample(plates: dict, time_unit: str = "hours"):
-    """Create a grid of replicate scatter plots grouped by sample.
-
-    Args:
-        plates: Dictionary of plate data
-        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
-    """
+def plot_replicates_by_sample(plates: dict):
+    """Create a grid of replicate scatter plots grouped by sample."""
     items = [(pid, well, nm, d) for pid, _, well, nm, d, _ in _iter_wells(plates)]
     names = sorted(
         {
@@ -586,35 +717,30 @@ def plot_replicates_by_sample(plates: dict, time_unit: str = "hours"):
     rows = (len(names) + cols - 1) // cols
     pos = {n: divmod(i, cols) for i, n in enumerate(names)}
 
-    time_label = f"Time ({time_unit})"
     fig = make_subplots(
         rows=rows,
         cols=cols,
-        subplot_titles=names,
         shared_xaxes=True,
         shared_yaxes=True,
-        horizontal_spacing=0.04,
-        vertical_spacing=0.07,
-        x_title=time_label,
-        y_title="OD600 (baseline-corrected)",
+        horizontal_spacing=0.01,
+        vertical_spacing=0.02,
     )
 
-    pal = px.colors.qualitative.Plotly
-    keys = sorted({f"{pid}_{well}" for pid, well, *_ in items})
-    cmap = {k: pal[i % len(pal)] for i, k in enumerate(keys)}
+    # Replicates coloured in turn within each sample
+    n_seen = dict.fromkeys(names, 0)
 
     # Batched: add_trace re-validates the whole figure on every call.
     traces = []
-    tmins, tmaxs, ymins, ymaxs = [], [], [], []
+    lims = {}
     for pid, well, nm, d in items:
         nm = (nm or "").strip()
         if nm not in pos or d is None or d.empty:
             continue
         r, c = pos[nm]
-        key = f"{pid}_{well}"
+        color = APP_PALETTE[n_seen[nm] % len(APP_PALETTE)]
+        n_seen[nm] += 1
 
-        # Convert time to display unit
-        time_display = convert_hours_to_unit(d["Time"].to_numpy(), time_unit)
+        time_display = d["Time"].to_numpy()
 
         suffix = _axis_suffix(r * cols + c + 1)
         traces.append(
@@ -623,43 +749,28 @@ def plot_replicates_by_sample(plates: dict, time_unit: str = "hours"):
                 x=time_display,
                 y=d["baseline_corrected"].to_numpy(),
                 mode="markers",
-                marker=dict(size=3, color=cmap[key]),
-                hovertemplate=f"Sample: {nm}<br>Well: {well}<br>Time: %{{x:.2f}} {time_unit}<br>OD: %{{y:.4f}}<extra></extra><br>Plate: {pid}",
+                marker=dict(size=3, color=color),
+                hovertemplate=(
+                    f"<b>{nm}</b><br>Plate: {pid}<br>Well: {well}<br>"
+                    "Time: %{x:.2f} hours<br>OD: %{y:.4f}<extra></extra>"
+                ),
                 showlegend=False,
                 xaxis=f"x{suffix}",
                 yaxis=f"y{suffix}",
             )
         )
-        tmins.append(float(time_display.min()))
-        tmaxs.append(float(time_display.max()))
-        ymins.append(float(d["baseline_corrected"].min()))
-        ymaxs.append(float(d["baseline_corrected"].max()))
+        _extend(lims, suffix, time_display, d["baseline_corrected"])
 
     if traces:
         fig.add_traces(traces)
-    fig.update_layout(
-        height=1050,
-        shapes=[
-            _subplot_box(fig, i, SUBPLOT_BOX_COLOR, width=1)
-            for i in range(1, len(names) + 1)
-        ],
-    )
-    if tmins:
-        fig.update_xaxes(showgrid=False, range=[min(tmins), max(tmaxs)])
-    else:
-        fig.update_xaxes(showgrid=False)
-    if ymins:
-        fig.update_yaxes(showgrid=False, range=[min(ymins), max(ymaxs)])
-    else:
-        fig.update_yaxes(showgrid=False)
-    return fig
+    titles = [f"<b>{n}</b>" for n in names]
+    return _style_panels(fig, titles, 1050, lims)
 
 
 # --- growth stats ----------------------------------------------------------------
 # Mapping of metric names to their units for y-axis labels.
 METRIC_UNITS = {
     "mu_max": "h⁻¹",
-    "specific_growth_rate": "h⁻¹",
     "intrinsic_growth_rate": "h⁻¹",
     "doubling_time": "hours",
     "max_od": "OD600",
@@ -672,7 +783,6 @@ METRIC_UNITS = {
 # Mapping of metric names to display titles
 METRIC_TITLES = {
     "mu_max": "Maximum specific growth rate",
-    "specific_growth_rate": "Maximum specific growth rate",
     "intrinsic_growth_rate": "Intrinsic growth rate",
     "doubling_time": "Doubling time",
     "max_od": "Maximum OD",
@@ -685,7 +795,6 @@ METRIC_TITLES = {
 # Mapping of metric names to y-axis labels (using Greek letters where appropriate)
 METRIC_Y_LABELS = {
     "mu_max": "μ",
-    "specific_growth_rate": "μ",
     "intrinsic_growth_rate": "μᵢ",
     "doubling_time": "tᵈ",
 }
@@ -914,96 +1023,60 @@ def plot_single_growth_stat(
 
 
 # --- window fits ----------------------------------------------------------------
-def _empty_grid(fig, fmt: PlateFormat):
-    """Muted box and label for every well, for plates with nothing to draw."""
-    shapes, labels = [], []
-    for i, w in enumerate(fmt.wells, 1):
-        box, label = _well_box(fig, i, w, FIT_COLOR_NONE, muted=True)
-        shapes.append(box)
-        labels.append(label)
-    return shapes, labels
-
-
 def _assemble_grid(fig, traces, shapes, labels, fmt: PlateFormat):
     """Apply the batched traces, shapes and labels to the plate figure."""
     if traces:
         fig.add_traces(traces)
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False)
     fig.update_layout(
         shapes=shapes,
         annotations=labels,
-        height=round(112.5 * len(fmt.rows)),  # 900 px for a 96-well plate
+        height=round(PLATE_ROW_PX * len(fmt.rows)),
+        margin=PLATE_MARGIN,
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
         hovermode=False,
     )
     return fig
 
 
-def plot_window_plate(plate: dict, time_unit: str = "hours"):
+def plot_window_plate(plate: dict):
     """Plot a full plate overview (96 or 384 wells) with window-fit overlays.
 
     Args:
         plate: Plate dictionary containing processed_data, growth_stats, and fit_parameters
-        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
     """
     proc = plate.get("processed_data") or {}
     gs_all = plate.get("growth_stats") or {}
     fit_params = plate.get("fit_parameters") or {}
-    threshold = float((plate.get("params") or {}).get("rmse_threshold", RMSE_THRESHOLD))
 
     fmt = plate_format(plate)
     # Spacing is a fraction of the figure, so scale it to keep gaps constant
     fig = make_subplots(
         rows=len(fmt.rows),
         cols=len(fmt.cols),
-        horizontal_spacing=0.096 / len(fmt.cols),
-        vertical_spacing=0.2 / len(fmt.rows),
+        horizontal_spacing=0.04 / len(fmt.cols),
+        vertical_spacing=0.06 / len(fmt.rows),
         shared_xaxes=True,
         shared_yaxes=True,
     )
 
     # Batched: adding one at a time re-validates the whole figure each call,
     # which is quadratic in the number of subplots.
-    traces, shapes, labels = [], [], []
+    # Well cells first: highlight_wells relies on their position.
+    traces = []
+    shapes, labels = _plate_frame(fig, fmt)
 
-    # Check if there's any data
-    if not proc:
-        fig.update_layout(margin=dict(l=60, r=25, t=60, b=55))
-        return _assemble_grid(fig, [], *_empty_grid(fig, fmt), fmt)
-
-    # Calculate global ranges
-    ts, ys = [], []
-    for d in proc.values():
-        if d is None or d.empty:
-            continue
-        ts.append(d["Time"])
-        ys.append(d["baseline_corrected"])
-
-    if not ts:
-        fig.update_layout(margin=dict(l=60, r=25, t=60, b=55))
-        return _assemble_grid(fig, [], *_empty_grid(fig, fmt), fmt)
-
-    x_min, x_max = float(min(t.min() for t in ts)), float(max(t.max() for t in ts))
-    x_min_display = convert_hours_to_unit(x_min, time_unit)
-    x_max_display = convert_hours_to_unit(x_max, time_unit)
-    y_min, y_max = float(min(y.min() for y in ys)), float(max(y.max() for y in ys))
-    xr, yr = x_max_display - x_min_display, y_max - y_min
-    x_range = [x_min_display - 0.02 * xr, x_max_display + 0.02 * xr]
-    y_range = [y_min - 0.05 * yr, y_max + 0.05 * yr]
+    lims = {}  # per-well data limits, for the axis ranges
 
     for i, well in enumerate(fmt.wells, 1):
         d = proc.get(well)
         gs = gs_all.get(well) or {}
         fit_result = fit_params.get(well)
 
-        # Box first so empty wells are outlined too.
-        empty = d is None or d.empty
-        box, label = _well_box(
-            fig, i, well, fit_quality_color(gs, threshold), muted=empty
-        )
-        shapes.append(box)
-        labels.append(label)
-
-        if empty:
+        if d is None or d.empty:
             continue
 
         # Get time and data arrays
@@ -1015,54 +1088,45 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
         if t.size == 0:
             continue
 
-        # Convert time to display unit
-        t_display = convert_hours_to_unit(t, time_unit)
+        _extend(lims, _axis_suffix(i), t, y)
 
         # Annotate on a small per-well figure, then retarget onto this subplot;
         # annotate_plot mutates whatever figure it is given.
-        temp_fig = _base_figure(t_display, y)
+        temp_fig = _base_figure(t, y)
 
-        # Prepare annotation parameters from growth stats
-        stats_converted = None
-        fitted_model = None
+        # Annotation inputs from growth stats (none for no-growth wells)
+        stats = None
+        fit_window = None
+        if is_no_growth(gs):
+            fit_result = None
+        else:
+            stats = {
+                k: gs[k]
+                for k in (
+                    "exp_phase_start",
+                    "exp_phase_end",
+                    "time_at_umax",
+                    "lag_time",
+                )
+                if gs.get(k) is not None and np.isfinite(gs[k])
+            } | {
+                k: gs[k]
+                for k in ("od_at_umax", "max_od", "N0", "mu_max")
+                if gs.get(k) is not None
+            }
 
-        if not is_no_growth(gs):
-            # Create a copy of growth stats with time values converted to display unit
-            stats_converted = {}
-
-            # Convert time-based stats
-            for key in ["exp_phase_start", "exp_phase_end", "time_at_umax", "lag_time"]:
-                if key in gs and gs[key] is not None and np.isfinite(gs[key]):
-                    stats_converted[key] = convert_hours_to_unit(
-                        float(gs[key]), time_unit
-                    )
-
-            # Copy OD-based stats without conversion
-            for key in ["od_at_umax", "max_od", "N0", "mu_max"]:
-                if key in gs and gs[key] is not None:
-                    stats_converted[key] = gs[key]
-
-            # Use the stored fit result directly if available
-            if fit_result is not None:
-                # Convert time values in fit_result params to display unit
-                fitted_model = fit_result.copy()
-                if "params" in fitted_model:
-                    params_copy = fitted_model["params"].copy()
-                    # Convert fit_t_min and fit_t_max to display unit
-                    if "fit_t_min" in params_copy:
-                        params_copy["fit_t_min"] = convert_hours_to_unit(
-                            float(params_copy["fit_t_min"]), time_unit
-                        )
-                    if "fit_t_max" in params_copy:
-                        params_copy["fit_t_max"] = convert_hours_to_unit(
-                            float(params_copy["fit_t_max"]), time_unit
-                        )
-                    fitted_model["params"] = params_copy
+            # Points used in the fit, drawn darker as on Check Growth Fits
+            t0, t1 = gs.get("fit_t_min"), gs.get("fit_t_max")
+            if t0 is not None and t1 is not None:
+                fit_window = (float(t0), float(t1))
+                temp_fig.add_trace(
+                    go.Scatter(x=t, y=y, mode="markers", name="Selected")
+                )
 
         temp_fig = gc_plot.annotate_plot(
             fig=temp_fig,
-            fit_result=fitted_model,
-            stats=stats_converted,
+            fit_result=fit_result,
+            stats=stats,
             show_fitted_curve=True,
             show_phase_boundaries=True,
             show_crosshairs=False,
@@ -1073,6 +1137,15 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
             scale="linear",
             fitted_curve_width=3,
         )
+        # Check Growth Fits palette, scaled down for the small panels
+        style_like_info_plots(temp_fig, fit_window=fit_window)
+        for trace in temp_fig.data:
+            if trace.name == "Data":
+                trace.marker.size = 3
+            elif trace.name == "Selected":
+                trace.marker.size = 3.5
+            elif trace.mode == "lines":
+                trace.line.width = 2
 
         suffix = _axis_suffix(i)
         for trace in temp_fig.data:
@@ -1087,33 +1160,17 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
             d_shape["yref"] = _retarget(d_shape.get("yref", "y"), suffix)
             shapes.append(d_shape)
 
-    fig.update_layout(margin=dict(l=60, r=25, t=20, b=55))
-    fig.update_xaxes(showgrid=False, range=x_range, matches="x")
-    fig.update_yaxes(showgrid=False, range=y_range, matches="y")
+    _set_ranges(fig, lims, PLATE_PAD)
 
     return _assemble_grid(fig, traces, shapes, labels, fmt)
-
-
-# --- derivative models ---------------------------------------------------------
-def d1_model(t, A, r, t0):
-    """Idealized first-derivative model for growth curves."""
-    u = np.exp(-r * (t - t0))
-    return A * (u / (1 + u) ** 2)
-
-
-def d2_model(t, A, r, t0):
-    """Idealized second-derivative model for growth curves."""
-    u = np.exp(-r * (t - t0))
-    return A * r * (u * (u - 1) / (1 + u) ** 3)
 
 
 def plot_derivative_metric(
     plate: dict,
     well: str,
     metric: str,
-    sg_window=11,
-    sg_poly=2,
-    time_unit: str = "hours",
+    sg_window=DEFAULT_PARAMS["sg_window"],
+    sg_poly=DEFAULT_PARAMS["sg_poly"],
     gs: dict | None = None,
 ):
     """Plot either dN/dt or μ (specific growth rate) for a well.
@@ -1129,7 +1186,6 @@ def plot_derivative_metric(
         metric: Either "dndt" for dN/dt or "mu" for μ
         sg_window: Savitzky-Golay window size
         sg_poly: Savitzky-Golay polynomial order
-        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
         gs: Growth statistics dictionary (optional). If provided with _used_fit_times,
             only the lasso-selected data points will be used for calculation.
     """
@@ -1142,25 +1198,18 @@ def plot_derivative_metric(
     if d is None or d.empty:
         return go.Figure()
 
-    t_full = d["Time"].to_numpy(float)
-    y_full = d["baseline_corrected"].to_numpy(float)
+    t_raw = d["Time"].to_numpy(float)
+    y_raw = d["baseline_corrected"].to_numpy(float)
 
-    # Store full time range for x-axis before any filtering
-    t_full_display = convert_hours_to_unit(t_full, time_unit)
-    x_range = [float(t_full_display.min()), float(t_full_display.max())]
-
-    t_raw = t_full.copy()
-    y_raw = y_full.copy()
+    # Full time range for the x-axis, before any filtering
+    x_range = [float(t_raw.min()), float(t_raw.max())]
 
     # Filter to lasso-selected points if available
     gs = gs or {}
     used_times = gs.get("_used_fit_times")
     if used_times is not None and len(used_times) > 0:
-        used_times_arr = np.asarray(used_times)
-        time_tolerance = 0.01
-        used_mask = np.zeros(len(t_raw), dtype=bool)
-        for ut in used_times_arr:
-            used_mask |= np.abs(t_raw - ut) < time_tolerance
+        diffs = np.abs(t_raw[:, None] - np.asarray(used_times, dtype=float))
+        used_mask = (diffs < 0.01).any(axis=1)
         t_raw = t_raw[used_mask]
         y_raw = y_raw[used_mask]
 
@@ -1188,21 +1237,17 @@ def plot_derivative_metric(
     else:  # mu
         t_metric_smooth, metric_smooth = compute_instantaneous_mu(t_raw, y_smooth)
 
-    # Convert time to display unit
-    t_display = convert_hours_to_unit(t_metric_smooth, time_unit)
-
     # Create figure
     fig = go.Figure()
 
     # Plot raw metric (light grey)
-    t_raw_display = convert_hours_to_unit(t_metric_raw, time_unit)
     fig.add_trace(
         go.Scatter(
-            x=t_raw_display,
+            x=t_metric_raw,
             y=metric_raw,
             mode="lines",
             line=dict(width=5, color="lightgrey"),
-            hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{metric_label} (raw)=%{{y:.4f}}<extra></extra>",
+            hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} hours<br>{metric_label} (raw)=%{{y:.4f}}<extra></extra>",
             showlegend=False,
             name="Raw",
         )
@@ -1211,11 +1256,11 @@ def plot_derivative_metric(
     # Plot smoothed metric (lighter red)
     fig.add_trace(
         go.Scatter(
-            x=t_display,
+            x=t_metric_smooth,
             y=metric_smooth,
             mode="lines",
             line=dict(width=5, color="#FF6692"),
-            hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{metric_label} (smoothed)=%{{y:.4f}}<extra></extra>",
+            hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} hours<br>{metric_label} (smoothed)=%{{y:.4f}}<extra></extra>",
             showlegend=False,
             name="Smoothed",
         )
@@ -1251,7 +1296,10 @@ def plot_derivative_metric(
         else:
             if model_type == "sliding_window":
                 # For sliding window, calculate from raw data (as growthcurves does)
-                window_points = params.get("window_points", 15)
+                # The window used in the analysis (the fit result does not store it)
+                window_points = int(
+                    gs.get("window_points", plate["params"]["window_points"])
+                )
                 if metric == "dndt":
                     # For dN/dt, we need to smooth first then compute derivative
                     _, metric_model = compute_first_derivative(t_model, y_model_smooth)
@@ -1299,14 +1347,13 @@ def plot_derivative_metric(
             and t_model is not None
             and np.isfinite(metric_model).any()
         ):
-            t_model_display = convert_hours_to_unit(t_model, time_unit)
             fig.add_trace(
                 go.Scatter(
-                    x=t_model_display,
+                    x=t_model,
                     y=metric_model,
                     mode="lines",
                     line=dict(width=5, color="#8dcde0"),
-                    hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{metric_label} (fitted)=%{{y:.4f}}<extra></extra>",
+                    hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} hours<br>{metric_label} (fitted)=%{{y:.4f}}<extra></extra>",
                     showlegend=False,
                     name="Fitted",
                 )
@@ -1319,8 +1366,8 @@ def plot_derivative_metric(
         exp_end = gs.get("exp_phase_end")
         if exp_start is not None and exp_end is not None:
             stats_converted = {
-                "exp_phase_start": convert_hours_to_unit(float(exp_start), time_unit),
-                "exp_phase_end": convert_hours_to_unit(float(exp_end), time_unit),
+                "exp_phase_start": float(exp_start),
+                "exp_phase_end": float(exp_end),
             }
 
     if stats_converted is not None:
@@ -1349,7 +1396,7 @@ def plot_derivative_metric(
         paper_bgcolor="white",
         margin=dict(l=40, r=20, t=60, b=40),
     )
-    fig.update_xaxes(showgrid=False, title=f"Time ({time_unit})", range=x_range)
+    fig.update_xaxes(showgrid=False, title="Time (hours)", range=x_range)
     # y range from the smoothed curve, so raw-derivative spikes don't flatten it
     finite = np.asarray(metric_smooth, dtype=float)
     finite = finite[np.isfinite(finite)]
@@ -1359,4 +1406,4 @@ def plot_derivative_metric(
         pad = 0.05 * (hi - lo) or 0.05 * abs(hi) or 0.05
         y_range = [lo - pad, hi + pad]
     fig.update_yaxes(showgrid=False, title=y_axis_title, range=y_range)
-    return fig
+    return style_like_info_plots(fig)

@@ -62,6 +62,25 @@ def card_containers():
     )
 
 
+# large selectbox with a green border, for page-level choices such as the plate
+# (st.container(key="prominent_select_..."))
+def prominent_select():
+    return st.markdown(
+        """
+        <style>
+        [class*="st-key-prominent_select_"] [data-baseweb="select"] > div {
+            min-height: 3rem;
+            font-size: 1.15rem;
+            font-weight: 600;
+            border: 2px solid #66BB6A !important;
+            background-color: #FFFFFF !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # adds a green gradient background at the top of the page
 def green_gradient():
     return st.markdown(
@@ -108,32 +127,6 @@ def red_buttons():
             border-color: #c62828 !important;
             color: white !important;
         }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-# styles plate status grid tables
-def plate_table_style():
-    return st.markdown(
-        """
-        <style>
-        .plate-wrap { width: 100%; overflow: hidden; }
-        table.plate {
-            width: 100%;
-            table-layout: fixed;
-            border-collapse: collapse;
-            font-size: 18px;
-        }
-        table.plate th, table.plate td {
-            border: 1px solid rgba(49,51,63,0.2);
-            text-align: center;
-            padding: 6px 0;
-            line-height: 1.2;
-        }
-        table.plate th { font-weight: 600; }
-        table.plate th.row { width: 2.2rem; }
         </style>
         """,
         unsafe_allow_html=True,

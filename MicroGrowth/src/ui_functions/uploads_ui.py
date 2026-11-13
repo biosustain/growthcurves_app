@@ -2,7 +2,6 @@
 
 import io
 import re
-from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -13,13 +12,14 @@ from src.functions.constants import (
     PlateFormat,
     plate_format,
 )
-from src.functions.data_processing import analyse_plate, load_plate
+from src.functions.data_processing import analyse_plate, load_plate, time_to_hours
 from src.functions.upload_functions import (
     detect_plate_map_format,
-    get_plate_preview_data,
-    long_plate_map_to_wide_bytes,
+    long_plate_map_to_wide,
     plate_from_column_names,
+    plate_map_frame,
     plate_params,
+    read_data_file,
     validate_data_columns_are_wells,
     validate_data_file,
     validate_long_plate_map_file,
@@ -27,9 +27,6 @@ from src.functions.upload_functions import (
 )
 from src.styling import growth_param_table_style, plate_title_row_style
 from src.ui_functions.blank_grouping_ui import (
-    DEFAULT_GROUP,
-    color_for_group,
-    darken_hex_color,
     painted_blank_wells,
     ui_blank_group_assigner,
 )
@@ -80,157 +77,6 @@ Click the button to run the analysis. Once complete, navigate to the other pages
 """)
 
     st.divider()
-
-
-def _build_plate_preview_cells(
-    *,
-    fmt: PlateFormat,
-    plate_map: pd.DataFrame | None,
-    present: set[str],
-    remove_wells: list[str] | bool,
-    blank: bool,
-    blank_group_assignments: dict[str, str] | bool,
-) -> list[list[dict[str, Any]]]:
-    """Build the cell payload (label, colour, tooltip) for the upload preview."""
-    present_wells = {str(well).strip().upper() for well in present}
-    removed_wells = {str(well).strip().upper() for well in (remove_wells or [])}
-    group_map = (
-        {
-            str(well).strip().upper(): str(group).strip() or DEFAULT_GROUP
-            for well, group in blank_group_assignments.items()
-        }
-        if isinstance(blank_group_assignments, dict)
-        else {}
-    )
-
-    cells: list[list[dict[str, Any]]] = []
-    for row in fmt.rows:
-        rendered_row: list[dict[str, Any]] = []
-        for col in fmt.cols:
-            well = f"{row}{col}"
-            group_name = group_map.get(well, DEFAULT_GROUP)
-
-            if plate_map is None:
-                rendered_row.append(
-                    {
-                        "label": well,
-                        "cell_color": "#e5e7eb",
-                        "tooltip": f"{well} · No uploaded files",
-                    }
-                )
-                continue
-
-            sample = _plate_cell_name(plate_map, row, col).strip()
-            is_blank_well = sample.upper().startswith("BLANK")
-            cell_label = f"<b>{well}</b>" if is_blank_well else well
-            has_sample_name = sample not in {
-                "",
-                "False",
-            } and not sample.upper().startswith("BLANK")
-            is_not_in_plate_map = sample in {"", "False"}
-
-            included = False
-            exclusion_reason = ""
-            if well in removed_wells:
-                exclusion_reason = "excluded by user"
-            elif is_not_in_plate_map:
-                exclusion_reason = "not in plate map"
-            elif well not in present_wells:
-                exclusion_reason = "missing from data file"
-            elif is_blank_well and not blank:
-                exclusion_reason = "blank subtraction disabled"
-            elif is_blank_well and blank:
-                included = True
-            elif has_sample_name:
-                included = True
-            else:
-                exclusion_reason = "not included"
-
-            sample_suffix = f" · {sample}" if sample and sample != "False" else ""
-            if included:
-                base_color = color_for_group(group_name)
-                cell_data: dict[str, Any] = {
-                    "label": cell_label,
-                    "cell_color": (
-                        darken_hex_color(base_color) if is_blank_well else base_color
-                    ),
-                    "tooltip": (
-                        f"{well}{sample_suffix}"
-                        f"{' · BLANK well' if is_blank_well else ''} · {group_name}"
-                    ),
-                }
-                if is_blank_well:
-                    cell_data["html"] = True
-                if is_blank_well:
-                    cell_data["cell_border_width"] = 2
-                    cell_data["cell_border_color"] = darken_hex_color(
-                        base_color, factor=0.72
-                    )
-                rendered_row.append(cell_data)
-            else:
-                rendered_row.append(
-                    {
-                        "label": cell_label,
-                        "cell_color": "#e5e7eb",
-                        "tooltip": f"{well}{sample_suffix} · {exclusion_reason}",
-                        **({"html": True} if is_blank_well else {}),
-                    }
-                )
-        cells.append(rendered_row)
-    return cells
-
-
-def render_plate_table(
-    *,
-    key: str,
-    plate_map: pd.DataFrame | None,
-    fmt: PlateFormat = PLATE_96,
-    present: set[str] | None = None,
-    remove_wells: list[str] | bool = False,
-    blank: bool = True,
-    blank_group_assignments: dict[str, str] | bool = False,
-    grid_height: int = 440,
-    grid_aspect_ratio: float = 1.0,
-):
-    """Render plate preview with the blank-linker style table."""
-    cells = _build_plate_preview_cells(
-        fmt=fmt,
-        plate_map=plate_map,
-        present=present or set(),
-        remove_wells=remove_wells,
-        blank=blank,
-        blank_group_assignments=blank_group_assignments,
-    )
-
-    # Read-only version of the shared drag-to-paint plate map
-    plate_painter(
-        rows=fmt.rows,
-        cols=fmt.cols,
-        cells=[
-            [
-                {
-                    "label": re.sub(r"<[^>]+>", "", str(cell["label"])),
-                    "color": cell["cell_color"],
-                    "border": cell.get("cell_border_color"),
-                    "tooltip": cell.get("tooltip", ""),
-                    "group": "",
-                    "blank": "<b>" in str(cell["label"]),
-                    "fixed_blank": False,
-                    "painted": False,
-                    "included": False,
-                }
-                for cell in row
-            ]
-            for row in cells
-        ],
-        group_colors={},
-        active_group="",
-        default_group="",
-        key=f"uploads_preview::{key}",
-        on_paint=lambda: None,
-        aspect_ratio=grid_aspect_ratio,
-        interactive=False,
-    )
 
 
 def _plate_cell_name(plate_map: pd.DataFrame, row: str, col: int) -> str:
@@ -380,7 +226,17 @@ def ui_upload_files(ss):
             width="stretch",
             disabled=not data_file,
         ):
-            is_valid_data, data_error = validate_data_file(data_file.getvalue())
+            # Each file is parsed once, here; the plate keeps the parsed tables
+            try:
+                data = read_data_file(data_file.getvalue())
+                map_df = (
+                    pd.read_excel(io.BytesIO(map_file.getvalue())) if map_file else None
+                )
+            except Exception as e:
+                st.toast(f"Failed to read Excel file: {e}", duration="infinite")
+                st.stop()
+
+            is_valid_data, data_error = validate_data_file(data)
             if not is_valid_data:
                 st.toast(
                     f"Data file validation failed: {data_error}",
@@ -388,42 +244,28 @@ def ui_upload_files(ss):
                 )
                 st.stop()
 
-            data_bytes = data_file.getvalue()
-            plate_bytes = None
-            if map_file:
-                map_format = detect_plate_map_format(map_file.getvalue())
-                if map_format == "long":
-                    is_valid_map, map_error = validate_long_plate_map_file(
-                        map_file.getvalue()
-                    )
-                    if not is_valid_map:
-                        st.toast(
-                            f"Plate map validation failed: {map_error}",
-                            duration="infinite",
-                        )
-                        st.stop()
-                    plate_bytes = long_plate_map_to_wide_bytes(map_file.getvalue())
-                else:
-                    is_valid_map, map_error = validate_plate_map_file(
-                        map_file.getvalue()
-                    )
-                    if not is_valid_map:
-                        st.toast(
-                            f"Plate map validation failed: {map_error}",
-                            duration="infinite",
-                        )
-                        st.stop()
-                    plate_bytes = map_file.getvalue()
-
-                is_valid_cols, cols_error = validate_data_columns_are_wells(
-                    data_file.getvalue()
+            if map_df is not None:
+                is_long = detect_plate_map_format(map_df) == "long"
+                validate = (
+                    validate_long_plate_map_file if is_long else validate_plate_map_file
                 )
+                is_valid_map, map_error = validate(map_df)
+                if not is_valid_map:
+                    st.toast(
+                        f"Plate map validation failed: {map_error}",
+                        duration="infinite",
+                    )
+                    st.stop()
+                if is_long:
+                    map_df = long_plate_map_to_wide(map_df)
+
+                is_valid_cols, cols_error = validate_data_columns_are_wells(data)
                 if not is_valid_cols:
                     st.toast(cols_error, duration="infinite")
                     st.stop()
             else:
                 # Column headers are the sample names
-                data_bytes, plate_bytes, assigned = plate_from_column_names(data_bytes)
+                data, map_df, assigned = plate_from_column_names(data)
                 if assigned:
                     st.toast(
                         "No plate positions: samples placed in order (A1, A2, ...).",
@@ -438,8 +280,8 @@ def ui_upload_files(ss):
             load_plate(
                 ss.plates,
                 plate_id,
-                data_bytes=data_bytes,
-                plate_bytes=plate_bytes,
+                data=data,
+                plate_map=plate_map_frame(map_df),
                 params=dict(DEFAULT_PARAMS),
             )
             st.toast(f"Successfully loaded {plate_id}", duration="infinite")
@@ -453,10 +295,6 @@ def ui_preprocessing_params(ss):
     params0 = DEFAULT_PARAMS
     blank = False
     blank_group_assignments: dict[str, str] | bool = False
-    remove_wells = False
-    clip_time_series = (None, None)
-    time_unit = "hours"
-    pl_cm = float(DEFAULT_PARAMS["pathlength_cm_"])
     plate_map = None
     present: set[str] = set()
     name_by_well: dict[str, str] = {}
@@ -510,10 +348,8 @@ def ui_preprocessing_params(ss):
             fmt = plate_format(rec)
             if rec.get("uploads"):
                 uploads = rec["uploads"]
-                plate_map, present = get_plate_preview_data(
-                    plate_bytes=uploads["plate_bytes"],
-                    data_bytes=uploads["data_bytes"],
-                )
+                plate_map = uploads["plate_map"]
+                present = set(uploads["data"].columns) - {"Time"}
                 if plate_map is not None:
                     name_by_well = _name_by_well_from_plate_map(plate_map, fmt)
                     # Blanks: BLANK names in the plate map plus wells painted as blanks
@@ -535,7 +371,6 @@ def ui_preprocessing_params(ss):
                     has_blank_wells = blank_well_count > 0
 
         controls_col, plate_col = st.columns([1.0, 1.35], gap="large")
-        plate_grid_height = 380
         # Wider, shorter cells so the plate map fills the column width
         plate_grid_aspect_ratio = 0.58
         initial_group_map: dict[str, str] | None = None
@@ -544,15 +379,10 @@ def ui_preprocessing_params(ss):
             _row_cols = st.columns([1.0, 0.8, 1.8], vertical_alignment="bottom")
             a, b = _row_cols[0], _row_cols[1]
             _time_unit_options = ["seconds", "minutes", "hours", "days", "HH:MM:SS"]
-            _saved_time_unit = params0.get("time_unit", "hours")
             time_unit = a.selectbox(
                 "Time unit",
                 options=_time_unit_options,
-                index=_time_unit_options.index(
-                    _saved_time_unit
-                    if _saved_time_unit in _time_unit_options
-                    else "hours"
-                ),
+                index=_time_unit_options.index(params0["time_unit"]),
                 help="Select the unit of time values in your data file's Time column. Use HH:MM:SS if your Time column contains values like 01:30:00.",
             )
             pl_cm = b.number_input(
@@ -565,45 +395,12 @@ def ui_preprocessing_params(ss):
             # Derive min/max time in hours from the uploaded data file
             _min_time_h = 0.0
             _max_time_h = 1e6
-            if plate_id:
-                _data_bytes = (
-                    (ss.plates.get(plate_id) or {}).get("uploads", {}).get("data_bytes")
-                )
-                if _data_bytes:
-                    try:
-                        _t_col = pd.read_excel(io.BytesIO(_data_bytes), header=0)[
-                            "Time"
-                        ]
-                        if time_unit == "HH:MM:SS":
-
-                            def _hhmmss_to_hours(val):
-                                parts = str(val).strip().split(":")
-                                if len(parts) == 3:
-                                    return (
-                                        int(parts[0])
-                                        + int(parts[1]) / 60.0
-                                        + float(parts[2]) / 3600.0
-                                    )
-                                return float("nan")
-
-                            _t_hours = _t_col.map(_hhmmss_to_hours).dropna()
-                        else:
-                            _t_raw = pd.to_numeric(_t_col, errors="coerce").dropna()
-                            _divisor = (
-                                3600.0
-                                if time_unit == "seconds"
-                                else (
-                                    60.0
-                                    if time_unit == "minutes"
-                                    else 1 / 24.0 if time_unit == "days" else 1.0
-                                )
-                            )
-                            _t_hours = _t_raw / _divisor
-                        if not _t_hours.empty:
-                            _min_time_h = float(_t_hours.min())
-                            _max_time_h = float(_t_hours.max())
-                    except Exception:
-                        pass
+            _data = ((ss.plates.get(plate_id) or {}).get("uploads") or {}).get("data")
+            if _data is not None:
+                _t_hours = time_to_hours(_data["Time"], time_unit).dropna()
+                if not _t_hours.empty:
+                    _min_time_h = float(_t_hours.min())
+                    _max_time_h = float(_t_hours.max())
 
             _clip = params0.get("clip_time_series") or (None, None)
             _clip_start = (
@@ -629,10 +426,9 @@ def ui_preprocessing_params(ss):
             # Get default excluded wells from params0
             # Blank wells are offered too: excluding one drops it from blank subtraction
             exclude_options = list(fmt.wells)
-            default_excluded = params0.get("remove_wells", [])
-            if default_excluded is False or not default_excluded:
-                default_excluded = []
-            default_excluded = [w for w in default_excluded if w in exclude_options]
+            default_excluded = [
+                w for w in params0["remove_wells"] or [] if w in exclude_options
+            ]
 
             remove_wells = st.multiselect(
                 "Exclude wells",
@@ -664,7 +460,6 @@ def ui_preprocessing_params(ss):
                 show_controls=True,
                 controls_disabled=blank_well_count <= 1,
                 show_grid=False,
-                grid_height=plate_grid_height,
                 grid_aspect_ratio=plate_grid_aspect_ratio,
             )
 
@@ -682,29 +477,45 @@ def ui_preprocessing_params(ss):
                     show_caption=False,
                     show_controls=False,
                     show_grid=True,
-                    grid_height=plate_grid_height,
                     grid_aspect_ratio=plate_grid_aspect_ratio,
                 )
             else:
-                render_plate_table(
-                    key="empty",
-                    plate_map=None,
-                    grid_height=plate_grid_height,
-                    grid_aspect_ratio=plate_grid_aspect_ratio,
+                # Read-only empty plate until a file is imported
+                plate_painter(
+                    rows=fmt.rows,
+                    cols=fmt.cols,
+                    cells=[
+                        [
+                            {
+                                "label": f"{r}{c}",
+                                "color": "#e5e7eb",
+                                "tooltip": f"{r}{c} · No uploaded files",
+                            }
+                            for c in fmt.cols
+                        ]
+                        for r in fmt.rows
+                    ],
+                    group_colors={},
+                    active_group="",
+                    default_group="",
+                    key="uploads_preview::empty",
+                    on_paint=lambda: None,
+                    aspect_ratio=plate_grid_aspect_ratio,
+                    interactive=False,
                 )
 
     # Store selected values in session state for access by other fragments
-    if plate_id:
-        ss.setdefault("step3_params", {})
-        ss["step3_params"]["plate_id"] = plate_id
-        ss["step3_params"]["time_unit"] = time_unit
-        ss["step3_params"]["pl_cm"] = pl_cm
-        ss["step3_params"]["blank"] = blank
-        ss["step3_params"]["blank_wells"] = painted_blanks
-        ss["step3_params"]["blank_group_assignments"] = blank_group_assignments
-        ss["step3_params"]["clip_time_series"] = clip_time_series
-        ss["step3_params"]["remove_wells"] = remove_wells
-        ss["step3_params"]["params0"] = params0
+    ss["step3_params"] = dict(
+        plate_id=plate_id,
+        time_unit=time_unit,
+        pl_cm=pl_cm,
+        blank=blank,
+        blank_wells=painted_blanks,
+        blank_group_assignments=blank_group_assignments,
+        clip_time_series=clip_time_series,
+        remove_wells=remove_wells,
+        params0=params0,
+    )
 
 
 # Helper functions for analysis parameters
@@ -727,9 +538,9 @@ def _get_model_display_name(model_code: str) -> str:
 
 def _ui_model_selection(params0: dict):
     """Render model family and growth method selection UI."""
-    stored_method = params0.get("growth_method", "Sliding Window")
-    stored_model_family = params0.get("model_family", "mechanistic")
-    stored_model_type = params0.get("model_type", "mech_logistic")
+    stored_method = params0["growth_method"]
+    stored_model_family = params0["model_family"]
+    stored_model_type = params0["model_type"]
 
     st.caption("Select the model family and growth descriptor method:")
 
@@ -820,11 +631,11 @@ def _ui_model_selection(params0: dict):
     return model_family_internal, growth_method, model_type, param_col
 
 
-def ui_model_params(growth_method: str, params0: dict, step4_prev: dict, param_col):
+def ui_model_params(growth_method: str, params0: dict, param_col):
     """Render method-specific parameters (window size or spline mode)."""
     smooth = "auto"
     try:
-        manual_smooth = float(params0.get("smooth", "auto"))
+        manual_smooth = float(params0["smooth"])
     except (TypeError, ValueError):
         manual_smooth = 0.0
 
@@ -880,7 +691,7 @@ def ui_qc_filters(params0: dict):
         "Minimum data points",
         1,
         100,
-        int(params0.get("min_data_points", 5)),
+        int(params0["min_data_points"]),
         1,
         help="Minimum number of valid data points required for growth analysis",
     )
@@ -888,7 +699,7 @@ def ui_qc_filters(params0: dict):
         "Minimum signal:noise",
         0.1,
         100.0,
-        float(params0.get("min_signal_to_noise", 1.0)),
+        float(params0["min_signal_to_noise"]),
         0.1,
         help="Minimum ratio of maximum to minimum OD600 signal (filters out flat curves)",
     )
@@ -896,7 +707,7 @@ def ui_qc_filters(params0: dict):
         "Minimum OD increase",
         0.0,
         None,
-        float(params0.get("min_od_increase", 0.05)),
+        float(params0["min_od_increase"]),
         0.001,
         format="%.3f",
         help="Minimum absolute increase in OD600 from baseline to be considered growth",
@@ -905,7 +716,7 @@ def ui_qc_filters(params0: dict):
         "Minimum growth rate",
         0.0,
         None,
-        float(params0.get("min_growth_rate", 0.001)),
+        float(params0["min_growth_rate"]),
         0.0001,
         format="%.4f",
         help="Minimum specific growth rate to be considered growth (wells with lower rates are marked as no growth)",
@@ -988,23 +799,18 @@ _PLATE_SPECIFIC_KEYS = frozenset(
 @st.fragment
 def ui_analysis_params(ss):
     """Fragment for analysis parameters and the analyse button."""
-    step3_params = ss.get("step3_params", {})
-    step4_prev = ss.get("step4_params", {})
-    params0 = step3_params.get("params0", DEFAULT_PARAMS)
-
     # Step 2 (preprocessing) values needed to build the final params dict
-    plate_id = step3_params.get("plate_id")
-    time_unit = step3_params.get("time_unit", "hours")
-    pl_cm = step3_params.get("pl_cm", 0.42)
-    blank = step3_params.get("blank", True)
-    blank_group_assignments = step3_params.get("blank_group_assignments", False)
-    outlier_detection = bool(params0.get("outlier_detection", False))
-    try:
-        outlier_threshold = float(params0.get("outlier_threshold", 3.5))
-    except (TypeError, ValueError):
-        outlier_threshold = 3.5
-    clip_time_series = step3_params.get("clip_time_series", (None, None))
-    remove_wells = step3_params.get("remove_wells", False)
+    step3_params = ss["step3_params"]
+    params0 = step3_params["params0"]
+    plate_id = step3_params["plate_id"]
+    time_unit = step3_params["time_unit"]
+    pl_cm = step3_params["pl_cm"]
+    blank = step3_params["blank"]
+    blank_group_assignments = step3_params["blank_group_assignments"]
+    outlier_detection = bool(params0["outlier_detection"])
+    outlier_threshold = float(params0["outlier_threshold"])
+    clip_time_series = step3_params["clip_time_series"]
+    remove_wells = step3_params["remove_wells"]
 
     with st.container(border=True, key="card_uploads_5"):
         st.header("Step 3. Select the curve fitting parameters")
@@ -1019,9 +825,7 @@ def ui_analysis_params(ss):
             )
 
             # Method-specific parameters
-            window_points, smooth = ui_model_params(
-                growth_method, params0, step4_prev, param_col
-            )
+            window_points, smooth = ui_model_params(growth_method, params0, param_col)
 
             st.write("")
             st.write("")
@@ -1031,22 +835,8 @@ def ui_analysis_params(ss):
                 ui_qc_filters(params0)
             )
 
-            # Outlier removal before fitting, and the fit-quality flag shown as
-            # red outlines on the plate overview
-            out_cb_col, out_thr_col, _, rmse_col = st.columns(
-                4, vertical_alignment="bottom"
-            )
-            rmse_threshold = rmse_col.number_input(
-                "Fit flag threshold",
-                min_value=0.0,
-                value=float(params0.get("rmse_threshold", 0.05)),
-                step=0.01,
-                format="%.3f",
-                help=(
-                    "Wells whose fit RMSE divided by their OD increase exceeds this "
-                    "are flagged as poor fits (red outline on the plate overview)."
-                ),
-            )
+            # Outlier removal before fitting
+            out_cb_col, out_thr_col, _, _ = st.columns(4, vertical_alignment="bottom")
             outlier_detection = out_cb_col.checkbox(
                 "Remove outliers",
                 value=outlier_detection,
@@ -1087,17 +877,16 @@ def ui_analysis_params(ss):
         remove_wells=remove_wells,
         blank=bool(blank),
         blank_group_assignments=blank_group_assignments if blank else False,
-        blank_wells=list(step3_params.get("blank_wells", [])) if blank else [],
+        blank_wells=list(step3_params["blank_wells"]) if blank else [],
         outlier_detection=bool(outlier_detection),
         outlier_threshold=float(outlier_threshold),
         window_points=int(window_points),
-        sg_window=int(params0.get("sg_window", 15)),
-        sg_poly=int(params0.get("sg_poly", 2)),
+        sg_window=int(params0["sg_window"]),
+        sg_poly=int(params0["sg_poly"]),
         min_data_points=int(min_data_points),
         min_signal_to_noise=float(min_signal_to_noise),
         min_od_increase=float(min_od_increase),
         min_growth_rate=float(min_growth_rate),
-        rmse_threshold=float(rmse_threshold),
         growth_method=str(growth_method),
         model_family=str(model_family),
         model_type=str(model_type),
@@ -1175,17 +964,3 @@ def ui_analysis_params(ss):
                 with st.spinner("Analysing plate...", show_time=True, width="stretch"):
                     ss.plates[plate_id] = analyse_plate(rec)
                 st.toast(f"Analysed {plate_id}", duration="infinite")
-
-    # Store analysis parameters in session state
-    ss.setdefault("step4_params", {})
-    ss["step4_params"]["window_points"] = window_points
-    ss["step4_params"]["min_data_points"] = min_data_points
-    ss["step4_params"]["min_signal_to_noise"] = min_signal_to_noise
-    ss["step4_params"]["min_od_increase"] = min_od_increase
-    ss["step4_params"]["min_growth_rate"] = min_growth_rate
-    ss["step4_params"]["rmse_threshold"] = rmse_threshold
-    ss["step4_params"]["growth_method"] = growth_method
-    ss["step4_params"]["model_family"] = model_family
-    ss["step4_params"]["model_type"] = model_type
-    ss["step4_params"]["phase_boundary_method"] = "tangent"
-    ss["step4_params"]["smooth"] = smooth

@@ -25,7 +25,7 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
     Returns:
         (fit_stats_dict, fit_result_dict | None)
     """
-    growth_method = params.get("growth_method", "Sliding Window")
+    growth_method = params["growth_method"]
     # Phase boundaries always use the tangent at μmax (models with a fitted lag
     # time use it as the exponential phase start)
     phase_boundary_method = "tangent"
@@ -35,8 +35,7 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
     # Method selection (parametric, spline, or sliding window)
     if growth_method == "Model Fitting":
         # Use parametric model fitting
-        model_type = params.get("model_type", "mech_logistic")
-        fit_result = fit_parametric(t_arr, y_arr, method=model_type)
+        fit_result = fit_parametric(t_arr, y_arr, method=params["model_type"])
         if fit_result is not None:
             fit = extract_stats(
                 fit_result,
@@ -52,7 +51,7 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
 
     elif growth_method == "Spline":
         # Use non-parametric spline method
-        smooth = params.get("smooth", "auto")
+        smooth = params["smooth"]
         # growthcurves only accepts "auto" (REML) or a positive number, so anything
         # else (e.g. legacy "fast"/"slow", or a manual value of 0) maps to "auto"
         try:
@@ -82,7 +81,7 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
             t_arr,
             y_arr,
             method="sliding_window",
-            window_points=int(params.get("window_points", 5)),
+            window_points=int(params["window_points"]),
         )
         if fit_result is not None:
             fit = extract_stats(
@@ -91,7 +90,7 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
                 y_arr,
                 phase_boundary_method=phase_boundary_method,
             )
-            fit["window_points"] = int(params.get("window_points", 5))
+            fit["window_points"] = int(params["window_points"])
         else:
             fit = bad_fit_stats()
 
@@ -100,10 +99,10 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
         t_arr,
         y_arr,
         growth_stats=fit,
-        min_data_points=int(params.get("min_data_points", 5)),
-        min_signal_to_noise=float(params.get("min_signal_to_noise", 1.0)),
-        min_od_increase=float(params.get("min_od_increase", 0.05)),
-        min_growth_rate=float(params.get("min_growth_rate", 0.001)),
+        min_data_points=int(params["min_data_points"]),
+        min_signal_to_noise=float(params["min_signal_to_noise"]),
+        min_od_increase=float(params["min_od_increase"]),
+        min_growth_rate=float(params["min_growth_rate"]),
     )
 
     if no_growth_result["is_no_growth"]:

@@ -31,24 +31,12 @@ def _build_growth_stats_long_df(
 
     rows: list[dict] = []
 
-    for sid in sel_ids:
-        pid, nm = sid.split("||", 1)
-        p = plates.get(pid) or {}
-        name_map = p.get("name") or {}
-        gs_map = p.get("growth_stats") or {}
-
-        for well, well_nm in name_map.items():
-            if (well_nm or "").strip() != nm:
-                continue
-            gs = gs_map.get(well) or {}
-            if not gs:
-                continue
-
+    selected = {tuple(sid.split("||", 1)) for sid in sel_ids}
+    for pid, _, well, nm, _, gs in _iter_wells(plates):
+        nm = nm.strip()
+        if gs and (pid, nm) in selected:
             for m in metrics:
-                if m == "mu_max":
-                    raw_val = gs.get("mu_max", gs.get("specific_growth_rate", np.nan))
-                else:
-                    raw_val = gs.get(m, np.nan)
+                raw_val = gs.get(m, np.nan)
                 try:
                     val = float(raw_val)
                 except (TypeError, ValueError):
@@ -96,20 +84,13 @@ def _build_growth_curves_long_df(
     """
     if not sample_names:
         return pd.DataFrame(
-            columns=[
-                "Sample Name",
-                "Time",
-                "baseline_corrected",
-                "plate",
-                "well",
-                "key",
-            ]
+            columns=["Sample Name", "Time", "baseline_corrected", "plate", "well"]
         )
 
     sel = set(sample_names)
     rows = []
 
-    for pid, p, well, nm, d, key in _iter_wells(plates):
+    for pid, p, well, nm, d, _ in _iter_wells(plates):
         nm = (nm or "").strip()
         if nm in {"", "False"} or nm.upper().startswith("BLANK"):
             continue
@@ -135,21 +116,13 @@ def _build_growth_curves_long_df(
                     "baseline_corrected": y,
                     "plate": pid,
                     "well": well,
-                    "key": key,
                 }
             )
         )
 
     if not rows:
         return pd.DataFrame(
-            columns=[
-                "Sample Name",
-                "Time",
-                "baseline_corrected",
-                "plate",
-                "well",
-                "key",
-            ]
+            columns=["Sample Name", "Time", "baseline_corrected", "plate", "well"]
         )
 
     return pd.concat(rows, ignore_index=True)
