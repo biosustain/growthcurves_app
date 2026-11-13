@@ -398,8 +398,10 @@ def _render_method_visualization_upload_style(
             r"(1+\nu)^{1+1/\nu}(\lambda-t)}{A}\right)\right)^{-1/\nu}"
         )
         st.caption(
-            "Generalized logistic with shape parameter ν. Most flexible - use when "
-            "other models don't fit well. " + phenom_params + ", ν = shape parameter. "
+            "Generalized logistic with shape parameter nu. Most flexible - use when "
+            "other models don't fit well. "
+            + phenom_params
+            + ", nu = shape parameter. "
             + figure_note
         )
 

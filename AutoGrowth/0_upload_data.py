@@ -417,10 +417,10 @@ with st.container(border=True):
         with filter_columns[1]:
             apply_smoothing = st.checkbox(
                 "Apply rolling median smoothing",
-                value=st.session_state.get("apply_smoothing", True),
+                value=False,
+                disabled=True,
                 help=(
-                    "If checked, a rolling median is applied to smooth the OD data "
-                    "before growth rate estimation."
+                    "Rolling median smoothing is disabled; aggregation and optional filling still apply."
                 ),
             )
             quantile_max = st.slider(
@@ -831,7 +831,7 @@ if button_pressed:
     st.session_state["masked"] = masked
     st.session_state["df_wide_raw_od_data_filtered"] = df_wide_raw_od_data_filtered
 
-    # now only apply NA filling for rolling median data?
+    # Fill missing values for the processed-data view when requested.
     if fill_na:
         mask_na = df_wide_raw_od_data_filtered.isna()
         msg += f"- Filling {mask_na.sum().sum():,d} missing OD readings.\n"
@@ -902,7 +902,10 @@ if button_pressed:
         st.error(f"Unknown reactor type: {reactor_type}")
         st.stop()
 
+    # Retain the shared session key for downstream pages and saved sessions.
     st.session_state["df_rolling"] = df_rolling
+
+    st.session_state.pop("select_data_original_df_rolling", None)
 
     st.session_state["rolling_window_smoothing"] = int(rolling_window_smoothing)
     st.session_state["rolling_window_iqr"] = int(rolling_window_iqr)
@@ -957,7 +960,7 @@ if st.session_state.get("debug_mode", False):
             )
         if st.session_state.get("df_rolling") is not None:
             st.write(
-                "Rolling OD data:",
+                "Processed OD data:",
                 st.session_state["df_rolling"],
             )
         if st.session_state.get("df_od_adjustment") is not None:

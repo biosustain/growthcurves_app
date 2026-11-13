@@ -9,9 +9,7 @@ keys that are reactor-specific (reactor parameter): `batch_rp_{param}__{reactor}
 
 Global/shared input data:
 - USE_ELAPSED_TIME_FOR_PLOTS: Global plotting mode flag.
-- df_rolling: Rolling-median OD dataframe shown in the plots.
-- df_wide_raw_od_data_filtered, od_adjustment_coefficients: filtered raw readings and
-  OD adjustments; fitted at the timepoints kept in df_rolling (build_fit_frame).
+- df_rolling: Processed OD dataframe used for plotting and fitting.
 - start_time: Experiment start timestamp used in plot labels/download text.
 - DEFAULT_XLABEL_TPS: Default x-axis label for timepoint mode.
 - DEFAULT_XLABEL_REL: Default x-axis label for elapsed-time mode.
@@ -409,14 +407,6 @@ if no_data_uploaded:
     show_warning_to_upload_data()
     st.stop()
 
-# fit the data, not its rolling median, at the timepoints kept in it
-df_fit = growthcurve_app.analyze.build_fit_frame(
-    df_rolling,
-    st.session_state["df_wide_raw_od_data_filtered"],
-    start_time,
-    st.session_state.get("od_adjustment_coefficients", {}),
-)
-
 ### Form ###############################################################################
 # default batch analysis options (globally set)
 with st.container(border=True):
@@ -455,7 +445,7 @@ with st.container(border=True):
 ### Analyse data after form submission    ##############################################
 if run_analysis and not no_data_uploaded:
     stats_df_new, fit_cache = growthcurve_app.analyze.run_model_fitting_on_df_compat(
-        df_fit,
+        df_rolling,
         model_name=analysis_options["selected_model"],
         smooth_mode=analysis_options.get("smooth_mode", "auto"),
         window_points=analysis_options["window_points"],
@@ -593,8 +583,7 @@ with st.container(border=True):
                     type="primary",
                 )
 
-    s = df_fit[selected_reactor].dropna()  # fitted
-    s_plot = df_rolling[selected_reactor].dropna()  # shown
+    s = df_rolling[selected_reactor].dropna()
     if s.empty:
         st.warning(f"No valid data points for {selected_reactor}.")
         st.stop()
@@ -917,8 +906,8 @@ with st.container(border=True):
     st.divider()
 
     scale = "log" if log_scale else "linear"
-    t_plot = s_plot.index.to_numpy(dtype=float)
-    y_plot = s_plot.to_numpy(dtype=float)
+    t_plot = s.index.to_numpy(dtype=float)
+    y_plot = s.to_numpy(dtype=float)
     fig = gc_plot.create_base_plot(
         t_plot,
         y_plot,
@@ -1003,7 +992,7 @@ with st.container(border=True):
     selected_fit_times_map = st.session_state.get("batch_selected_fit_times", {})
     params_table = growthcurve_app.analyze.build_analysis_params_per_sample_table(
         stats_df=stats_df,
-        df_rolling=df_fit,
+        df_rolling=df_rolling,
         batch_options=batch_options,
         used_params_map=used_params_map,
         selected_fit_times_map=selected_fit_times_map,

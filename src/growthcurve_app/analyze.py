@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "get_timestamps_from_elapsed_hours",
-    "build_fit_frame",
     "load_method_notes_markdown",
     "run_model_fitting_on_df_compat",
     "build_fit_kwargs",
@@ -42,32 +41,6 @@ def get_timestamps_from_elapsed_hours(
     return start_time + pd.to_timedelta(elapsed_hours, unit=elapsed_time_unit).dt.round(
         round_to
     )
-
-
-def build_fit_frame(
-    df_rolling: pd.DataFrame,
-    df_raw: pd.DataFrame,
-    start_time: pd.Timestamp,
-    coefficients: dict,
-) -> pd.DataFrame:
-    """Return the filtered raw readings to fit, aligned to ``df_rolling``.
-
-    The rolling median is for display only: fitting it correlates the residuals and
-    biases mu_max. Keeps the timepoints and reactors left in ``df_rolling`` and applies
-    the same OD adjustments (``{reactor: (slope, intercept)}``).
-    """
-    if isinstance(df_raw.index, pd.DatetimeIndex):  # e.g. PioReactor: timestamps
-        hours = (df_raw.index - start_time).total_seconds() / 3_600
-    else:  # e.g. Chi.Bio: seconds
-        hours = df_raw.index / 3_600
-    df_fit = df_raw[df_rolling.columns].set_axis(hours)
-    # tolerance: a restored session's times can differ in the last float digit
-    df_fit = df_fit.reindex(df_rolling.index, method="nearest", tolerance=1e-6)
-    df_fit = df_fit.where(df_rolling.notna())
-    for reactor, (slope, intercept) in coefficients.items():
-        if reactor in df_fit:
-            df_fit[reactor] = df_fit[reactor] * slope + intercept
-    return df_fit
 
 
 def load_method_notes_markdown() -> str:

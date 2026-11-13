@@ -14,7 +14,7 @@ from growthcurves_options import (
 from plots import create_figure_bytes_to_download, plot_growth_data_w_peaks
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
-from growthcurve_app.analyze import build_fit_frame, build_fit_kwargs
+from growthcurve_app.analyze import build_fit_kwargs
 from growthcurve_app.turbistat import detect_peaks
 
 
@@ -394,17 +394,9 @@ xlabel = DEFAULT_XLABEL_REL
 # ? should the one with negative values removed stored globally?
 st.session_state["df_rolling_turbidostat"] = df_rolling
 
-# fit the noisy data, not its rolling median, at the timepoints kept in it
-df_fit = build_fit_frame(
-    df_rolling,
-    st.session_state["df_wide_raw_od_data_filtered"],
-    start_time,
-    st.session_state.get("od_adjustment_coefficients", {}),
-)
-
 with st.spinner(text="Fitting curves...", show_time=True):
     stats_df = _run_model_fitting_on_df_with_peaks_compat(
-        df_fit,
+        df_rolling,
         peaks,
         model_name=selected_model,
         smooth_mode=smooth_mode,
