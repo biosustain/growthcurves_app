@@ -142,12 +142,20 @@ def main():
         staging = Path(temp)
         bundle = staging / "AutoGrowth"
         runtime = bundle / "runtime"
-        python_version = WINDOWS_PYTHON_VERSION if system == "Windows" else PYTHON_VERSION
+        python_version = (
+            WINDOWS_PYTHON_VERSION if system == "Windows" else PYTHON_VERSION
+        )
         if system == "Windows":
             run(
-                "pwsh", "-NoProfile", "-NonInteractive", "-File",
+                "pwsh",
+                "-NoProfile",
+                "-NonInteractive",
+                "-File",
                 HERE / "windows_runtime.ps1",
-                "-Destination", runtime, "-Version", python_version,
+                "-Destination",
+                runtime,
+                "-Version",
+                python_version,
             )
         else:
             install = staging / "python-download"
@@ -164,7 +172,9 @@ def main():
             )
             runtimes = list(install.glob("cpython-*"))
             if len(runtimes) != 1:
-                raise RuntimeError(f"Expected exactly one Python runtime, found {runtimes}")
+                raise RuntimeError(
+                    f"Expected exactly one Python runtime, found {runtimes}"
+                )
             shutil.copytree(runtimes[0], runtime, symlinks=True)
         python = runtime / ("python.exe" if system == "Windows" else "bin/python3")
         if args.refresh_lock:
@@ -309,9 +319,15 @@ def main():
         trim_runtime(moved / "runtime")
         if system == "Windows":
             run(
-                "pwsh", "-NoProfile", "-NonInteractive", "-File",
+                "pwsh",
+                "-NoProfile",
+                "-NonInteractive",
+                "-File",
                 HERE / "windows_runtime.ps1",
-                "-Destination", moved / "runtime", "-Version", python_version,
+                "-Destination",
+                moved / "runtime",
+                "-Version",
+                python_version,
                 "-VerifyOnly",
             )
         sizes = {}
