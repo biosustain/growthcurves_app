@@ -4,7 +4,12 @@ import streamlit as st
 from ui_components import render_markdown
 
 import growthcurve_app
-from growthcurve_app.styling import green_gradient, green_navbar, red_buttons
+from growthcurve_app.styling import (
+    card_containers,
+    green_gradient,
+    green_navbar,
+    red_buttons,
+)
 
 # set the default plotly chart config to export as svg
 if not getattr(st.plotly_chart, "_svg_default", False):
@@ -56,7 +61,6 @@ def render_about():
 
 # Navigation
 raw_data = st.Page("0_upload_data.py", title="Upload Data")
-data_dashboard = st.Page("0_data_dashboard.py", title="Data Dashboard")
 growth_analysis = st.Page("1_growth_analysis.py", title="Growth Analysis")
 comparative_plots = st.Page("3_comparative_plots.py", title="Comparative Plots")
 downloads_page = st.Page("0_downloads.py", title="Downloads")
@@ -68,11 +72,10 @@ with st.sidebar:
     with st.container(border=True):
         st.markdown("#### Workflow")
         st.markdown(
-            "1. Upload and preprocess data\n"
-            "2. Review data dashboard\n"
-            "3. Run the growth analysis\n"
-            "4. Compare metrics across groups\n"
-            "5. Export downloads"
+            "1. Upload, process and review data\n"
+            "2. Run the growth analysis\n"
+            "3. Compare metrics across groups\n"
+            "4. Export downloads"
         )
     st.caption(f"AutoGrowth app v{APP_VERSION}")
     st.caption(f"growthcurve-app package v{PACKAGE_VERSION}")
@@ -92,7 +95,6 @@ with st.sidebar:
 pg = st.navigation(
     [
         raw_data,
-        data_dashboard,
         growth_analysis,
         comparative_plots,
         downloads_page,
@@ -104,5 +106,6 @@ pg = st.navigation(
 red_buttons()
 green_gradient()
 green_navbar()
+card_containers()
 
 pg.run()

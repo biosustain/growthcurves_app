@@ -96,7 +96,7 @@ st.caption(
 )
 
 # ── Step 1: Assign groups ────────────────────────────────────────────────────
-with st.container(border=True):
+with st.container(border=True, key="card_comparative_1"):
     st.subheader("Step 1. Assign Groups to Reactors")
     st.markdown(
         "Edit the **Group** column to label each reactor. "
@@ -156,7 +156,7 @@ with st.container(border=True):
     )
 
 # ── Step 2: Select metrics and plot type ─────────────────────────────────────
-with st.container(border=True):
+with st.container(border=True, key="card_comparative_2"):
     st.subheader("Step 2. Configure Plots")
 
     st.dataframe(
@@ -217,7 +217,7 @@ if ungrouped:
     )
     stats_df["Group"] = stats_df["Group"].replace("", "(ungrouped)")
 
-with st.container(border=True):
+with st.container(border=True, key="card_comparative_3"):
     st.subheader("Step 3. Comparative Plots")
     if is_turbidostat:
         st.caption(

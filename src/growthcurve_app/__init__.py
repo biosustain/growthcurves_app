@@ -17,13 +17,6 @@ __all__ = [
 ]
 
 
-def convert_seconds_to_hours(df: pd.DataFrame) -> pd.DataFrame:
-    """Convert an index of seconds to hours."""
-    df.index = df.index / 3600.0
-    df.index.name = "Elapsed time (hours)"
-    return df
-
-
 def reindex_w_relative_time(
     df: pd.DataFrame,
     start_time: pd.Timestamp = None,

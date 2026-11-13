@@ -92,8 +92,8 @@ Fit growth curves to the uploaded OD data.
    curve. Leave at *None* for batch cultures. Then set the curve analysis
    parameters and run.
 2. **Review** each curve: adjust phase boundaries, re-analyse with other
-   settings, lasso-select points to refit, mark no growth or exclude it.
-   For turbidostat runs, edit the windows above the whole-run plot.
+   settings, lasso-select points to refit or mark no growth.
+   For turbidostat runs, edit or delete the windows.
 3. **Download** the summary and the settings used.
 """
 
@@ -251,18 +251,18 @@ def _on_edit(cid):
     )
 
 
-def _on_exclude(cid):
-    ids = list(ss["analysis_curves"])
-    ss["analysis_curve"] = (
-        ids[(ids.index(cid) + 1) % len(ids)] if len(ids) > 1 else None
-    )
-    del ss["analysis_curves"][cid]
-    ss["analysis_fits"].pop(cid, None)
-
-
 def _move(step: int):
     ids = list(ss["analysis_curves"])
     ss["analysis_curve"] = ids[(ids.index(ss["analysis_curve"]) + step) % len(ids)]
+
+
+def _move_reactor(step: int):
+    """Select the first curve of the previous or next reactor."""
+    curves = ss["analysis_curves"]
+    reactors = list(dict.fromkeys(v["reactor"] for v in curves.values()))
+    cur = curves[ss["analysis_curve"]]["reactor"]
+    nxt = reactors[(reactors.index(cur) + step) % len(reactors)]
+    ss["analysis_curve"] = next(k for k, v in curves.items() if v["reactor"] == nxt)
 
 
 def _apply_dilutions(reactor: str, new: list[tuple[float, float]]):
@@ -314,9 +314,11 @@ def _on_merge(reactor: str, key: str):
     with the review settings of the windows it replaces (those of the selected
     window if it is one of them, otherwise those of the first)."""
     wins, inner = _windows(reactor)
-    i = ss[key]
-    if i is None or i >= len(inner):
+    a = ss.get(key)
+    b = ss.get(f"{key}_with_{a}")
+    if a is None or b is None or abs(a - b) != 1:
         return
+    i = min(a, b)  # the drop between windows i and i + 1
     curves = ss["analysis_curves"]
     old = [pipeline.curve_id(reactor, *w) for w in wins[i : i + 2]]
     sel = ss.get("analysis_curve")
@@ -416,16 +418,14 @@ def _on_delete(reactor: str, cid: str):
 
 
 def _window_controls(reactor: str, cid: str):
-    """Set, delete, merge or add windows, above the whole-run plot."""
+    """Set, merge or add windows, above the whole-run plot."""
     wins, inner = _windows(reactor)
     c = ss["analysis_curves"][cid]
     n = ss.get("analysis_window_edits", 0)
-    with st.container(border=True):
+    with st.container(border=True, key="card_analysis_windows"):
         t = _times(reactor)
         t0, t1 = float(t[0]), float(t[-1])
-        start_col, end_col, set_col, delete_col = st.columns(
-            [3, 3, 2, 2], vertical_alignment="bottom"
-        )
+        start_col, end_col, set_col = st.columns([3, 3, 2], vertical_alignment="bottom")
         wkey = f"analysis_window_{reactor}_{cid}_{n}"
         for col, name, value in [
             (start_col, "start", c["start"]),
@@ -452,41 +452,55 @@ def _window_controls(reactor: str, cid: str):
                 "changed windows are refitted."
             ),
         )
-        delete_col.button(
-            "Delete window",
-            key=f"{wkey}_delete",
-            width="stretch",
-            disabled=len(wins) < 2,
-            on_click=_on_delete,
-            args=(reactor, cid),
-            help=(
-                "Leave all reads of the selected window out of every fit. The other "
-                "windows are not refitted."
-            ),
-        )
         merge_col, add_col = st.columns(2, gap="large")
         with merge_col:
-            sel_col, btn_col = st.columns([3, 1], vertical_alignment="bottom")
-            # Default: the drop after the selected window (before it, if last)
-            after = [i for i, (p, _) in enumerate(inner) if p >= c["end"] - 1e-9]
-            default = (after[0] if after else len(inner) - 1) if inner else None
+            first_col, second_col, btn_col = st.columns(
+                [2, 2, 1], vertical_alignment="bottom"
+            )
             mkey = f"analysis_merge_{reactor}_{cid}_{n}"
-            sel_col.selectbox(
-                "Merge windows",
-                range(len(inner)),
-                index=default,
-                format_func=lambda i: (
-                    f"{i + 1} + {i + 2} (drop {inner[i][0]:.2f}-{inner[i][1]:.2f} h)"
+            can_merge = len(wins) > 1
+
+            def _win_label(i):
+                return f"Window {i + 1}"
+
+            # Default: the selected window
+            sel = next(
+                (
+                    i
+                    for i, w in enumerate(wins)
+                    if abs(w[0] - c["start"]) < 1e-9 and abs(w[1] - c["end"]) < 1e-9
                 ),
+                0,
+            )
+            first = first_col.selectbox(
+                "Merge window",
+                range(len(wins)),
+                index=sel if can_merge else None,
+                format_func=_win_label,
                 key=mkey,
-                disabled=not inner,
-                placeholder="No adjacent windows",
+                disabled=not can_merge,
+                placeholder="Only one window",
+            )
+            # Options: the windows adjacent to the first (after it by default)
+            nbrs = (
+                [j for j in (first + 1, first - 1) if 0 <= j < len(wins)]
+                if can_merge and first is not None
+                else []
+            )
+            second_col.selectbox(
+                "with window",
+                nbrs,
+                index=0 if nbrs else None,
+                format_func=_win_label,
+                key=f"{mkey}_with_{first}",
+                disabled=not nbrs,
+                placeholder="No adjacent window",
             )
             btn_col.button(
                 "Merge",
                 key=f"{mkey}_btn",
                 width="stretch",
-                disabled=not inner,
+                disabled=not nbrs,
                 on_click=_on_merge,
                 args=(reactor, mkey),
                 help=(
@@ -576,7 +590,7 @@ def review_and_results(df: pd.DataFrame):
                     labels[k] = f"{reactor}: Window {i}"
     label = labels.get
 
-    with st.container(border=True):
+    with st.container(border=True, key="card_analysis_2"):
         st.header("Step 2. Review Fits")
         cid = ss["analysis_curve"]
         c = curves[cid]
@@ -593,7 +607,32 @@ def review_and_results(df: pd.DataFrame):
         if dilutions is not None:
             reactor = c["reactor"]
             st.subheader(f"Whole bioreactor run: {reactor}")
-            _window_controls(reactor, cid)
+            n_reactors = len({v["reactor"] for v in curves.values()})
+            left_col, controls_col, right_col = st.columns([1, 14, 1], gap="small")
+            left_col.button(
+                "",
+                icon=":material/chevron_left:",
+                width="stretch",
+                on_click=_move_reactor,
+                args=(-1,),
+                key="analysis_prev_reactor",
+                type="primary",
+                disabled=n_reactors < 2,
+                help="Previous bioreactor",
+            )
+            with controls_col:
+                _window_controls(reactor, cid)
+            right_col.button(
+                "",
+                icon=":material/chevron_right:",
+                width="stretch",
+                on_click=_move_reactor,
+                args=(1,),
+                key="analysis_next_reactor",
+                type="primary",
+                disabled=n_reactors < 2,
+                help="Next bioreactor",
+            )
             st.plotly_chart(
                 plot_dilution_overview(
                     pipeline.reactor_series(df, reactor),
@@ -610,52 +649,54 @@ def review_and_results(df: pd.DataFrame):
             st.divider()
             st.subheader(f"Fit of {label(cid)}")
 
-        control_col, phase_col = st.columns(2, gap="large")
-        with control_col, st.container(border=True):
-            sel_col, popover_col, log_col = st.columns(
-                [2, 0.9, 0.9], vertical_alignment="bottom", gap="small"
-            )
-            with popover_col, st.popover("Annotations", width="stretch"):
-                show = {
-                    name: st.toggle(text, value=default, key=f"analysis_show_{name}")
-                    for name, text, default in [
-                        ("phase_boundaries", "Phase boundaries", True),
-                        ("umax_point", "Max growth rate point", True),
-                        ("max_od", "Max OD", True),
-                        ("baseline_od", "Baseline OD", True),
-                        ("tangent", "Tangent line at max growth", False),
-                        ("fitted_model", "Fitted model curve", True),
-                    ]
-                }
-            log_scale = log_col.toggle("Log scale", key="analysis_log_scale")
-            sel_col.caption(f"{len(curves)} curves")
-            prev_col, curve_col, next_col = st.columns(
-                [2, 4, 2], vertical_alignment="bottom"
-            )
-            prev_col.button(
-                "",
-                width="stretch",
-                on_click=_move,
-                args=(-1,),
-                key="analysis_prev",
-                shortcut="Left",
-                type="primary",
-            )
-            curve_col.selectbox(
-                "Curve", list(curves), format_func=label, key="analysis_curve"
-            )
-            next_col.button(
-                "",
-                width="stretch",
-                on_click=_move,
-                args=(1,),
-                key="analysis_next",
-                shortcut="Right",
-                type="primary",
-            )
-
-        with phase_col, st.container(border=True):
-            _review_controls(cid, t, y)
+        # Curve arrows at the far left and right of the card, as for the reactors
+        prev_col, card_col, next_col = st.columns([1, 14, 1], gap="small")
+        prev_col.button(
+            "",
+            icon=":material/chevron_left:",
+            width="stretch",
+            on_click=_move,
+            args=(-1,),
+            key="analysis_prev",
+            shortcut="Left",
+            type="primary",
+        )
+        next_col.button(
+            "",
+            icon=":material/chevron_right:",
+            width="stretch",
+            on_click=_move,
+            args=(1,),
+            key="analysis_next",
+            shortcut="Right",
+            type="primary",
+        )
+        with card_col, st.container(border=True, key="card_analysis_curve"):
+            control_col, phase_col = st.columns(2, gap="large")
+            with control_col:
+                st.selectbox(
+                    "Curve", list(curves), format_func=label, key="analysis_curve"
+                )
+                popover_col, log_col = st.columns(
+                    2, vertical_alignment="center", gap="small"
+                )
+                with popover_col, st.popover("Annotations", width="stretch"):
+                    show = {
+                        name: st.toggle(
+                            text, value=default, key=f"analysis_show_{name}"
+                        )
+                        for name, text, default in [
+                            ("phase_boundaries", "Phase boundaries", True),
+                            ("umax_point", "Max growth rate point", True),
+                            ("max_od", "Max OD", True),
+                            ("baseline_od", "Baseline OD", True),
+                            ("tangent", "Tangent line at max growth", False),
+                            ("fitted_model", "Fitted model curve", True),
+                        ]
+                    }
+                log_scale = log_col.toggle("Log scale", key="analysis_log_scale")
+            with phase_col:
+                _review_controls(cid, t, y)
 
         stats = c["stats"]
         status_col, tables_col = st.columns([2, 5])
@@ -703,7 +744,7 @@ def review_and_results(df: pd.DataFrame):
 
 
 def _review_controls(cid: str, t: np.ndarray, y: np.ndarray):
-    """Phase and max OD sliders, and the No Growth, Re-analyse and Exclude actions."""
+    """Phase and max OD sliders, and No Growth, Re-analyse and Delete window."""
     t_min, t_max = float(t.min()), float(t.max())
     y_max = float(np.nanmax(y))
     slider_col1, slider_col2 = st.columns(2)
@@ -760,14 +801,21 @@ def _review_controls(cid: str, t: np.ndarray, y: np.ndarray):
             on_click=_on_defaults,
             args=(cid,),
         )
-    col3.button(
-        "Exclude from analysis",
-        width="stretch",
-        type="tertiary",
-        key=_key("exclude", cid),
-        on_click=_on_exclude,
-        args=(cid,),
-    )
+    if ss["analysis_dilutions"] is not None:
+        reactor = ss["analysis_curves"][cid]["reactor"]
+        col3.button(
+            "Delete window",
+            width="stretch",
+            type="tertiary",
+            key=_key("delete", cid),
+            disabled=len(_windows(reactor)[0]) < 2,
+            on_click=_on_delete,
+            args=(reactor, cid),
+            help=(
+                "Leave all reads of the selected window out of every fit. The other "
+                "windows are not refitted."
+            ),
+        )
 
 
 def _plots(cid, well, t, y, log_scale, show):
@@ -801,7 +849,7 @@ def _plots(cid, well, t, y, log_scale, show):
         pad = 0.05 * (y.max() - y.min()) or 0.05 * abs(y.max()) or 0.05
         fig_main.update_yaxes(range=[y.min() - pad, y.max() + pad])
 
-    with st.container(border=True):
+    with st.container(border=True, key="card_analysis_main_plot"):
         st.plotly_chart(
             fig_main,
             key=chart_key,
@@ -811,7 +859,7 @@ def _plots(cid, well, t, y, log_scale, show):
         )
 
     for metric in ("dndt", "mu"):
-        with st.container(border=True):
+        with st.container(border=True, key=f"card_analysis_{metric}"):
             st.plotly_chart(
                 plot_derivative_metric(plate, well, metric=metric, gs=gs),
                 width="stretch",
@@ -821,7 +869,7 @@ def _plots(cid, well, t, y, log_scale, show):
 def _results(curves, options, dilutions):
     """Step 3: summary table and downloads."""
     summary = pipeline.summary_table(curves)
-    with st.container(border=True):
+    with st.container(border=True, key="card_analysis_3"):
         st.header("Step 3. Summary and Downloads")
         st.write(f"Times are hours since the start at {ss.get('start_time')}.")
         st.dataframe(summary, width="stretch")
@@ -866,7 +914,7 @@ if df_rolling is None:
 
 _keep("analysis_dilution_mode", "analysis_detection_k")
 
-with st.container(border=True):
+with st.container(border=True, key="card_analysis_1"):
     st.header("Step 1. Configure and Run Analysis")
     st.subheader("Set dilution detection")
     has_events = ss.get("turbidostat_meta_upload_bytes") is not None

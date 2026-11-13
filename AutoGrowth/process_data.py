@@ -9,8 +9,6 @@ REQUIRED_COLUMNS = {
     "Chi.Bio": ("exp_time", "od_measured"),
 }
 
-PIO_PIVOT_COLUMNS = ("timestamp_rounded", "pioreactor_unit", "od_reading")
-
 REQUIRED_COLUMNS_NAME_MAP = {
     "PioReactor": {
         # "timestamp_localtime": "timestamp",

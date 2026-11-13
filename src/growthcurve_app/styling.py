@@ -7,45 +7,70 @@ https://github.com/sambra95/TheGrowthAnalysisApp/blob/main/src/styling.py
 import streamlit as st
 
 
-# styles the selected navbar item with green background
+# styles the top navbar: items spread evenly, green active tab
 def green_navbar():
     return st.markdown(
         """
         <style>
-        /* Top navigation - selected/active page */
-        button[data-testid="stPageLink-NavLink"][aria-current="page"] {
+        /* The nav is an rc-overflow list; .rc-overflow-item is the flex child */
+        .rc-overflow-item {
+            flex: 1 !important;
+        }
+
+        [data-testid="stTopNavLink"] {
+            justify-content: center !important;
+        }
+
+        /* Tab labels, 40% larger */
+        [data-testid="stTopNavLink"] span {
+            font-size: 1.4em !important;
+        }
+
+        [data-testid="stTopNavLink"][aria-current="page"] {
             background-color: rgba(76, 175, 80, 0.25) !important;
             color: #2e7d32 !important;
             font-weight: 600 !important;
             border-bottom: 2px solid #66BB6A !important;
         }
 
-        /* Top navigation - hover effect */
-        button[data-testid="stPageLink-NavLink"]:hover {
+        [data-testid="stTopNavLink"]:hover {
             background-color: rgba(76, 175, 80, 0.12) !important;
         }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
-        /* Navigation container styling */
-        [data-testid="stSidebarNav"],
-        [data-testid="stNavigation"] {
-            background-color: transparent !important;
+
+# light tint on bordered section containers (st.container(key="card_..."))
+def card_containers():
+    return st.markdown(
+        """
+        <style>
+        [class*="st-key-card_"] {
+            background-color: #F8F9FB;
         }
-
-        /* Alternative selectors for active navigation */
-        ul[role="tablist"] button[aria-selected="true"],
-        div[role="tab"][aria-selected="true"] {
-            background-color: rgba(76, 175, 80, 0.25) !important;
-            color: #2e7d32 !important;
-            font-weight: 600 !important;
-            border-bottom: 2px solid #66BB6A !important;
+        /* Inputs inside a tinted container stay white so they stand out */
+        [class*="st-key-card_"] [data-baseweb="select"] > div,
+        [class*="st-key-card_"] [data-baseweb="input"],
+        [class*="st-key-card_"] [data-baseweb="base-input"],
+        [class*="st-key-card_"] [data-baseweb="textarea"],
+        [class*="st-key-card_"] [data-testid="stNumberInputContainer"],
+        [class*="st-key-card_"] [data-testid="stNumberInputStepDown"],
+        [class*="st-key-card_"] [data-testid="stNumberInputStepUp"],
+        [class*="st-key-card_"] [data-testid="stFileUploaderDropzone"],
+        [class*="st-key-card_"] input,
+        [class*="st-key-card_"] [data-testid="stSelectbox"] div:has(> input) {
+            background-color: #FFFFFF !important;
         }
-
-        /* Navigation link active state */
-        a[aria-current="page"],
-        a[data-active="true"] {
-            background-color: rgba(76, 175, 80, 0.25) !important;
-            color: #2e7d32 !important;
-            font-weight: 600 !important;
+        /* Reactor and curve prev/next buttons fill the height of the card beside them */
+        [class*="st-key-analysis_prev"],
+        [class*="st-key-analysis_next"],
+        [class*="st-key-analysis_prev"] :has(button),
+        [class*="st-key-analysis_next"] :has(button),
+        [class*="st-key-analysis_prev"] button,
+        [class*="st-key-analysis_next"] button {
+            height: 100%;
         }
         </style>
         """,
@@ -105,32 +130,6 @@ def red_buttons():
     )
 
 
-# styles plate status grid tables
-def plate_table_style():
-    return st.markdown(
-        """
-        <style>
-        .plate-wrap { width: 100%; overflow: hidden; }
-        table.plate {
-            width: 100%;
-            table-layout: fixed;
-            border-collapse: collapse;
-            font-size: 18px;
-        }
-        table.plate th, table.plate td {
-            border: 1px solid rgba(49,51,63,0.2);
-            text-align: center;
-            padding: 6px 0;
-            line-height: 1.2;
-        }
-        table.plate th { font-weight: 600; }
-        table.plate th.row { width: 2.2rem; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 # styles growth parameter calculations table
 def growth_param_table_style():
     return st.markdown(
@@ -142,31 +141,6 @@ def growth_param_table_style():
         .growth-param-table th, .growth-param-table td {
             text-align: center !important;
             vertical-align: middle !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-# styles data frames and AG Grid tables with larger font sizes
-def data_grid_style():
-    return st.markdown(
-        """
-        <style>
-        div[data-testid="stDataFrame"] table {
-            font-size: 16px !important;
-        }
-        div[data-testid="stDataFrame"] thead th {
-            font-size: 17px !important;
-            font-weight: bold !important;
-        }
-        .ag-theme-streamlit .ag-cell {
-            font-size: 16px !important;
-        }
-        .ag-theme-streamlit .ag-header-cell-text {
-            font-size: 17px !important;
-            font-weight: bold !important;
         }
         </style>
         """,

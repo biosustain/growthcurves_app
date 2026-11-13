@@ -1,11 +1,6 @@
 import streamlit as st
 
 
-def is_data_available(key):
-    """Check that pioreactor data was uploaded."""
-    return st.session_state.get(key) is not None
-
-
 def page_header_with_help(title: str, help_text: str):
     """Render a standard title row with a right-aligned help popover."""
     title_col, popover_col = st.columns([9, 2])
@@ -20,7 +15,7 @@ def page_header_with_help(title: str, help_text: str):
 
 def show_warning_to_upload_data():
     """Show a warning message to upload data."""
-    with st.container(border=True):
+    with st.container(border=True, key="card_upload_warning"):
         col1, col2 = st.columns([4, 1], vertical_alignment="bottom")
         with col1:
             st.warning("No data available for analysis. Please upload data first.")

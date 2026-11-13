@@ -220,7 +220,7 @@ def render_export_session_state_ui(
     exclude_keys: frozenset[str] | None = None,
 ) -> None:
     """Render reusable session snapshot export UI on downloads pages."""
-    with st.container(border=True):
+    with st.container(border=True, key="card_export_session"):
         st.header("Export Session State")
         st.caption(
             "Download a ZIP snapshot of the full app state. "
@@ -275,8 +275,6 @@ def ui_overview_table(
     summaries.
     """
     st.subheader("Overview")
-
-    # st.write(st.session_state)
 
     rows = []
     for key, val in st.session_state.items():

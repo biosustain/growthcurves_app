@@ -14,7 +14,8 @@
 | variable in session_state    | description                                                                                               |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------- |
 | df_wide_raw_od_data_filtered | Raw bioscatter data in wide data format with timestamp_rounded as index                                   |
-| df_rolling                   | Processed data with aggregation, filtering, optional filling, and OD adjustments; elapsed time (hours) as index |
+| df_processed                 | Processed data with aggregation, filtering, optional filling, and OD adjustments; elapsed time (hours) as index |
+| df_rolling                   | `df_processed` in the time windows of Step 2 (reads outside set to NaN); used by the analysis |
 
 - the analysis uses `df_rolling`, which is in wide data format with elapsed time in
   hours as index. Plotting and fitting use the same processed values, including
