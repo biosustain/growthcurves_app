@@ -14,6 +14,7 @@ from growthcurves_options import (
 from plots import create_figure_bytes_to_download, plot_growth_data_w_peaks
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
+from growthcurve_app import convert_to_elapsed_hours
 from growthcurve_app.analyze import build_fit_kwargs
 from growthcurve_app.turbistat import detect_peaks
 
@@ -71,9 +72,11 @@ def _run_model_fitting_on_df_with_peaks_compat(
         peaks_col = peaks[col] if col in peaks else pd.Series(dtype="object")
         peak_timepoints = [s.index.min(), *peaks_col.dropna().index, s.index.max()]
 
-        for start_seg, end_seg in itertools.pairwise(peak_timepoints):
+        for i, (start_seg, end_seg) in enumerate(itertools.pairwise(peak_timepoints)):
             fit_start = time.time()
-            s_segment = s.loc[start_seg:end_seg]
+            # half-open: the reading at a cut ends the previous interval only
+            after_start = s.index >= start_seg if i == 0 else s.index > start_seg
+            s_segment = s.loc[after_start & (s.index <= end_seg)]
             t_segment = s_segment.index.to_numpy()
             n_segment = s_segment.to_numpy()
             key = (col, f"{start_seg:.2f}-{end_seg:.2f}")
@@ -232,7 +235,8 @@ with st.container(border=True):
 with st.container(border=True):
     st.header("Step 2. Configure and Run Analysis")
     analysis_options = render_upload_style_analysis_options(
-        min_fold_default=st.session_state.get("turbidostat_min_fold", 1.5),
+        # intervals between dilutions only grow in example ~1.3-1.8 fold
+        min_fold_default=st.session_state.get("turbidostat_min_fold", 1.1),
     )
     # remember the value when navigating to other pages
     st.session_state["turbidostat_min_fold"] = analysis_options["min_fold"]
@@ -391,9 +395,23 @@ xlabel = DEFAULT_XLABEL_REL
 # ? should the one with negative values removed stored globally?
 st.session_state["df_rolling_turbidostat"] = df_rolling
 
+# fit the noisy data, not its rolling median, at the timepoints kept in it
+# reapplies the OD adjustment and reindexes timestamps to elapsed hours if needed.
+df_fit = st.session_state["df_wide_raw_od_data_filtered"]
+if isinstance(df_fit.index, pd.DatetimeIndex):  # e.g. PioReactor: timestamps
+    df_fit = df_fit.set_axis(convert_to_elapsed_hours(df_fit.index, start_time))
+else:  # e.g. Chi.Bio: seconds
+    df_fit = df_fit.set_axis(df_fit.index / 3600.0)
+# tolerance: a restored session's times can differ in the last float digit
+df_fit = df_fit.reindex(df_rolling.index, method="nearest", tolerance=1e-6)
+df_fit = df_fit.where(df_rolling.notna())
+coefficients = st.session_state.get("od_adjustment_coefficients", {})
+for reactor, (slope, intercept) in coefficients.items():  # as applied to df_rolling
+    df_fit[reactor] = df_fit[reactor] * slope + intercept
+
 with st.spinner(text="Fitting curves...", show_time=True):
     stats_df = _run_model_fitting_on_df_with_peaks_compat(
-        df_rolling,
+        df_fit,
         peaks,
         model_name=selected_model,
         smooth_mode=smooth_mode,
