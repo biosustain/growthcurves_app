@@ -117,7 +117,9 @@ if apply_stats:
 
 # Build the shared curves DF only if needed
 if apply_mean or apply_reps:
-    curves_df = _build_growth_curves_long_df(plates, sel_sample_names)
+    curves_df = _build_growth_curves_long_df(
+        plates, sel_sample_names, fitted=curves["use_fitted"]
+    )
 
 if apply_mean:
     with st.container(border=True, key="card_viz_mean"):

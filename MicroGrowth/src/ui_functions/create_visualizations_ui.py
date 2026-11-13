@@ -192,7 +192,21 @@ def ui_growth_curves_controls_container(
 ) -> dict:
     """Render growth curves controls and return form selections."""
     with st.container(border=True, key="card_create_visualizations_3"):
-        st.header("Step 2. option b) Plot Growth Curves")
+        h, tg = st.columns([3, 1], vertical_alignment="center")
+        h.header("Step 2. option b) Plot Growth Curves")
+        fit_key = "growth_curves_use_fitted"
+        st.session_state.setdefault(
+            f"{fit_key}_widget", st.session_state.get(fit_key, False)
+        )
+        use_fitted = tg.toggle(
+            (
+                "Plotting models"
+                if st.session_state[f"{fit_key}_widget"]
+                else "Plotting data"
+            ),
+            key=f"{fit_key}_widget",
+        )
+        st.session_state[fit_key] = use_fitted
 
         # Persist across navigation via a plain key; re-seed widget when absent.
         tw_key = "growth_curves_time_window"
@@ -226,4 +240,5 @@ def ui_growth_curves_controls_container(
         "curves_t0": curves_t0,
         "curves_t1": curves_t1,
         "curves_ordered": curves_ordered,
+        "use_fitted": use_fitted,
     }
