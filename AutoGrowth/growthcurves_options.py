@@ -1,9 +1,26 @@
+"""Curve fitting parameter selection, matching the MicroGrowth upload page.
+
+Layout, options, equations and explanatory figures follow
+``MicroGrowth/src/ui_functions/uploads_ui.py`` (Step 3) and
+``MicroGrowth/src/ui_functions/ui_components.py``. AutoGrowth additionally exposes
+the minimum fold change used inside the fit (needed for turbidostat intervals).
+"""
+
 from pathlib import Path
 
 import streamlit as st
 from growthcurves.models import MODEL_REGISTRY
 
-INFO_PLOTS_DIR = Path(__file__).resolve().parent.parent / "info_plots"
+from growthcurve_app.styling import growth_param_table_style
+
+# Same explanatory figures as MicroGrowth
+INFO_PLOTS_DIR = Path(__file__).resolve().parent.parent / "MicroGrowth" / "info_plots"
+
+# Phase boundaries always use the tangent to the growth curve at μmax, as in
+# MicroGrowth. The cutoffs are only used by the threshold method and are kept in
+# the returned options so downstream code and saved sessions keep working.
+PHASE_BOUNDARY_METHOD = "tangent"
+UNUSED_CUTOFF = 0.5
 
 
 def _get_model_display_name(model_code: str) -> str:
@@ -26,7 +43,7 @@ def _get_model_display_name(model_code: str) -> str:
 def _ui_model_selection_upload_style():
     """Render model family and growth method selectors."""
     st.caption("Select the model family and growth descriptor method:")
-    family_col, method_col, param_col = st.columns(3)
+    family_col, method_col, param_col = st.columns([0.8, 0.8, 1.4])
 
     with family_col:
         model_family = st.selectbox(
@@ -111,49 +128,66 @@ def _ui_method_params_upload_style(
     window_step_size=1,
     default_smooth=0.0,
 ):
-    """Render method-specific controls.
+    """Render method-specific controls (window size or spline mode).
 
     Returns ``(window_points, smooth)`` where ``smooth`` is ``"auto"`` or a positive
     float, as accepted by ``growthcurves.non_parametric.fit_spline``.
     """
     window_points = default_window_points
     smooth = "auto"
+    try:
+        manual_smooth = float(default_smooth)
+    except (TypeError, ValueError):
+        manual_smooth = 0.0
+
     with param_col:
         if growth_method == "Sliding Window":
             window_points = st.number_input(
-                "Min. window size (points)",
+                "Minimum window size (points)",
                 min_window_points,
                 max_window_points,
                 default_window_points,
                 window_step_size,
                 help=(
-                    "Minimum number of consecutive data points per window. Windows "
-                    "of every length from this value up to half the curve are "
-                    "fitted to ln(OD); the best-supported slope gives the maximum "
-                    "growth rate."
+                    "Minimum number of consecutive data points per sliding window; "
+                    "the window length adapts to the noise in the data"
                 ),
                 key="batch_window_points",
             )
-        elif growth_method == "Spline":
-            smooth_value = st.number_input(
-                "Spline smoothing (0 = automatic)",
-                min_value=0.0,
-                value=float(default_smooth),
-                step=0.1,
-                format="%g",
+
+        if growth_method == "Spline":
+            mode_col, smooth_col = st.columns(2)
+            mode = mode_col.radio(
+                "Spline fitting mode",
+                options=["auto", "manual"],
+                index=1 if manual_smooth > 0 else 0,
+                horizontal=True,
+                format_func=lambda v: v.capitalize(),
                 help=(
-                    "0 chooses the smoothing automatically (REML, recommended). "
-                    "A positive value fixes the smoothing: larger values give a "
-                    "smoother spline."
+                    "Auto chooses the smoothing by REML. "
+                    "Manual lets you set the smoothing factor (λ) directly."
                 ),
-                key="batch_spline_smooth",
+                key="batch_spline_mode",
             )
-            smooth = smooth_value if smooth_value > 0 else "auto"
+            if mode == "manual":
+                smooth_value = smooth_col.number_input(
+                    "Smoothing factor (λ)",
+                    min_value=0.0,
+                    value=manual_smooth if manual_smooth > 0 else 1.0,
+                    step=0.01,
+                    format="%.4f",
+                    help=(
+                        "Spline smoothing factor λ, relative to the data. "
+                        "Larger values produce a smoother (less wiggly) spline. "
+                        "0 uses Auto."
+                    ),
+                    key="batch_spline_smooth",
+                )
+                smooth = float(smooth_value) if smooth_value > 0 else "auto"
 
     return int(window_points), smooth
 
 
-# ! to update to save last set state
 def _ui_qc_filters_upload_style(
     min_data_points_default=5,
     min_signal_to_noise_default=1.0,
@@ -162,8 +196,8 @@ def _ui_qc_filters_upload_style(
     min_fold_default=1.5,
 ):
     """Render quality control filter inputs."""
-    st.caption("Wells failing these criteria will be marked as no growth")
-    col1, col2, col3, col4, col5 = st.columns(5)
+    st.caption("Curves failing these criteria will be marked as no growth")
+    col1, col2, col3, col4 = st.columns(4)
 
     min_data_points = col1.number_input(
         "Minimum data points",
@@ -171,7 +205,7 @@ def _ui_qc_filters_upload_style(
         100,
         min_data_points_default,
         1,
-        help="Minimum number of valid data points required for growth analysis.",
+        help="Minimum number of valid data points required for growth analysis",
         key="batch_min_data_points",
     )
     min_signal_to_noise = col2.number_input(
@@ -180,7 +214,7 @@ def _ui_qc_filters_upload_style(
         100.0,
         min_signal_to_noise_default,
         0.1,
-        help="Minimum ratio of maximum to minimum OD signal.",
+        help="Minimum ratio of maximum to minimum OD signal (filters out flat curves)",
         key="batch_min_signal_to_noise",
     )
     min_od_increase = col3.number_input(
@@ -190,7 +224,7 @@ def _ui_qc_filters_upload_style(
         min_od_increase_default,
         0.001,
         format="%.3f",
-        help="Minimum absolute increase in OD to be considered growth.",
+        help="Minimum absolute increase in OD from baseline to be considered growth",
         key="batch_min_od_increase",
     )
     min_growth_rate = col4.number_input(
@@ -200,11 +234,16 @@ def _ui_qc_filters_upload_style(
         min_growth_rate_default,
         0.0001,
         format="%.4f",
-        help="Minimum specific growth rate to be considered growth.",
+        help=(
+            "Minimum specific growth rate to be considered growth (wells with lower "
+            "rates are marked as no growth)"
+        ),
         key="batch_min_growth_rate",
     )
 
-    min_fold = col5.number_input(
+    # AutoGrowth only: fold-rise check applied inside the fit
+    fold_col, _, _, _ = st.columns(4, vertical_alignment="bottom")
+    min_fold = fold_col.number_input(
         "Minimum fold change",
         1.0,
         None,
@@ -228,158 +267,153 @@ def _ui_qc_filters_upload_style(
     )
 
 
-def _ui_phase_boundaries_upload_style():
-    """Render phase boundary controls."""
-    st.caption(
-        "Phase boundaries define when the lag phase ends and when the exponential phase ends."
-    )
-    phase_boundary_method = st.selectbox(
-        "Phase boundary calculation",
-        options=["threshold", "tangent"],
-        index=1,
-        format_func=lambda v: v.capitalize(),
-        help=(
-            "Threshold uses fractions of μ_max; tangent uses the tangent at μ_max "
-            "to estimate exponential phase bounds."
-        ),
-        key="batch_phase_boundary_method",
-    )
-    lag_cutoff = st.number_input(
-        "Lag phase cutoff",
-        0.01,
-        0.5,
-        0.5,
-        0.01,
-        format="%.2f",
-        disabled=phase_boundary_method == "tangent",
-        help="Fraction of maximum growth rate used to define lag phase end.",
-        key="batch_lag_cutoff",
-    )
-    exp_cutoff = st.number_input(
-        "Exponential phase cutoff",
-        0.01,
-        0.5,
-        0.5,
-        0.01,
-        format="%.2f",
-        disabled=phase_boundary_method == "tangent",
-        help="Fraction of maximum growth rate used to define exponential phase end.",
-        key="batch_exp_cutoff",
-    )
-
-    return phase_boundary_method, float(lag_cutoff), float(exp_cutoff)
-
-
-def _info_plot_url(filename: str) -> str:
+def _info_plot_path(filename: str) -> str:
     """Build local file path for info-plot assets."""
     return str(INFO_PLOTS_DIR / filename)
+
+
+def _equation(expr: str):
+    """Render a method equation slightly larger than Streamlit's default."""
+    st.latex(r"\large " + expr)
 
 
 def _render_method_visualization_upload_style(
     growth_method: str, model_type: str | None = None
 ) -> str | None:
-    """Render method visualization text and return image URL."""
+    """Render the description and equation of a growth method.
+
+    Mechanistic model equations and parameter names follow growthcurves.models.
+
+    Returns:
+        Path to the explanatory figure, or None
+    """
+    figure_note = (
+        "The figure shows how μ_max, the exponential phase (start and end) and max OD "
+        "are calculated with this method."
+    )
     if growth_method == "Sliding Window":
         st.markdown("**Sliding Window Method** (Currently Selected)")
-        st.latex(r"\ln(N(t)) = N_0 + b\,t")
+        _equation(r"\ln(N(t)) = N_0 + b\,t")
         st.caption(
-            "Local linear regression in moving windows. Calculates growth rate from nearby data points without assuming global curve shape."
+            "Local linear regression in moving windows. Calculates growth rate from "
+            "nearby data points without assuming global curve shape. " + figure_note
         )
-        return _info_plot_url("sliding_window.png")
+        return _info_plot_path("sliding_window.png")
 
     if growth_method == "Spline":
         st.markdown("**Spline Method** (Currently Selected)")
-        st.latex(r"\ln(N(t)) = \mathrm{spline}(t)")
+        _equation(r"\ln(N(t)) = \mathrm{spline}(t)")
         st.caption(
-            "Fitted smoothed curve without underlying shape assumptions. Flexible non-parametric approach."
+            "Fitted smoothed curve without underlying shape assumptions. Flexible "
+            "non-parametric approach. " + figure_note
         )
-        return _info_plot_url("spline.png")
+        return _info_plot_path("spline.png")
 
-    if growth_method == "Model Fitting" and model_type:
-        if "logistic" in str(model_type):
-            st.markdown("**Logistic** (Currently Selected)")
-            if str(model_type).startswith("mech_"):
-                st.latex(r"\frac{dN}{dt} = \mu\left(1-\frac{N}{K}\right)N")
-            else:
-                st.latex(
-                    r"\ln\!\left(\frac{N(t)}{N_0}\right) = \frac{A}{1+\exp\!\left(\frac{4\mu_{\max}(\lambda-t)}{A}+2\right)}"
-                )
-            st.caption(
-                "Classic S-shaped curve with symmetric inflection point. Most commonly used for microbial growth."
-            )
-        elif "gompertz" in str(model_type):
-            model_name = (
-                "Modified Gompertz" if "modified" in str(model_type) else "Gompertz"
-            )
-            st.markdown(f"**{model_name}** (Currently Selected)")
-            if str(model_type).startswith("mech_"):
-                st.latex(r"\frac{dN}{dt} = \mu\log\!\left(\frac{K}{N}\right)N")
-            elif "modified" in str(model_type):
-                st.latex(
-                    r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\exp\!\left[-\exp\!\left(\frac{\mu_{\max}\exp(1)(\lambda-t)}{A}+1\right)\right]+A\exp\!\left(\alpha(t-t_{\mathrm{shift}})\right)"
-                )
-            else:
-                st.latex(
-                    r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\exp\!\left[-\exp\!\left(\frac{\mu_{\max}\exp(1)(\lambda-t)}{A}+1\right)\right]"
-                )
-            st.caption(
-                "Modified Gompertz with baseline offset y₀ and amplitude A = K − y₀. Asymmetric S-curve; often fits bacterial growth better than logistic."
-            )
-        elif "richards" in str(model_type):
-            st.markdown("**Richards** (Currently Selected)")
-            if str(model_type).startswith("mech_"):
-                st.latex(
-                    r"\frac{dN}{dt}=\mu\left(1-\left(\frac{N}{K}\right)^{\beta}\right)N"
-                )
-            else:
-                st.latex(
-                    r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\left(1+\nu\exp\!\left(1+\nu+\frac{\mu_{\max}(1+\nu)^{1/\nu}(\lambda-t)}{A}\right)\right)^{-1/\nu}"
-                )
-            st.caption(
-                "Generalized logistic with shape parameter ν. Most flexible - use when other models don't fit well."
-            )
-        elif "baranyi" in str(model_type):
-            st.markdown("**Baranyi-Roberts** (Currently Selected)")
-            st.latex(
-                r"\frac{dN}{dt}=\mu\frac{\exp(\mu t)}{\exp(\lambda)-1+\exp(\mu t)}\left(1-\frac{N}{K}\right)N"
-            )
-            st.caption(
-                "Baranyi-Roberts model with physiological lag parameter λ. Mechanistic model accounting for cell adaptation during lag phase."
-            )
+    if growth_method != "Model Fitting" or not model_type:
+        return None
 
-        return _info_plot_url(f"{model_type}.png")
-
-    return None
-
-
-def _render_phase_boundary_visualization_upload_style(
-    phase_boundary_method: str,
-) -> str | None:
-    """Render phase-boundary text and return image URL."""
-    if phase_boundary_method == "threshold":
-        st.markdown("**Threshold Method** (Currently Selected)")
-        st.latex(r"\text{Lag end: } \mu(t) > f_{\text{lag}} \cdot \mu_{\max}")
+    mechanistic = {
+        "mech_logistic": (
+            "Logistic",
+            r"N(t) = \frac{K}{1 + \left(\frac{K}{N_0} - 1\right)e^{-\mu t}}",
+            "Classic S-shaped curve with symmetric inflection point.",
+            "",
+        ),
+        "mech_gompertz": (
+            "Gompertz",
+            r"N(t) = K \exp\!\left(\ln\!\left(\frac{N_0}{K}\right)e^{-\mu t}\right)",
+            "Gompertz asymmetric S-curve.",
+            "",
+        ),
+        "mech_richards": (
+            "Richards",
+            r"N(t) = K\left(1 + \left(\left(\frac{K}{N_0}\right)^{\beta} - 1\right)"
+            r"e^{-\beta\mu t}\right)^{-1/\beta}",
+            "Generalized logistic with shape parameter β. Most flexible - use when "
+            "other models don't fit well.",
+            ", β = shape parameter",
+        ),
+        "mech_baranyi": (
+            "Baranyi-Roberts",
+            # Package closed form; the adjusted time simplified exactly:
+            # ln(1 + q0 e^{μt}) - ln(1 + q0) with q0 = 1/(e^{h0} - 1)
+            # = ln(e^{μt} + e^{h0} - 1) - h0
+            r"N(t) = \frac{K}{1 + \left(\frac{K}{N_0} - 1\right)e^{-\mu a(t)}}, \quad "
+            r"\mu a(t) = \ln\!\left(e^{\mu t} + e^{h_0} - 1\right) - h_0",
+            "Mechanistic model accounting for cell adaptation during lag phase.",
+            ", h₀ = dimensionless lag parameter",
+        ),
+    }
+    if model_type in mechanistic:
+        name, solution, description, extra = mechanistic[model_type]
+        st.markdown(f"**{name}** (Currently Selected)")
+        _equation(solution)
         st.caption(
-            "Uses threshold fractions of μ_max to identify phase transitions. Adjustable sensitivity via cutoff parameters."
+            f"{description} Parameters: μ = intrinsic growth rate (h⁻¹), "
+            f"K = carrying capacity (max OD), N₀ = initial population at t = 0{extra}. "
+            + figure_note
         )
-        return _info_plot_url("threshold_demo.png")
+        return _info_plot_path(f"{model_type}.png")
 
-    st.markdown("**Tangent Method** (Currently Selected)")
-    st.latex(r"\text{Tangent at } \mu_{\max} \text{ intersects baseline and plateau}")
-    st.caption(
-        "Geometric definition based on tangent line at maximum growth rate. No arbitrary thresholds required."
+    # Parameters shared by all phenomenological models (growthcurves.models)
+    phenom_params = (
+        "Parameters: N₀ = initial OD (fitted), A = maximum increase in ln(N) "
+        "(amplitude), μ_max = maximum specific growth rate (h⁻¹), λ = lag time (h)"
     )
-    return _info_plot_url("tangent_demo.png")
+    if model_type == "phenom_logistic":
+        st.markdown("**Logistic** (Currently Selected)")
+        _equation(
+            r"\ln N(t) = \ln N_0 + \frac{A}{1+\exp\!\left(\frac{4\mu_{\max}}{A}"
+            r"(\lambda-t)+2\right)}"
+        )
+        st.caption(
+            "Classic S-shaped curve with symmetric inflection point. "
+            + phenom_params
+            + ". "
+            + figure_note
+        )
+    elif model_type == "phenom_gompertz_modified":
+        st.markdown("**Modified Gompertz** (Currently Selected)")
+        _equation(
+            r"\ln N(t) = \ln N_0 + A\exp\!\left[-\exp\!\left(\frac{\mu_{\max}\,e\,"
+            r"(\lambda-t)}{A}+1\right)\right]+A\exp\!\left(\alpha(t-t_{\mathrm{shift}})"
+            r"\right)"
+        )
+        st.caption(
+            "Modified Gompertz asymmetric S-curve for diphasic growth. "
+            + phenom_params
+            + ", α = rate of the second growth phase (h⁻¹), "
+            "t_shift = time shift of the second growth phase (h). " + figure_note
+        )
+    elif model_type == "phenom_gompertz":
+        st.markdown("**Gompertz** (Currently Selected)")
+        _equation(
+            r"\ln N(t) = \ln N_0 + A\exp\!\left[-\exp\!\left(\frac{\mu_{\max}\,e\,"
+            r"(\lambda-t)}{A}+1\right)\right]"
+        )
+        st.caption("Gompertz asymmetric S-curve. " + phenom_params + ". " + figure_note)
+    elif model_type == "phenom_richards":
+        st.markdown("**Richards** (Currently Selected)")
+        _equation(
+            r"\ln N(t) = \ln N_0 + A\left(1+\nu\exp\!\left(1+\nu+\frac{\mu_{\max}"
+            r"(1+\nu)^{1+1/\nu}(\lambda-t)}{A}\right)\right)^{-1/\nu}"
+        )
+        st.caption(
+            "Generalized logistic with shape parameter nu. Most flexible - use when "
+            "other models don't fit well. "
+            + phenom_params
+            + ", nu = shape parameter. "
+            + figure_note
+        )
+
+    return _info_plot_path(f"{model_type}.png")
 
 
 def render_parameter_calculation_table_upload_style(options: dict):
-    """Render a markdown table summarizing how growth parameters are calculated."""
+    """Render a table summarizing how growth parameters are calculated."""
     growth_method = options.get("growth_method")
     model_type = options.get("model_type")
     model_family = options.get("model_family")
-    phase_boundary_method = options.get("phase_boundary_method")
-    lag_cutoff = float(options.get("lag_cutoff", 0.5))
-    exp_cutoff = float(options.get("exp_cutoff", 0.5))
 
     if growth_method == "Model Fitting":
         mu_max_calc = "μ<sub>max</sub>"
@@ -389,26 +423,22 @@ def render_parameter_calculation_table_upload_style(options: dict):
         max_od_calc = "Maximum raw OD"
         if growth_method == "Sliding Window":
             mu_max_calc = "b"
-            model_rmse_calc = "RMSE over the selected sliding window"
+            model_rmse_calc = "RMSE (OD) of the μ<sub>max</sub> window line"
         else:
             mu_max_calc = "Max spline derivative"
-            model_rmse_calc = "RMSE over spline fit window (log phase)"
+            model_rmse_calc = "RMSE (OD) over the spline fit range"
 
     if growth_method == "Model Fitting" and model_family == "mechanistic":
         intrinsic_calc = "Fitted intrinsic μ"
     else:
         intrinsic_calc = "N.a."
 
-    if phase_boundary_method == "threshold":
-        boundary_calc = f"Time at instantaneous μ > {lag_cutoff:.0%} μ<sub>max</sub>"
-        exp_phase_end_calc = (
-            f"Time at instantaneous μ < {exp_cutoff:.0%} μ<sub>max</sub>"
-        )
-    else:
-        boundary_calc = "μ<sub>max</sub> tangent intersect with OD baseline"
-        exp_phase_end_calc = "μ<sub>max</sub> tangent intersect with OD(max)"
+    # Phase boundaries always use the tangent to the growth curve at μmax
+    boundary_calc = "Tangent to the growth curve at μ<sub>max</sub> meets baseline OD"
+    exp_phase_end_calc = "Tangent to the growth curve at μ<sub>max</sub> meets OD(max)"
 
     if growth_method == "Model Fitting" and model_type in {
+        "mech_baranyi",
         "phenom_logistic",
         "phenom_gompertz",
         "phenom_gompertz_modified",
@@ -419,66 +449,19 @@ def render_parameter_calculation_table_upload_style(options: dict):
         lag_time_calc = boundary_calc
 
     st.caption("Your selected settings will calculate growth parameters as follows:")
+    growth_param_table_style()
     st.markdown(
         f"""
-<div class="param-calc-table">
-    <table>
-        <thead>
-            <tr>
-                <th>OD(max)</th>
-                <th>μ<sub>max</sub></th>
-                <th>Intrinsic Growth Rate</th>
-                <th>Doubling Time</th>
-                <th>Lag Time</th>
-                <th>μ<sub>max</sub> Time</th>
-                <th>μ<sub>max</sub> OD</th>
-                <th>Exponential End Time</th>
-                <th>RMSE</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>{max_od_calc}</td>
-                <td>{mu_max_calc}</td>
-                <td>{intrinsic_calc}</td>
-                <td>ln(2) / μ<sub>max</sub></td>
-                <td>{lag_time_calc}</td>
-                <td>Time at μ<sub>max</sub></td>
-                <td>OD at μ<sub>max</sub></td>
-                <td>{exp_phase_end_calc}</td>
-                <td>{model_rmse_calc}</td>
-            </tr>
-        </tbody>
-    </table>
+<div class="growth-param-table">
+
+| OD(max) | μ<sub>max</sub> | Intrinsic Growth Rate | Doubling Time | Lag Time | μ<sub>max</sub> Time | μ<sub>max</sub> OD | Exponential End Time | RMSE |
+|---|---|---|---|---|---|---|---|---|
+| {max_od_calc} | {mu_max_calc} | {intrinsic_calc} | ln(2) / μ<sub>max</sub> | {lag_time_calc} | Time at μ<sub>max</sub> | OD at μ<sub>max</sub> | {exp_phase_end_calc} | {model_rmse_calc} |
+
 </div>
-<style>
-div.param-calc-table table {{
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-    font-size: 1rem;
-}}
-div.param-calc-table th,
-div.param-calc-table td {{
-    border: 1px solid rgba(49, 51, 63, 0.2);
-    padding: 0.6rem 0.55rem;
-    text-align: center;
-    vertical-align: middle;
-    line-height: 1.35;
-}}
-div.param-calc-table th {{
-    font-size: 1.02rem;
-}}
-</style>
 """,
         unsafe_allow_html=True,
     )
-    st.markdown("""
-    For more information see the
-    [growthcurves documentation](https://growthcurves.readthedocs.io/),
-    especially the tutorial on fitting curves with growthcurves
-    [here](https://growthcurves.readthedocs.io/en/latest/tutorial/analysis.html)
-    """)
 
 
 def render_upload_style_analysis_options(
@@ -491,9 +474,11 @@ def render_upload_style_analysis_options(
     min_od_increase_default=0.05,
     min_growth_rate_default=0.001,
     min_fold_default=1.5,
+    default_smooth=0.0,
 ):
-    """Render analysis options aligned with TheGrowthAnalysisApp upload page."""
-    model_col, boundary_col = st.columns(2, gap="large")
+    """Render curve fitting options laid out as on the MicroGrowth upload page."""
+    # Two columns: model options | how the selected method calculates parameters
+    model_col, help_col = st.columns(2, gap="large")
 
     with model_col:
         model_family, growth_method, model_type, param_col = (
@@ -506,9 +491,12 @@ def render_upload_style_analysis_options(
             max_window_points,
             default_window_points,
             window_step_size,
+            default_smooth,
         )
+
         st.write("")
         st.write("")
+
         (
             min_data_points,
             min_signal_to_noise,
@@ -523,29 +511,15 @@ def render_upload_style_analysis_options(
             min_fold_default=min_fold_default,
         )
 
-    with boundary_col:
-        phase_boundary_method, lag_cutoff, exp_cutoff = (
-            _ui_phase_boundaries_upload_style()
-        )
-
-    st.write("")
-    help_model_col, help_boundary_col = st.columns(2, gap="large")
-    with help_model_col:
+        # Equation and description of the selected method
+        st.write("")
         method_image = _render_method_visualization_upload_style(
             growth_method, model_type
         )
-    with help_boundary_col:
-        boundary_image = _render_phase_boundary_visualization_upload_style(
-            phase_boundary_method
-        )
 
-    graph_col_model, graph_col_boundary = st.columns(2, gap="large")
-    with graph_col_model:
+    with help_col:
         if method_image is not None:
             st.image(method_image, width="stretch")
-    with graph_col_boundary:
-        if boundary_image is not None:
-            st.image(boundary_image, width="stretch")
 
     if growth_method == "Model Fitting":
         selected_model = model_type
@@ -557,9 +531,9 @@ def render_upload_style_analysis_options(
     return {
         "selected_model": selected_model,
         "window_points": window_points,
-        "phase_boundary_method": phase_boundary_method,
-        "lag_cutoff": lag_cutoff,
-        "exp_cutoff": exp_cutoff,
+        "phase_boundary_method": PHASE_BOUNDARY_METHOD,
+        "lag_cutoff": UNUSED_CUTOFF,
+        "exp_cutoff": UNUSED_CUTOFF,
         "min_data_points": min_data_points,
         "min_signal_to_noise": min_signal_to_noise,
         "min_od_increase": min_od_increase,

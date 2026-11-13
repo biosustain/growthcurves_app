@@ -14,11 +14,11 @@
 | variable in session_state    | description                                                                                               |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------- |
 | df_wide_raw_od_data_filtered | Raw bioscatter data in wide data format with timestamp_rounded as index                                   |
-| df_rolling                   | Median rolling based on window size selected is in wide data format with time elapsed (in hours) as index |
+| df_rolling                   | Processed data with aggregation, filtering, optional filling, and OD adjustments; elapsed time (hours) as index |
 
 - the analysis uses `df_rolling`, which is in wide data format with elapsed time in
-  hours as index, and the median rolling applied (can be potentially other methods
-  for smoothing)
+  hours as index. Plotting and fitting use the same processed values, including
+  optional forward/backward filling.
 
 ### Intermediate wide-data formats
 

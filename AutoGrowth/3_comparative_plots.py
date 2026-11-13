@@ -3,9 +3,8 @@
 Allows users to assign groups to reactors and generates interactive bar/box/violin
 plots comparing growth metrics across groups.
 
-Works with data from either:
-- Batch growth analysis (``batch_analysis_summary_df``, simple reactor index)
-- Turbidostat analysis (``batch_analysis_summary_df``, MultiIndex reactor × segment)
+Uses the curves of the Growth Analysis page: one row per reactor for batch data,
+one row per reactor × segment when the reactors were split at their dilutions.
 """
 
 import pandas as pd
@@ -13,14 +12,15 @@ import plotly.express as px
 import streamlit as st
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
+from growthcurve_app import pipeline
+
 COMPARATIVE_HELP = """
 **Comparative Plots — Workflow**
 
 Use this page to compare growth metrics across user-defined groups of reactors.
 
 **Step 1 — Ensure analysis has been run**
-Run either *Batch Growth Analysis* or *Turbidostat Growth Analysis* first so that
-summary statistics are available.
+Run the *Growth Analysis* first so that summary statistics are available.
 
 **Step 2 — Assign groups**
 Edit the table below to assign a group label to each reactor (or reactor × window
@@ -56,18 +56,18 @@ PLOT_TYPES = ["bar", "box", "violin", "strip"]
 page_header_with_help("Comparative Plots", COMPARATIVE_HELP)
 
 # ── Session state guard ──────────────────────────────────────────────────────
-stats_df_raw: pd.DataFrame | None = st.session_state.get("batch_analysis_summary_df")
+curves = st.session_state.get("analysis_curves")
 
-if stats_df_raw is None:
-    st.info(
-        "No analysis results found. "
-        "Run **Batch Growth Analysis** or **Turbidostat Growth Analysis** first."
-    )
+if not curves:
+    st.info("No analysis results found. Run the **Growth Analysis** first.")
     show_warning_to_upload_data()
     st.stop()
 
 # ── Detect analysis type and build a flat working copy ───────────────────────
-is_turbidostat = isinstance(stats_df_raw.index, pd.MultiIndex)
+stats_df_raw = pipeline.summary_table(curves)
+is_turbidostat = st.session_state.get("analysis_dilutions") is not None
+if not is_turbidostat:
+    stats_df_raw = stats_df_raw.droplevel("segment")
 
 if is_turbidostat:
     # Reset MultiIndex (reactor, segment) into columns so we can work flat.
