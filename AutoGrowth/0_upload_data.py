@@ -51,7 +51,7 @@ def callback_clear_raw_data():
 
 def apply_linear_adjustments(
     df_rolling: pd.DataFrame, adjustment_table: pd.DataFrame
-) -> tuple[pd.DataFrame, list[str], dict[str, tuple[float, float]]]:
+) -> tuple[pd.DataFrame, list[str]]:
     required_columns = {"reactor", "od"}
     missing_columns = required_columns - set(adjustment_table.columns)
     if missing_columns:
@@ -61,7 +61,6 @@ def apply_linear_adjustments(
         )
 
     warnings = []
-    coefficients = {}  # reactor: (slope, intercept)
     adjusted = df_rolling.copy()
     table = adjustment_table.loc[:, ["reactor", "od"]].dropna(subset=["reactor"])
 
@@ -94,9 +93,8 @@ def apply_linear_adjustments(
         slope = (target_end - target_start) / (original_end - original_start)
         intercept = target_start - slope * original_start
         adjusted[reactor] = adjusted[reactor] * slope + intercept
-        coefficients[reactor] = (slope, intercept)
 
-    return adjusted, warnings, coefficients
+    return adjusted, warnings
 
 
 # region: UI components for upload page
@@ -417,10 +415,10 @@ with st.container(border=True):
         with filter_columns[1]:
             apply_smoothing = st.checkbox(
                 "Apply rolling median smoothing",
-                value=st.session_state.get("apply_smoothing", True),
+                value=False,
+                disabled=True,
                 help=(
-                    "If checked, a rolling median is applied to smooth the OD data "
-                    "before growth rate estimation."
+                    "Rolling median smoothing is disabled; aggregation and optional filling still apply."
                 ),
             )
             quantile_max = st.slider(
@@ -831,7 +829,7 @@ if button_pressed:
     st.session_state["masked"] = masked
     st.session_state["df_wide_raw_od_data_filtered"] = df_wide_raw_od_data_filtered
 
-    # now only apply NA filling for rolling median data?
+    # Fill missing values for the processed-data view when requested.
     if fill_na:
         mask_na = df_wide_raw_od_data_filtered.isna()
         msg += f"- Filling {mask_na.sum().sum():,d} missing OD readings.\n"
@@ -857,7 +855,6 @@ if button_pressed:
         msg += "- Smoothing disabled; using filtered data directly.\n"
 
     # ? Should it not be possible to be run twice in a single session?
-    st.session_state["od_adjustment_coefficients"] = {}
     if od_adjustment_upload is not None:
         if st.session_state.get("is_df_rolling_adjusted"):
             st.warning(
@@ -866,7 +863,7 @@ if button_pressed:
             )
         df_adjustments = read_od_adjustment_table(od_adjustment_upload)
         try:
-            df_rolling, adjustment_warnings, coefficients = apply_linear_adjustments(
+            df_rolling, adjustment_warnings = apply_linear_adjustments(
                 df_rolling, df_adjustments
             )
         except KeyError as e:
@@ -879,8 +876,6 @@ if button_pressed:
         st.session_state["is_df_rolling_adjusted"] = True
         st.session_state["df_rolling"] = df_rolling
         st.session_state["df_od_adjustment"] = df_adjustments
-        # also applied to the 60 s data fitted on the turbidostat page
-        st.session_state["od_adjustment_coefficients"] = coefficients
         msg += "- Applied OD adjustments based on uploaded adjustment table.\n"
         if adjustment_warnings:
             msg += "- OD adjustments applied with the following warnings:\n"
@@ -902,7 +897,10 @@ if button_pressed:
         st.error(f"Unknown reactor type: {reactor_type}")
         st.stop()
 
+    # Retain the shared session key for downstream pages and saved sessions.
     st.session_state["df_rolling"] = df_rolling
+
+    st.session_state.pop("select_data_original_df_rolling", None)
 
     st.session_state["rolling_window_smoothing"] = int(rolling_window_smoothing)
     st.session_state["rolling_window_iqr"] = int(rolling_window_iqr)
@@ -957,7 +955,7 @@ if st.session_state.get("debug_mode", False):
             )
         if st.session_state.get("df_rolling") is not None:
             st.write(
-                "Rolling OD data:",
+                "Processed OD data:",
                 st.session_state["df_rolling"],
             )
         if st.session_state.get("df_od_adjustment") is not None:

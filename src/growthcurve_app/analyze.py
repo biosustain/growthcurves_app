@@ -202,21 +202,23 @@ def match_selected_times(
     *,
     time_tolerance: float = 0.01,
 ) -> np.ndarray:
-    """Return indices in all_t matching selected_times within tolerance."""
+    """Return sorted unique indices in all_t matching selected_times.
+
+    Tolerance capped at >half the smallest sampling interval, meaning each
+    selected time matches only its own point.
+    """
     if all_t.size == 0 or selected_times.size == 0:
         return np.array([], dtype=int)
 
-    matched = []
-    seen = set()
-    for sel_t in selected_times:
-        hits = np.where(np.abs(all_t - sel_t) < time_tolerance)[0]
-        if len(hits) == 0:
-            continue
-        idx = int(hits[0])
-        if idx not in seen:
-            matched.append(idx)
-            seen.add(idx)
-    return np.asarray(matched, dtype=int)
+    order = np.argsort(all_t)
+    t_sorted = all_t[order]
+    steps = np.diff(t_sorted)
+    steps = steps[steps > 0]
+    tol = min(time_tolerance, steps.min() / 2) if steps.size else time_tolerance
+
+    pos = np.searchsorted(t_sorted, selected_times - tol).clip(max=t_sorted.size - 1)
+    hit = np.abs(t_sorted[pos] - selected_times) < tol
+    return np.unique(order[pos[hit]])
 
 
 def collect_selected_series(
