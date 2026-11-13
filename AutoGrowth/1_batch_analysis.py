@@ -9,7 +9,7 @@ keys that are reactor-specific (reactor parameter): `batch_rp_{param}__{reactor}
 
 Global/shared input data:
 - USE_ELAPSED_TIME_FOR_PLOTS: Global plotting mode flag.
-- df_rolling: Rolling-median OD dataframe used as analysis input.
+- df_rolling: Processed OD dataframe used for plotting and fitting.
 - start_time: Experiment start timestamp used in plot labels/download text.
 - DEFAULT_XLABEL_TPS: Default x-axis label for timepoint mode.
 - DEFAULT_XLABEL_REL: Default x-axis label for elapsed-time mode.
@@ -432,6 +432,9 @@ with st.container(border=True):
         ),
         min_fold_default=st.session_state["batch_analysis_options"].get(
             "min_fold", 1.5
+        ),
+        default_smooth=growthcurve_app.analyze.smooth_to_number(
+            st.session_state["batch_analysis_options"].get("smooth_mode", "auto")
         ),
     )
     render_parameter_calculation_table_upload_style(analysis_options)
@@ -903,17 +906,19 @@ with st.container(border=True):
     st.divider()
 
     scale = "log" if log_scale else "linear"
+    t_plot = s.index.to_numpy(dtype=float)
+    y_plot = s.to_numpy(dtype=float)
     fig = gc_plot.create_base_plot(
-        t_all,
-        y_all,
+        t_plot,
+        y_plot,
         scale=scale,
         xlabel=DEFAULT_XLABEL_REL + f" since start at {start_time}",
         marker_opacity=0.3,
     )
     fig = growthcurve_app.analyze.overlay_selected_points(
         fig,
-        t_all,
-        y_all,
+        t_plot,
+        y_plot,
         selected_fit_times,
         scale=scale,
     )
