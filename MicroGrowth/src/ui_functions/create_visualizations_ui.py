@@ -17,6 +17,16 @@ def _persistent_selectbox(container, label, options, store_key):
     return value
 
 
+def _persistent_toggle(container, store_key, on_label, off_label):
+    """Toggle that survives page navigation; its label shows the current state."""
+    wkey = f"{store_key}_widget"
+    st.session_state.setdefault(wkey, st.session_state.get(store_key, False))
+    label = on_label if st.session_state[wkey] else off_label
+    value = container.toggle(label, key=wkey)
+    st.session_state[store_key] = value
+    return value
+
+
 def _persistent_sortable(order_key, label, values, sig_extra=None):
     """Drag-sortable list whose order survives navigation; empty values keep the order."""
     sig_key = f"{order_key}_sig"
@@ -146,7 +156,10 @@ def ui_growth_stats_controls_container(has_split: bool, sel_opt: pd.DataFrame) -
             x_choices += ["Strain", "Condition"]
             group_choices += ["Strain", "Condition"]
 
-        cA, cB = st.columns([1, 1])
+        cA, cB, cC = st.columns([2, 2, 1], vertical_alignment="center")
+        log_y = _persistent_toggle(
+            cC, "growth_stats_log_y", "log y-axis", "Linear y-axis"
+        )
         x_col = _persistent_selectbox(
             cA, "X-axis column", x_choices, "growth_stats_x_col"
         )
@@ -183,6 +196,7 @@ def ui_growth_stats_controls_container(has_split: bool, sel_opt: pd.DataFrame) -
         "legend_col": legend_col,
         "x_ordered": x_ordered,
         "legend_ordered": legend_ordered,
+        "log_y": log_y,
     }
 
 
@@ -192,21 +206,14 @@ def ui_growth_curves_controls_container(
 ) -> dict:
     """Render growth curves controls and return form selections."""
     with st.container(border=True, key="card_create_visualizations_3"):
-        h, tg = st.columns([3, 1], vertical_alignment="center")
-        h.header("Step 2. option b) Plot Growth Curves")
-        fit_key = "growth_curves_use_fitted"
-        st.session_state.setdefault(
-            f"{fit_key}_widget", st.session_state.get(fit_key, False)
+        st.header("Step 2. option b) Plot Growth Curves")
+        sc, fc, lc = st.columns([4, 1, 1], vertical_alignment="center")
+        use_fitted = _persistent_toggle(
+            fc, "growth_curves_use_fitted", "Plotting models", "Plotting data"
         )
-        use_fitted = tg.toggle(
-            (
-                "Plotting models"
-                if st.session_state[f"{fit_key}_widget"]
-                else "Plotting data"
-            ),
-            key=f"{fit_key}_widget",
+        ln_y = _persistent_toggle(
+            lc, "growth_curves_ln_y", "log y-axis", "Linear y-axis"
         )
-        st.session_state[fit_key] = use_fitted
 
         # Persist across navigation via a plain key; re-seed widget when absent.
         tw_key = "growth_curves_time_window"
@@ -215,7 +222,7 @@ def ui_growth_curves_controls_container(
         lo0 = min(max(float(lo0), 0.0), max_t)
         hi0 = min(max(float(hi0), lo0), max_t)
         st.session_state.setdefault(tw_wkey, (lo0, hi0))
-        curves_t0, curves_t1 = st.slider(
+        curves_t0, curves_t1 = sc.slider(
             "Mean/replicates plot time window (hours)",
             0.0,
             max_t,
@@ -241,4 +248,5 @@ def ui_growth_curves_controls_container(
         "curves_t1": curves_t1,
         "curves_ordered": curves_ordered,
         "use_fitted": use_fitted,
+        "ln_y": ln_y,
     }
