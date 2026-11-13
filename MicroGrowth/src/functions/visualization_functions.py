@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+from growthcurves.plot import prepare_fitted_curve
 from src.functions.common import _iter_wells
 
 
@@ -73,8 +74,14 @@ def _unique_preserve_order(seq):
     return out
 
 
-def _build_growth_curves_long_df(plates: dict, sample_names: list[str]) -> pd.DataFrame:
-    """Return a long DataFrame for mean/replicate curve plots."""
+def _build_growth_curves_long_df(
+    plates: dict, sample_names: list[str], fitted: bool = False
+) -> pd.DataFrame:
+    """Return a long DataFrame for mean/replicate curve plots.
+
+    If fitted, OD is each well's fitted model evaluated at its data time points
+    (NaN outside the fitted window; wells without a fit are skipped).
+    """
     if not sample_names:
         return pd.DataFrame(
             columns=["Sample Name", "Time", "baseline_corrected", "plate", "well"]
@@ -83,7 +90,7 @@ def _build_growth_curves_long_df(plates: dict, sample_names: list[str]) -> pd.Da
     sel = set(sample_names)
     rows = []
 
-    for pid, _, well, nm, d, _ in _iter_wells(plates):
+    for pid, p, well, nm, d, _ in _iter_wells(plates):
         nm = (nm or "").strip()
         if nm in {"", "False"} or nm.upper().startswith("BLANK"):
             continue
@@ -92,12 +99,21 @@ def _build_growth_curves_long_df(plates: dict, sample_names: list[str]) -> pd.Da
         if d is None or d.empty:
             continue
 
+        y = d["baseline_corrected"]
+        if fitted:
+            curve = prepare_fitted_curve((p.get("fit_parameters") or {}).get(well))
+            if curve is None:
+                continue
+            y = pd.Series(
+                np.interp(d["Time"], *curve, left=np.nan, right=np.nan), index=d.index
+            )
+
         rows.append(
             pd.DataFrame(
                 {
                     "Sample Name": nm,
                     "Time": d["Time"],
-                    "baseline_corrected": d["baseline_corrected"],
+                    "baseline_corrected": y,
                     "plate": pid,
                     "well": well,
                 }
