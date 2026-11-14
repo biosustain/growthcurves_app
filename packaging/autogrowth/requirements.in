@@ -1,0 +1,13 @@
+# AutoGrowth runtime only; keep Excel engines used by uploads/downloads.
+streamlit==1.66.1  # server_runner uses this version's internal Server API
+numpy
+pandas
+scipy
+matplotlib
+plotly
+growthcurves
+openpyxl
+xlrd
+
+# Native OS webview; no bundled Chromium or Qt.
+pywebview>=6,<7
