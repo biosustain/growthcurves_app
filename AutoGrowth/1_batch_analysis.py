@@ -431,7 +431,7 @@ with st.container(border=True):
             "min_growth_rate", 0.01
         ),
         min_fold_default=st.session_state["batch_analysis_options"].get(
-            "min_fold", 1.5
+            "min_fold", 1.1
         ),
         default_smooth=growthcurve_app.analyze.smooth_to_number(
             st.session_state["batch_analysis_options"].get("smooth_mode", "auto")
