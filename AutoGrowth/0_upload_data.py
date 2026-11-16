@@ -40,6 +40,10 @@ def callback_clear_raw_data():
     st.session_state["df_raw_od_data"] = None
     st.session_state["df_wide_raw_od_data"] = None
     st.session_state["df_wide_raw_od_data_filtered"] = None
+    st.session_state["df_rolling"] = None
+    st.session_state.pop("df_rolling_turbidostat", None)
+    st.session_state.pop("select_data_original_df_rolling", None)
+    st.session_state.pop("is_df_rolling_adjusted", None)
     st.session_state["masked"] = None
     st.session_state["upload_processing_summary_msg"] = None
     # reset time windows axis and data
