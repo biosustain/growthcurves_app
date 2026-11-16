@@ -235,7 +235,7 @@ with st.container(border=True):
     st.header("Step 2. Configure and Run Analysis")
     analysis_options = render_upload_style_analysis_options(
         # intervals between dilutions only grow in example ~1.3-1.8 fold
-       min_fold_default =st.session_state.get("turbidostat_min_fold", 1.1),
+        min_fold_default=st.session_state.get("turbidostat_min_fold", 1.1),
     )
     # remember the value when navigating to other pages
     st.session_state["turbidostat_min_fold"] = analysis_options["min_fold_default"]
