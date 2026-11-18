@@ -92,9 +92,8 @@ signing for the AutoGrowth launcher and installer remains separate work.
 
 WebView2 is checked in the per-user and machine registries. If missing, the installer
 runs Microsoft's signed bootstrapper. This step requires internet. An offline WebView2
-installer variant is not implemented. Windows compilation, installer execution, WebView2
-detection, and Job Object behavior must still be validated on Windows; macOS results do
-not validate those code paths.
+installer variant is not implemented. Installer execution on a clean Windows machine,
+including installation of WebView2 when absent, remains a release check.
 
 ## Running and stopping
 
@@ -111,7 +110,10 @@ adapter that schedules `Server.stop()` on its asyncio loop. A 12-second supervis
 deadline kills a stuck server; a separate 15-second server watchdog handles loss of the
 supervisor. Unix process groups and Windows kill-on-close Job Objects contain
 descendants. Only app-owned processes are targeted. The server waits for assignment to
-its Windows Job Object before importing application code.
+its Windows Job Object before importing application code. On Windows the server reads
+the shutdown pipe on a private file descriptor and redirects standard input to NUL.
+This lets native scientific libraries inspect standard input during their first import
+without waiting on the supervisor.
 
 This uses multiple processes from **one Python installation**, not extra environments or
 training runners. The adapter uses Streamlit's internal Server API, so Streamlit is
@@ -158,7 +160,9 @@ libraries account for most of it.
 
 The builder checks imports and application smoke tests after relocation to a path with
 spaces and with developer tools removed from PATH. Native builds also run the subprocess
-lifecycle tests. Run them separately with the bundled Python:
+lifecycle tests. These open a real Streamlit WebSocket session and check that the Upload
+Data page renders while the supervisor holds the shutdown pipe open. Run the test
+scripts separately with the bundled Python:
 
 ```sh
 /path/to/payload/runtime/bin/python3 -s -B packaging/autogrowth/verify.py /path/to/payload
@@ -174,8 +178,8 @@ graceful cases also check the server's shutdown marker.
 The native upload page was visually inspected; close confirmation, Cancel, confirmed
 close, Cmd+Q, native SIGTERM, and forced GUI termination were exercised. A relocated
 native launcher also passed readiness and shutdown with a restricted PATH. File
-dialogs/downloads, active-analysis quit, clean-machine behavior, and all Windows
-execution remain release checks. A native-session log exposed `KeyError: 0` in the
+dialogs/downloads, active-analysis quit, and clean-machine behavior remain release
+checks. A native-session log exposed `KeyError: 0` in the
 growthcurves ECOD detector with a datetime index; this path remains a release blocker.
 The existing smoke tests check execution and a representative result, not comprehensive
 numerical accuracy or visual correctness.
@@ -267,9 +271,9 @@ reported damaged-app warning has not yet been diagnosed or resolved.
 
 - Native upload/download dialogs and quit during a real analysis still need end-to-end
   validation. AppTest is not a visual check after every build.
-- Windows x64 dependencies resolved, but its launcher and installer have not been
-  compiled or exercised on Windows. Job Objects, mutex upgrade protection, WebView2
-  installation, and uninstall behavior remain unverified on that platform.
+- The Windows x64 launcher rendered the Upload Data page in WebView2, and the installer
+  compiled on Windows. Clean installs, upgrade protection, WebView2 provisioning, and
+  uninstall behavior still need an installer test.
 - The macOS arm64 wheel set requires macOS 14 or newer. Clean-machine validation,
   Developer ID signing, and notarization are not completed.
 - Quit does not save session state. Confirmation is unconditional rather than based on a

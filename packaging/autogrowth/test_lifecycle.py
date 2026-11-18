@@ -79,8 +79,43 @@ class LifecycleTests(unittest.TestCase):
     def assert_stopped(self, info):
         wait_for(lambda: port_closed(info["port"]) and not alive(info["pid"]))
 
-    def test_graceful_close(self):
+    def test_render_upload_page_and_close(self):
+        # AppTest and the health endpoint don't run the app in the supervised
+        # server with its control pipe held open.
+        from streamlit.proto.BackMsg_pb2 import BackMsg
+        from streamlit.proto.ForwardMsg_pb2 import ForwardMsg
+        from websockets.sync.client import connect
+
         info = self.start()
+        address = f'127.0.0.1:{info["port"]}'
+        request = BackMsg()
+        request.rerun_script.SetInParent()
+        saw_uploader = False
+        with connect(
+            f"ws://{address}/_stcore/stream",
+            origin=f"http://{address}",
+            subprotocols=["streamlit"],
+            proxy=None,
+        ) as session:
+            session.send(request.SerializeToString())
+            deadline = time.monotonic() + 90
+            while (remaining := deadline - time.monotonic()) > 0:
+                try:
+                    message = ForwardMsg.FromString(session.recv(timeout=remaining))
+                except TimeoutError:
+                    self.fail("The Upload Data page did not finish rendering")
+                element = message.delta.new_element
+                if element.HasField("exception"):
+                    self.fail(element.exception.message)
+                saw_uploader |= element.HasField("file_uploader")
+                if message.HasField("script_finished"):
+                    self.assertEqual(
+                        message.script_finished, ForwardMsg.FINISHED_SUCCESSFULLY
+                    )
+                    break
+            else:
+                self.fail("The Upload Data page did not finish rendering")
+        self.assertTrue(saw_uploader, "The Upload Data page did not render its uploader")
         self.service.close()
         self.assert_stopped(info)
         self.assertIn("AUTOGROWTH_GRACEFUL_STOP", self.log.read_text())

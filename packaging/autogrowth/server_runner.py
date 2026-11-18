@@ -14,8 +14,17 @@ from pathlib import Path
 
 def main():
     port, status_path = int(sys.argv[1]), Path(sys.argv[2])
+    control = sys.stdin.buffer
+    if sys.platform == "win32":
+        # A blocked read on fd 0 can deadlock OpenBLAS while it loads NumPy
+        # or SciPy and inspects standard input (numpy/numpy#24290).
+        stdin_fd = sys.stdin.fileno()
+        control = os.fdopen(os.dup(stdin_fd), "rb")
+        with open(os.devnull, "rb") as empty:
+            os.dup2(empty.fileno(), stdin_fd)
+
     # The supervisor assigns the Windows Job Object before allowing any app code.
-    if sys.stdin.buffer.readline() != b"START\n":
+    if control.readline() != b"START\n":
         return
     root = Path(__file__).resolve().parent
     os.chdir(root)
@@ -37,7 +46,7 @@ def main():
         threading.Thread(target=hard_deadline, daemon=True).start()
 
     def monitor():
-        sys.stdin.buffer.readline()  # STOP or EOF; neither is exposed to the browser.
+        control.readline()  # STOP or EOF; neither is exposed to the browser.
         request_stop()
 
     threading.Thread(target=monitor, daemon=True).start()
