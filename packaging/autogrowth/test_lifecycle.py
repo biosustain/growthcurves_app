@@ -115,7 +115,9 @@ class LifecycleTests(unittest.TestCase):
                     break
             else:
                 self.fail("The Upload Data page did not finish rendering")
-        self.assertTrue(saw_uploader, "The Upload Data page did not render its uploader")
+        self.assertTrue(
+            saw_uploader, "The Upload Data page did not render its uploader"
+        )
         self.service.close()
         self.assert_stopped(info)
         self.assertIn("AUTOGROWTH_GRACEFUL_STOP", self.log.read_text())
