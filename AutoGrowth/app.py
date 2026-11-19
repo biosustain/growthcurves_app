@@ -20,12 +20,7 @@ if not getattr(st.plotly_chart, "_svg_default", False):
 APP_VERSION = Path(__file__).with_name("VERSION").read_text(encoding="utf-8").strip()
 PACKAGE_VERSION = growthcurve_app.__version__
 
-logo_path = Path("../MicroGrowth/logo.svg")
-logo_source = (
-    str(logo_path)
-    if logo_path.exists()
-    else "https://raw.githubusercontent.com/biosustain/growthcurves_app/refs/heads/main/MicroGrowth/logo.svg"
-)
+logo_source = str(Path(__file__).with_name("logo.svg"))
 
 # General configurations
 st.set_page_config(
