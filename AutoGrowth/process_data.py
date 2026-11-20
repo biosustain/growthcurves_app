@@ -1,4 +1,5 @@
 import csv
+from numbers import Integral
 from pathlib import Path
 
 import pandas as pd
@@ -37,6 +38,66 @@ COLUMN_TYPES_PIO: dict = {
     # "angle": float,
     # "channel": float,
 }
+
+
+def apply_linear_adjustments(
+    df_rolling: pd.DataFrame,
+    adjustment_table: pd.DataFrame,
+    endpoint_window: int = DEFAULT_OD_ADJUSTMENT_WINDOW,
+) -> tuple[pd.DataFrame, list[str]]:
+    """Scale each time-ordered reactor curve using median endpoint readings.
+
+    Short curves use smaller, non-overlapping windows. The first and last
+    non-missing points are set to the targets after scaling the curve.
+    """
+    if not isinstance(endpoint_window, Integral) or endpoint_window < 1:
+        raise ValueError("The OD adjustment window must be a positive integer.")
+
+    missing_columns = {"reactor", "od"} - set(adjustment_table.columns)
+    if missing_columns:
+        raise KeyError(
+            "Adjustment table is missing columns: "
+            f"{', '.join(sorted(missing_columns))}.",
+        )
+
+    warnings = []
+    adjusted = df_rolling.copy()
+    table = adjustment_table.loc[:, ["reactor", "od"]].dropna(subset=["reactor"])
+
+    for reactor, group in table.groupby("reactor", sort=False):
+        if reactor not in df_rolling.columns:
+            warnings.append(f"Reactor '{reactor}' not found in df_rolling columns.")
+            continue
+        targets = group["od"].dropna().tolist()
+        if len(targets) < 2:
+            warnings.append(
+                f"Reactor '{reactor}' has fewer than two OD values in adjustment table."
+            )
+            continue
+
+        column = df_rolling[reactor]
+        positions = column.notna().to_numpy().nonzero()[0]
+        if len(positions) < 2:
+            warnings.append(
+                f"Reactor '{reactor}' has fewer than two available OD readings."
+            )
+            continue
+
+        window = min(endpoint_window, len(positions) // 2)
+        source_start = column.iloc[positions[:window]].median()
+        source_end = column.iloc[positions[-window:]].median()
+        if source_end == source_start:
+            warnings.append(
+                f"Reactor '{reactor}' has identical start and end median OD readings."
+            )
+            continue
+
+        target_start, target_end = targets[0], targets[-1]
+        slope = (target_end - target_start) / (source_end - source_start)
+        calibrated = target_start + (column - source_start) * slope
+        adjusted[reactor] = calibrated
+
+    return adjusted, warnings
 
 
 def maybe_aggregate_high_frequency_raw_data(
