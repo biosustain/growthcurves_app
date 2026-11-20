@@ -10,6 +10,7 @@ REQUIRED_COLUMNS = {
 }
 
 PIO_PIVOT_COLUMNS = ("timestamp_rounded", "pioreactor_unit", "od_reading")
+DEFAULT_OD_ADJUSTMENT_WINDOW = 1
 
 REQUIRED_COLUMNS_NAME_MAP = {
     "PioReactor": {

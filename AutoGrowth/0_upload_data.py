@@ -1,9 +1,13 @@
+from numbers import Integral
+
 import growthcurves as gc
 import pandas as pd
 import streamlit as st
 from process_data import (
+    DEFAULT_OD_ADJUSTMENT_WINDOW,
     REQUIRED_COLUMNS,
     REQUIRED_COLUMNS_NAME_MAP,
+    apply_linear_adjustments,
     process_chibio_data,
     process_od_pioreactor,
     read_od_adjustment_table,
@@ -50,10 +54,19 @@ def callback_clear_raw_data():
 
 
 def apply_linear_adjustments(
-    df_rolling: pd.DataFrame, adjustment_table: pd.DataFrame
+    df_rolling: pd.DataFrame,
+    adjustment_table: pd.DataFrame,
+    endpoint_window: int = DEFAULT_OD_ADJUSTMENT_WINDOW,
 ) -> tuple[pd.DataFrame, list[str]]:
-    required_columns = {"reactor", "od"}
-    missing_columns = required_columns - set(adjustment_table.columns)
+    """Scale each time-ordered reactor curve using median endpoint readings.
+
+    Short curves use smaller, non-overlapping windows. The first and last
+    non-missing points are set to the targets after scaling the curve.
+    """
+    if not isinstance(endpoint_window, Integral) or endpoint_window < 1:
+        raise ValueError("The OD adjustment window must be a positive integer.")
+
+    missing_columns = {"reactor", "od"} - set(adjustment_table.columns)
     if missing_columns:
         raise KeyError(
             "Adjustment table is missing columns: "
@@ -65,34 +78,38 @@ def apply_linear_adjustments(
     table = adjustment_table.loc[:, ["reactor", "od"]].dropna(subset=["reactor"])
 
     for reactor, group in table.groupby("reactor", sort=False):
-        if reactor not in adjusted.columns:
+        if reactor not in df_rolling.columns:
             warnings.append(f"Reactor '{reactor}' not found in df_rolling columns.")
             continue
-        od_values = group["od"].dropna().tolist()
-        if len(od_values) < 2:
+        targets = group["od"].dropna().tolist()
+        if len(targets) < 2:
             warnings.append(
                 f"Reactor '{reactor}' has fewer than two OD values in adjustment table."
             )
             continue
 
-        target_start = od_values[0]
-        target_end = od_values[-1]
-        series = adjusted[reactor].dropna()
-        if series.empty:
-            warnings.append(f"Reactor '{reactor}' has no data in df_rolling.")
-            continue
-
-        original_start = series.iloc[0]
-        original_end = series.iloc[-1]
-        if original_end == original_start:
+        column = df_rolling[reactor]
+        positions = column.notna().to_numpy().nonzero()[0]
+        if len(positions) < 2:
             warnings.append(
-                f"Reactor '{reactor}' has identical start and end values in df_rolling."
+                f"Reactor '{reactor}' has fewer than two available OD readings."
             )
             continue
 
-        slope = (target_end - target_start) / (original_end - original_start)
-        intercept = target_start - slope * original_start
-        adjusted[reactor] = adjusted[reactor] * slope + intercept
+        window = min(endpoint_window, len(positions) // 2)
+        source_start = column.iloc[positions[:window]].median()
+        source_end = column.iloc[positions[-window:]].median()
+        if source_end == source_start:
+            warnings.append(
+                f"Reactor '{reactor}' has identical start and end median OD readings."
+            )
+            continue
+
+        target_start, target_end = targets[0], targets[-1]
+        slope = (target_end - target_start) / (source_end - source_start)
+        calibrated = target_start + (column - source_start) * slope
+        calibrated.iloc[positions[[0, -1]]] = [target_start, target_end]
+        adjusted[reactor] = calibrated
 
     return adjusted, warnings
 
@@ -540,6 +557,20 @@ with st.container(border=True):
             ),
         )
         st.divider()
+        od_adjustment_window = st.number_input(
+            "OD calibration points per endpoint",
+            min_value=1,
+            value=st.session_state.get(
+                "od_adjustment_window", DEFAULT_OD_ADJUSTMENT_WINDOW
+            ),
+            step=1,
+            help=(
+                "The medians of the first and last available readings set the scale. "
+                "Short curves use smaller, separate windows. The first and last "
+                "available points are set to their target OD."
+            ),
+        )
+        st.divider()
         button_pressed = st.form_submit_button(
             "Apply options to uploaded data", type="primary", width="stretch"
         )
@@ -570,6 +601,7 @@ st.session_state["aggregate_duplicated_rounded_timepoint_method"] = (
 st.session_state["aggregate_high_frequency_raw_data"] = (
     aggregate_high_frequency_raw_data
 )
+st.session_state["od_adjustment_window"] = od_adjustment_window
 
 # region: Process files
 ########################################################################################
@@ -864,7 +896,10 @@ if button_pressed:
         df_adjustments = read_od_adjustment_table(od_adjustment_upload)
         try:
             df_rolling, adjustment_warnings = apply_linear_adjustments(
-                df_rolling, df_adjustments
+                df_rolling, df_adjustments, endpoint_window=od_adjustment_window
+            )
+            msg += (
+                f"- OD calibration uses up to {od_adjustment_window} points per endpoint.\n"
             )
         except KeyError as e:
             error_text = str(e.args[0]) if e.args else str(e)
@@ -876,9 +911,8 @@ if button_pressed:
         st.session_state["is_df_rolling_adjusted"] = True
         st.session_state["df_rolling"] = df_rolling
         st.session_state["df_od_adjustment"] = df_adjustments
-        msg += "- Applied OD adjustments based on uploaded adjustment table.\n"
         if adjustment_warnings:
-            msg += "- OD adjustments applied with the following warnings:\n"
+            msg += "- OD calibration warnings:\n"
         for warning in adjustment_warnings:
             st.warning(warning)
             msg += f"    - {warning}\n"
