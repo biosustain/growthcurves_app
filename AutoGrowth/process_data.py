@@ -45,10 +45,12 @@ def apply_linear_adjustments(
     adjustment_table: pd.DataFrame,
     endpoint_window: int = DEFAULT_OD_ADJUSTMENT_WINDOW,
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Scale each time-ordered reactor curve using median endpoint readings.
+    """Map each reactor's start and end window medians to its target ODs.
 
-    Short curves use smaller, non-overlapping windows. The first and last
-    non-missing points are set to the targets after scaling the curve.
+    Each window uses up to ``endpoint_window`` non-missing readings from its
+    end of the time-ordered curve. Short curves use smaller, non-overlapping
+    windows. The same affine transformation applies to every reading. A
+    one-point window anchors the first and last available readings directly.
     """
     if not isinstance(endpoint_window, Integral) or endpoint_window < 1:
         raise ValueError("The OD adjustment window must be a positive integer.")

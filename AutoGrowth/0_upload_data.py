@@ -520,9 +520,10 @@ with st.container(border=True):
             ),
             step=1,
             help=(
-                "The medians of the first and last available readings set the scale. "
-                "Short curves use smaller, separate windows. The first and last "
-                "available points are set to their target OD."
+                "The medians of the first and last windows match the target ODs. "
+                "Short curves use smaller, non-overlapping windows. A one-point "
+                "window anchors the first and last available readings directly. "
+                "With larger windows, individual endpoints can differ from the targets."
             ),
         )
         st.divider()
