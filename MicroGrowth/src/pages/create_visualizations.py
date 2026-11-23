@@ -1,5 +1,6 @@
 """Create interactive visualizations of growth data."""
 
+import numpy as np
 import streamlit as st
 from src.functions.common import require_plates
 from src.functions.plotting_functions import (
@@ -112,12 +113,20 @@ if apply_stats:
                     x_order=x_ordered,
                     legend_order=legend_ordered,
                 )
+                if stats["log_y"]:
+                    fig.update_yaxes(type="log")
                 with st.container(border=True, key=f"card_viz_stat_{metric}"):
                     st.plotly_chart(style_info_axes(fig), width="stretch")
 
 # Build the shared curves DF only if needed
 if apply_mean or apply_reps:
-    curves_df = _build_growth_curves_long_df(plates, sel_sample_names)
+    curves_df = _build_growth_curves_long_df(
+        plates, sel_sample_names, fitted=curves["use_fitted"]
+    )
+    if curves["ln_y"]:
+        od = curves_df["baseline_corrected"]
+        curves_df["baseline_corrected"] = np.log(od.where(od > 0))
+    y_title = "ln(OD600)" if curves["ln_y"] else "OD600 (baseline-corrected)"
 
 if apply_mean:
     with st.container(border=True, key="card_viz_mean"):
@@ -125,7 +134,7 @@ if apply_mean:
             style_info_axes(
                 plot_mean_growth(
                     curves_df, curves_ordered, t_start=curves_t0, t_end=curves_t1
-                )
+                ).update_yaxes(title_text=y_title)
             ),
             width="stretch",
         )
@@ -139,7 +148,7 @@ if apply_reps:
                 style_info_axes(
                     plot_replicates_scatter(
                         curves_df, curves_ordered, t_start=curves_t0, t_end=curves_t1
-                    )
+                    ).update_yaxes(title_text=y_title)
                 ),
                 width="stretch",
             )

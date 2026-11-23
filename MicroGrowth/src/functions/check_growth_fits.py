@@ -4,9 +4,9 @@ import time
 
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 from growthcurves.inference import bad_fit_stats
+from src.functions.data_processing import mark_changed
 from src.functions.fitting_pipeline import fit_growth_series
 
 # ---------------- Selection + stats helpers ----------------
@@ -25,11 +25,9 @@ def _cycle(items: list[str], current: str, step: int) -> str:
 
 def _delete_well_from_plate(plate: dict, well: str) -> None:
     """Remove a well from all per-well containers on a plate (in-place)."""
-
-    per_well_keys = ["name", "raw_data", "processed_data", "growth_stats"]
-    for k in per_well_keys:
-        d = plate.get(k)
-        d.pop(well, None)
+    for k in ("name", "processed_data", "growth_stats", "fit_parameters"):
+        plate.get(k, {}).pop(well, None)
+    mark_changed(plate)
 
 
 def _get_selected_points(event) -> tuple[np.ndarray, np.ndarray]:
@@ -91,61 +89,6 @@ def _match_selected_times(
     return np.asarray(refit_indices, dtype=int)
 
 
-def _add_lasso_selected_points(
-    fig: go.Figure,
-    t_arr: np.ndarray,
-    y_arr: np.ndarray,
-    selected_times: list[float] | None,
-    *,
-    scale: str,
-    time_tolerance: float = 0.01,
-    row: int | None = None,
-    col: int | None = None,
-) -> go.Figure:
-    """Overlay lasso-selected points in red on an existing figure."""
-    if not selected_times:
-        return fig
-
-    sel = np.asarray(selected_times, dtype=float)
-    sel = sel[np.isfinite(sel)]
-    if sel.size == 0:
-        return fig
-
-    refit_indices = _match_selected_times(t_arr, sel, time_tolerance=time_tolerance)
-    if refit_indices.size == 0:
-        return fig
-
-    t_sel = t_arr[refit_indices]
-    y_sel = y_arr[refit_indices]
-    if scale == "log":
-        valid = (y_sel > 0) & np.isfinite(y_sel)
-        t_sel = t_sel[valid]
-        y_sel = y_sel[valid]
-        if t_sel.size == 0:
-            return fig
-        y_plot = np.log(y_sel)
-    else:
-        valid = np.isfinite(y_sel)
-        t_sel = t_sel[valid]
-        y_plot = y_sel[valid]
-        if t_sel.size == 0:
-            return fig
-
-    fig.add_trace(
-        go.Scatter(
-            x=t_sel,
-            y=y_plot,
-            mode="markers",
-            name="Selected",
-            marker=dict(size=8, color="#ef5350", symbol="circle"),
-            showlegend=False,
-        ),
-        row=row,
-        col=col,
-    )
-    return fig
-
-
 def _collect_lasso_series(
     processed: pd.DataFrame, selected_times: np.ndarray, *, time_tolerance: float = 0.01
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -183,14 +126,37 @@ def _analyse_series_with_plate_params(
         return bad_fit_stats(), None
 
 
-# ---------------- Plot helpers ----------------
-def _as_finite_float(value) -> float | None:
-    """Return a finite float or None."""
-    try:
-        num = float(value)
-    except (TypeError, ValueError):
-        return None
-    return num if np.isfinite(num) else None
+def reanalysis_params(plate: dict, key: str) -> tuple[dict, dict]:
+    """Plate params with the well's Re-analyse popover values, and the record of
+    the values used (shown in the Analysis Parameters table).
+
+    key is the well's widget key, f"{plate_id}_{well}"; the popover values are
+    initialised from the plate params when the well is first shown.
+    """
+    ss = st.session_state
+    params = dict(plate["params"])
+    params.update(
+        min_od_increase=float(ss[f"rp_min_od__{key}"]),
+        min_growth_rate=float(ss[f"rp_min_gr__{key}"]),
+        min_signal_to_noise=float(ss[f"rp_min_snr__{key}"]),
+        min_data_points=int(ss[f"rp_min_dp__{key}"]),
+    )
+    used = {
+        k: params[k]
+        for k in (
+            "min_od_increase",
+            "min_growth_rate",
+            "min_signal_to_noise",
+            "min_data_points",
+        )
+    }
+    if params["growth_method"] == "Sliding Window":
+        params["window_points"] = used["window_points"] = int(ss[f"rp_window__{key}"])
+    elif params["growth_method"] == "Spline":
+        manual = ss[f"rp_smooth__{key}"] == "manual"
+        lam = float(ss.get(f"rp_spline_s__{key}") or 0.0) if manual else 0.0
+        params["smooth"] = used["smooth"] = lam if lam > 0 else "auto"
+    return params, used
 
 
 def update_growth_stats_from_lasso(
@@ -219,36 +185,9 @@ def update_growth_stats_from_lasso(
     if refit_t.size < 2:
         return
 
-    # Merge plate params with any custom overrides set in the re-analyse popover
-    params = dict(plate.get("params", {}))
-    well_key = f"{pid}_{well}"
-    for param_key, ss_key in [
-        ("min_od_increase", f"rp_min_od__{well_key}"),
-        ("min_growth_rate", f"rp_min_gr__{well_key}"),
-        ("min_signal_to_noise", f"rp_min_snr__{well_key}"),
-        ("min_data_points", f"rp_min_dp__{well_key}"),
-        ("window_points", f"rp_window__{well_key}"),
-    ]:
-        if ss_key in st.session_state:
-            params[param_key] = st.session_state[ss_key]
-
-    if params.get("growth_method") == "Spline":
-        params["smooth"] = "auto"
-
+    # Plate params with any custom values set in the Re-analyse popover
+    params, analysis_params = reanalysis_params(plate, f"{pid}_{well}")
     fit, fit_result = _analyse_series_with_plate_params(refit_t, refit_y, params)
-
-    # Build the params record that was actually used
-    growth_method = params.get("growth_method", "Sliding Window")
-    analysis_params = {
-        "min_od_increase": params.get("min_od_increase"),
-        "min_growth_rate": params.get("min_growth_rate"),
-        "min_signal_to_noise": params.get("min_signal_to_noise"),
-        "min_data_points": params.get("min_data_points"),
-    }
-    if growth_method == "Sliding Window":
-        analysis_params["window_points"] = params.get("window_points")
-    elif growth_method == "Spline":
-        analysis_params["smooth"] = fit.get("smooth", params.get("smooth"))
 
     # Update gs in-place so all references stay valid
     gs.clear()
@@ -261,22 +200,19 @@ def update_growth_stats_from_lasso(
         fit_parameters[well] = fit_result
     else:
         fit_parameters.pop(well, None)
+    mark_changed(plate)
 
 
 # ---------------- Data helpers ----------------
-def _sg_params_for_plate(plates: dict, plate_id: str) -> tuple[int, int, int]:
-    """Return Savitzky-Golay and window parameters for a plate."""
-    params = (plates.get(plate_id, {}) or {}).get("params") or {}
-    return (
-        int(params.get("sg_window", 11)),
-        int(params.get("sg_poly", 2)),
-        int(params.get("window_points", 5)),
-    )
+def _sg_params_for_plate(plates: dict, plate_id: str) -> tuple[int, int]:
+    """Return the Savitzky-Golay window and polynomial order for a plate."""
+    params = plates[plate_id]["params"]
+    return int(params["sg_window"]), int(params["sg_poly"])
 
 
 def analyse_well(plate: dict, well: str, params_override: dict | None = None) -> dict:
     """Recompute growth statistics for a single well using existing processed data."""
-    p = dict((plate or {}).get("params") or {})
+    p = dict(plate["params"])
     if params_override:
         p.update(params_override)
     processed_data = (plate or {}).get("processed_data") or {}

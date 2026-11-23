@@ -21,6 +21,17 @@ def toast_once(msg: str):
         st.toast(msg, duration="infinite")
 
 
+def session_cache(slot: str, key, build):
+    """Per-session cache keeping only the latest value of each slot.
+
+    build() runs when the slot is empty or its key (a short id) has changed.
+    """
+    cache = st.session_state.setdefault("_session_cache", {})
+    if slot not in cache or cache[slot][0] != key:
+        cache[slot] = (key, build())
+    return cache[slot][1]
+
+
 def _iter_wells(plates: dict):
     """Yield (plate_id, plate, well, name, processed_df, growth_stats)."""
     for pid, p in plates.items():
@@ -28,6 +39,11 @@ def _iter_wells(plates: dict):
         proc = p.get("processed_data") or {}
         gs_all = p.get("growth_stats") or {}
         for well, d in proc.items():
-            yield pid, p, well, (nm_by_well.get(well) or ""), d, (
-                gs_all.get(well) or {}
+            yield (
+                pid,
+                p,
+                well,
+                (nm_by_well.get(well) or ""),
+                d,
+                (gs_all.get(well) or {}),
             )

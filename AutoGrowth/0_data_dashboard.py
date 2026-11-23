@@ -11,7 +11,7 @@ Review processed upload outputs in one place:
 
 1. Raw and filtered data tables
 2. Filtered-data plot with removed-point overlay
-3. Rolling-median table and line plot
+3. Processed data table and line plot used for fitting
 """
 
 page_header_with_help("Data Dashboard", DATA_DASHBOARD_HELP)
@@ -23,7 +23,7 @@ masked = st.session_state.get("masked")
 start_time = st.session_state.get("start_time")
 processing_summary = st.session_state.get("upload_processing_summary_msg")
 rolling_window_smoothing = st.session_state.get("rolling_window_smoothing")
-apply_smoothing = st.session_state.get("apply_smoothing", True)
+apply_smoothing = st.session_state.get("apply_smoothing", False)
 st.session_state.setdefault("yaxis_scale", False)
 st.session_state.setdefault("USE_ELAPSED_TIME_FOR_PLOTS", True)
 use_same_yaxis_scale = bool(st.session_state.get("yaxis_scale", False))
@@ -280,37 +280,43 @@ if processing_summary:
         st.subheader("Processing summary of OD readings")
         st.markdown(processing_summary)
 
-# show rolling median table
+# Show the processed data used for fitting.
 if df_rolling is not None:
     with st.container(border=True):
-        st.header("Smoothed data view.")
+        st.header("Processed data used for fitting")
         if apply_smoothing and rolling_window_smoothing is not None:
             st.subheader(
                 f"Rolling median smoothing (window={rolling_window_smoothing}) applied to filtered OD data"
             )
         else:
-            st.subheader("Filtered raw OD data (no smoothing applied)")
+            st.subheader("Processed OD data (no rolling median smoothing applied)")
         fig = px.scatter(
             df_wide_raw_od_data_filtered,
             x=df_wide_raw_od_data_filtered.index,
             y=df_wide_raw_od_data_filtered.columns,
-            labels={"value": "OD (rolling median)", "index": "Time"},
-            title="Filtered raw data.",
+            labels={"value": "OD", "index": "Time"},
+            title="Filtered data before optional filling and calibration",
         )
         st.plotly_chart(fig)
         fig = px.line(
             df_rolling,
             x=df_rolling.index,
             y=df_rolling.columns,
-            labels={"value": "OD (rolling median)", "index": "Time"},
-            title="Smoothed, trimmed and calibrated growth curves",
+            labels={"value": "OD", "index": "Elapsed time (hours)"},
+            title="Processed growth curves used for fitting",
         )
         st.plotly_chart(fig)
         st.write(df_rolling)
         create_download_button(
             data=df_rolling.to_csv(index=True).encode("utf-8"),
-            label="Download rolling median data",
-            file_name="rolling_median_on_filtered_wide_data_with_rounded_timestamps.csv",
+            label="Download processed data",
+            file_name="processed_growth_data.csv",
             disabled=False,
             mime="text/csv",
         )
+
+else:
+    st.info(
+        "Apply options to uploaded data on the Upload Data page to create "
+        "the processed curves used for fitting."
+    )
