@@ -2,8 +2,10 @@ import growthcurves as gc
 import pandas as pd
 import streamlit as st
 from process_data import (
+    DEFAULT_OD_ADJUSTMENT_WINDOW,
     REQUIRED_COLUMNS,
     REQUIRED_COLUMNS_NAME_MAP,
+    apply_linear_adjustments,
     process_chibio_data,
     process_od_pioreactor,
     read_od_adjustment_table,
@@ -53,52 +55,9 @@ def callback_clear_raw_data():
         del st.session_state["max_date"]
 
 
-def apply_linear_adjustments(
-    df_rolling: pd.DataFrame, adjustment_table: pd.DataFrame
-) -> tuple[pd.DataFrame, list[str]]:
-    required_columns = {"reactor", "od"}
-    missing_columns = required_columns - set(adjustment_table.columns)
-    if missing_columns:
-        raise KeyError(
-            "Adjustment table is missing columns: "
-            f"{', '.join(sorted(missing_columns))}.",
-        )
-
-    warnings = []
-    adjusted = df_rolling.copy()
-    table = adjustment_table.loc[:, ["reactor", "od"]].dropna(subset=["reactor"])
-
-    for reactor, group in table.groupby("reactor", sort=False):
-        if reactor not in adjusted.columns:
-            warnings.append(f"Reactor '{reactor}' not found in df_rolling columns.")
-            continue
-        od_values = group["od"].dropna().tolist()
-        if len(od_values) < 2:
-            warnings.append(
-                f"Reactor '{reactor}' has fewer than two OD values in adjustment table."
-            )
-            continue
-
-        target_start = od_values[0]
-        target_end = od_values[-1]
-        series = adjusted[reactor].dropna()
-        if series.empty:
-            warnings.append(f"Reactor '{reactor}' has no data in df_rolling.")
-            continue
-
-        original_start = series.iloc[0]
-        original_end = series.iloc[-1]
-        if original_end == original_start:
-            warnings.append(
-                f"Reactor '{reactor}' has identical start and end values in df_rolling."
-            )
-            continue
-
-        slope = (target_end - target_start) / (original_end - original_start)
-        intercept = target_start - slope * original_start
-        adjusted[reactor] = adjusted[reactor] * slope + intercept
-
-    return adjusted, warnings
+def clear_saved_od_adjustment():
+    st.session_state.pop("df_od_adjustment", None)
+    st.session_state.pop("od_adjustment_upload_name", None)
 
 
 # region: UI components for upload page
@@ -235,15 +194,31 @@ with st.container(border=True):
                 type="primary",
                 width="stretch",
             )
-        # file uploading
-        _file_name = st.session_state.get("od_adjustment_upload_name")
-        if _file_name is not None:
-            st.info(f"File previously uploaded: {_file_name}")
         od_adjustment_upload = st.file_uploader(
             "OD adjustment table",
             type=["csv", "txt", "xlsx", "xls"],
             key="upload_page_od_adjustment_table",
+            on_change=clear_saved_od_adjustment,
         )
+        df_adjustments = st.session_state.get("df_od_adjustment")
+        od_adjustment_read_failed = False
+        if od_adjustment_upload is not None and df_adjustments is None:
+            try:
+                df_adjustments = read_od_adjustment_table(od_adjustment_upload)
+            except Exception as exc:
+                od_adjustment_read_failed = True
+                st.error(f"Could not read the OD adjustment table. {exc}")
+            else:
+                st.session_state["df_od_adjustment"] = df_adjustments
+                st.session_state["od_adjustment_upload_name"] = (
+                    od_adjustment_upload.name
+                )
+        if od_adjustment_upload is None and df_adjustments is not None:
+            name = st.session_state.get(
+                "od_adjustment_upload_name", "OD adjustment table"
+            )
+            st.info(f"Using saved calibration table: {name}")
+            st.button("Remove saved OD calibration", on_click=clear_saved_od_adjustment)
     with optional_upload_cols[1]:
         st.markdown("**Turbidostat Metadata** (for PioReactor datasets only)")
         # help message
@@ -311,11 +286,7 @@ with st.container(border=True):
                 "Select column with event description",
                 key="turbidostat_message_col",
             )
-    # Save bytes and file name to session state for later processing
-    if od_adjustment_upload is not None:
-        # (st.session_state["od_adjustment_upload_bytes"]
-        #  = od_adjustment_upload.getvalue())
-        st.session_state["od_adjustment_upload_name"] = od_adjustment_upload.name
+    # Save dilution metadata for the Turbidostat page
     if turbidostat_meta_upload is not None:
         # file is only processed in 2_turbidostat.py
         st.session_state["turbidostat_meta_upload_bytes"] = (
@@ -544,6 +515,21 @@ with st.container(border=True):
             ),
         )
         st.divider()
+        od_adjustment_window = st.number_input(
+            "OD calibration points per endpoint",
+            min_value=1,
+            value=st.session_state.get(
+                "od_adjustment_window", DEFAULT_OD_ADJUSTMENT_WINDOW
+            ),
+            step=1,
+            help=(
+                "The medians of the first and last windows match the target ODs. "
+                "Short curves use smaller, non-overlapping windows. A one-point "
+                "window anchors the first and last available readings directly. "
+                "With larger windows, individual endpoints can differ from the targets."
+            ),
+        )
+        st.divider()
         button_pressed = st.form_submit_button(
             "Apply options to uploaded data", type="primary", width="stretch"
         )
@@ -574,6 +560,7 @@ st.session_state["aggregate_duplicated_rounded_timepoint_method"] = (
 st.session_state["aggregate_high_frequency_raw_data"] = (
     aggregate_high_frequency_raw_data
 )
+st.session_state["od_adjustment_window"] = od_adjustment_window
 
 # region: Process files
 ########################################################################################
@@ -690,6 +677,9 @@ if file:
 
 ### Apply option from form #############################################################
 if button_pressed:
+    if od_adjustment_read_failed:
+        st.stop()
+
     # Keep only reactors selected for analysis
     if not reactors_selected:
         st.warning("No reactors selected. Select at least one reactor to continue.")
@@ -858,18 +848,17 @@ if button_pressed:
         df_rolling = df_wide_raw_od_data_filtered.sort_index()
         msg += "- Smoothing disabled; using filtered data directly.\n"
 
-    # ? Should it not be possible to be run twice in a single session?
-    if od_adjustment_upload is not None:
+    if df_adjustments is not None:
         if st.session_state.get("is_df_rolling_adjusted"):
             st.warning(
                 "OD adjustments have already been applied. "
                 "Re-applying will overwrite previous adjustments."
             )
-        df_adjustments = read_od_adjustment_table(od_adjustment_upload)
         try:
             df_rolling, adjustment_warnings = apply_linear_adjustments(
-                df_rolling, df_adjustments
+                df_rolling, df_adjustments, endpoint_window=od_adjustment_window
             )
+            msg += f"- OD calibration uses up to {od_adjustment_window} points per endpoint.\n"
         except KeyError as e:
             error_text = str(e.args[0]) if e.args else str(e)
             st.error(
@@ -877,12 +866,8 @@ if button_pressed:
                 f"{error_text}"
             )
             st.stop()
-        st.session_state["is_df_rolling_adjusted"] = True
-        st.session_state["df_rolling"] = df_rolling
-        st.session_state["df_od_adjustment"] = df_adjustments
-        msg += "- Applied OD adjustments based on uploaded adjustment table.\n"
         if adjustment_warnings:
-            msg += "- OD adjustments applied with the following warnings:\n"
+            msg += "- OD calibration warnings:\n"
         for warning in adjustment_warnings:
             st.warning(warning)
             msg += f"    - {warning}\n"
@@ -903,6 +888,7 @@ if button_pressed:
 
     # Retain the shared session key for downstream pages and saved sessions.
     st.session_state["df_rolling"] = df_rolling
+    st.session_state["is_df_rolling_adjusted"] = df_adjustments is not None
 
     st.session_state.pop("select_data_original_df_rolling", None)
 

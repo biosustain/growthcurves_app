@@ -181,4 +181,67 @@ def test_read_od_adjustment_table_accepts_excel_file():
     assert df["od"].tolist() == [0.1, 0.2]
 
 
+def test_adjust_od_maps_ten_point_window_medians_to_targets():
+    readings = [pd.NA, 40, *range(1, 10), 10, *range(11, 20), 60, pd.NA, pd.NA]
+    raw = pd.DataFrame(
+        {"r1": readings, "unlisted": range(len(readings))}, dtype="Float64"
+    )
+    calibration = pd.DataFrame({"reactor": ["r1"] * 3, "od": [0.03, 1.0, 4.2]})
+
+    adjusted, warnings = process_data.apply_linear_adjustments(
+        raw, calibration, endpoint_window=10
+    )
+
+    assert warnings == []
+    available = adjusted["r1"].dropna()
+    assert available.head(10).median() == pytest.approx(0.03)
+    assert available.tail(10).median() == pytest.approx(4.2)
+    assert adjusted.loc[11, "r1"] == pytest.approx(0.03 + (10 - 5.5) * 4.17 / 10)
+    pd.testing.assert_frame_equal(adjusted.isna(), raw.isna())
+    pd.testing.assert_series_equal(adjusted["unlisted"], raw["unlisted"])
+    assert raw.loc[21, "r1"] == 60
+
+
+@pytest.mark.parametrize(
+    ("options", "expected"),
+    [
+        pytest.param({}, [0, 1 / 6, 1 / 3, 5 / 6, 1], id="default"),
+        pytest.param(
+            {"endpoint_window": 10}, [-0.1, 0.1, 0.3, 0.9, 1.1], id="shortened-window"
+        ),
+    ],
+)
+def test_adjust_od_applies_default_and_shortened_windows(options, expected):
+    raw = pd.DataFrame({"r1": [1, 3, 5, 11, 13]})
+    calibration = pd.DataFrame({"reactor": ["r1", "r1"], "od": [0, 1]})
+
+    adjusted, warnings = process_data.apply_linear_adjustments(
+        raw, calibration, **options
+    )
+
+    assert warnings == []
+    assert adjusted["r1"].tolist() == pytest.approx(expected)
+
+
+def test_adjust_od_warns_when_median_anchors_cannot_define_a_scale():
+    raw = pd.DataFrame(
+        {"equal_medians": [1, 3, 2, 2], "one_reading": [1, None, None, None]}
+    )
+    calibration = pd.DataFrame(
+        {
+            "reactor": ["equal_medians", "equal_medians", "one_reading", "one_reading"],
+            "od": [0, 1, 0, 1],
+        }
+    )
+
+    adjusted, warnings = process_data.apply_linear_adjustments(
+        raw, calibration, endpoint_window=2
+    )
+
+    pd.testing.assert_frame_equal(adjusted, raw)
+    assert len(warnings) == 2
+    assert "identical start and end median" in warnings[0]
+    assert "fewer than two available OD readings" in warnings[1]
+
+
 # %%
