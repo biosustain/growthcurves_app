@@ -18,7 +18,6 @@ if not getattr(st.plotly_chart, "_svg_default", False):
     st.plotly_chart = _plotly_chart
 
 APP_VERSION = Path(__file__).with_name("VERSION").read_text(encoding="utf-8").strip()
-PACKAGE_VERSION = growthcurve_app.__version__
 
 logo_source = str(Path(__file__).with_name("logo.svg"))
 
@@ -72,7 +71,6 @@ with st.sidebar:
             "5. Export downloads"
         )
     st.caption(f"AutoGrowth app v{APP_VERSION}")
-    st.caption(f"growthcurve-app package v{PACKAGE_VERSION}")
 
     debug_mode = st.checkbox(
         "Debug Mode",
