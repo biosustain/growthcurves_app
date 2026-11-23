@@ -66,6 +66,8 @@ def wrap_macos(payload, output):
                 )
         run("iconutil", "-c", "icns", iconset, "-o", resources / "AutoGrowth.icns")
         version = (Path(payload) / "AutoGrowth/VERSION").read_text().strip()
+        # Apple bundle versions must be dotted numbers; drop the +<hash> suffix.
+        version = version.split("+")[0]
         with (contents / "Info.plist").open("wb") as file:
             plistlib.dump(
                 {
