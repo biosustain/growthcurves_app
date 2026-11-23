@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 import streamlit as st
@@ -17,7 +18,34 @@ if not getattr(st.plotly_chart, "_svg_default", False):
     _plotly_chart._svg_default = True
     st.plotly_chart = _plotly_chart
 
-APP_VERSION = Path(__file__).with_name("VERSION").read_text(encoding="utf-8").strip()
+
+
+def _git_version(app_dir: Path) -> str | None:
+    """Return '<YY.M.D>+<short-hash>' of the checked-out commit, if app_dir is in a repo.
+
+    Used when deployed from a git checkout (e.g. Streamlit Community Cloud). Packaged
+    apps have no .git and fall back to the VERSION file written during the build.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(app_dir), "log", "-1", "--format=%cd+%h",
+             "--date=format:%y.%-m.%-d"],
+            capture_output=True, text=True, timeout=5, check=True,
+        ).stdout.strip()
+        top = subprocess.run(
+            ["git", "-C", str(app_dir), "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5, check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    # Ignore a repo that merely contains an installed copy of the app.
+    return out if out and Path(top).resolve() == app_dir.parent.resolve() else None
+
+
+_APP_DIR = Path(__file__).resolve().parent
+APP_VERSION = _git_version(_APP_DIR) or _APP_DIR.joinpath("VERSION").read_text(
+    encoding="utf-8"
+).strip()
 
 logo_source = str(Path(__file__).with_name("logo.svg"))
 
