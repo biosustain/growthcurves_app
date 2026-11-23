@@ -5,7 +5,7 @@ pandas
 scipy
 matplotlib
 plotly
-growthcurves
+growthcurves>=0.10.0
 openpyxl
 xlrd
 
