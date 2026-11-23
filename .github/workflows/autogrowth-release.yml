@@ -37,6 +37,9 @@ jobs:
         with:
           version: "0.8.24"
           enable-cache: false
+      - name: Set version from this commit
+        shell: bash
+        run: scripts/update_version.sh
       - name: Build and test terminal fallback
         shell: bash
         env:
@@ -133,6 +136,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - name: Set version from this commit
+        shell: bash
+        run: scripts/update_version.sh
       - uses: actions/download-artifact@v4
         with:
           pattern: autogrowth-*
@@ -147,7 +153,7 @@ jobs:
           RUN_SUFFIX: ${{ github.run_id }}-${{ github.run_attempt }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          # AutoGrowth/VERSION is <YY.M.D>+<short-hash>; '+' is avoided in the tag name.
+          # VERSION was set from this commit above; '+' is avoided in the tag name.
           APP_VERSION="$(tr -d '[:space:]' < AutoGrowth/VERSION)"
           # Run id/attempt keep tags unique when the same commit is rebuilt.
           RELEASE_TAG="autogrowth-${APP_VERSION//+/-}-${RUN_SUFFIX}"

@@ -53,14 +53,14 @@ This repository uses a hybrid strategy:
 
 - The shared package `growthcurve-app` uses git-tag based versioning via `setuptools_scm`.
 - Each app keeps its own version in a local `VERSION` file.
-- `AutoGrowth/VERSION` is `<YY.M.D>+<short-hash>` of the last commit (e.g. `26.11.23+bf5b7e2`).
+- AutoGrowth's version is `<YY.M.D>+<short-hash>` of the built commit (e.g. `26.11.23+bf5b7e2`). CI writes it into `AutoGrowth/VERSION` before packaging; a git checkout reads it at runtime. The committed file is a `0.0.0+dev` placeholder.
 
 Current app version files:
 
 - `AutoGrowth/VERSION`
 - `MicroGrowth/VERSION`
 
-Update the AutoGrowth version from the last commit (or pass a value manually):
+Preview or override the AutoGrowth version locally (don't commit the result):
 
 ```bash
 scripts/update_version.sh
