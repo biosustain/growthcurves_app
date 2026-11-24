@@ -37,6 +37,9 @@ jobs:
         with:
           version: "0.8.24"
           enable-cache: false
+      - name: Set version from this commit
+        shell: bash
+        run: scripts/update_version.sh
       - name: Build and test terminal fallback
         shell: bash
         env:
@@ -132,6 +135,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+      - name: Set version from this commit
+        shell: bash
+        run: scripts/update_version.sh
       - uses: actions/download-artifact@v4
         with:
           pattern: autogrowth-*
@@ -143,9 +150,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           BUILD_SHA: ${{ github.sha }}
-          RELEASE_TAG: autogrowth-build-${{ github.run_id }}-${{ github.run_attempt }}
+          RUN_SUFFIX: ${{ github.run_id }}-${{ github.run_attempt }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          # VERSION was set from this commit above; '+' is avoided in the tag name.
+          APP_VERSION="$(tr -d '[:space:]' < AutoGrowth/VERSION)"
+          # Run id/attempt keep tags unique when the same commit is rebuilt.
+          RELEASE_TAG="autogrowth-${APP_VERSION//+/-}-${RUN_SUFFIX}"
           assets=(
             release-assets/AutoGrowth-terminal-macos-arm64.zip
             release-assets/AutoGrowth-terminal-windows-x64.zip
@@ -157,7 +168,7 @@ jobs:
           for asset in "${assets[@]}"; do test -s "$asset"; done
           (cd release-assets && sha256sum ./*.zip ./*.dmg ./*.exe > SHA256SUMS.txt)
           cat > release-notes.md <<EOF_NOTES
-          Automated AutoGrowth desktop build from commit ${BUILD_SHA}.
+          Automated AutoGrowth ${APP_VERSION} desktop build from commit ${BUILD_SHA}.
 
           - Terminal fallback: AutoGrowth-terminal-*.zip contains a standalone folder. Extract it and run AutoGrowth.command (macOS) or AutoGrowth.cmd (Windows); the app opens in your browser. Keep the terminal open and use Ctrl+C to stop.
           - macOS Apple Silicon: ZIP containing AutoGrowth.app, or drag-to-Applications DMG (macOS 14+).
@@ -170,6 +181,6 @@ jobs:
           EOF_NOTES
           # Stage all uploads before making the release visible.
           gh release create "$RELEASE_TAG" --target "$BUILD_SHA" --draft --prerelease --latest=false \
-            --title "AutoGrowth desktop ${RELEASE_TAG#autogrowth-build-}" --notes-file release-notes.md
+            --title "AutoGrowth ${APP_VERSION}" --notes-file release-notes.md
           gh release upload "$RELEASE_TAG" "${assets[@]}" release-assets/SHA256SUMS.txt
           gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
