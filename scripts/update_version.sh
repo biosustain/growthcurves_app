@@ -7,7 +7,10 @@ cd "$(git rev-parse --show-toplevel)"
 if [[ $# -ge 1 ]]; then
   version="$1"
 else
-  date="$(git log -1 --format=%cd --date=format:%y.%-m.%-d)"
+  # %-m / %-d are not supported by git's strftime on Windows, so format with
+  # zero-padded fields and strip the leading zeros in bash (base-10 forced).
+  read -r yy mm dd <<< "$(git log -1 --format=%cd --date=format:'%y %m %d')"
+  date="${yy}.$((10#$mm)).$((10#$dd))"
   version="${date}+$(git log -1 --format=%h)"
 fi
 printf '%s\n' "$version" > AutoGrowth/VERSION
