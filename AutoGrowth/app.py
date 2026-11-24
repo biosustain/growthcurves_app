@@ -5,7 +5,12 @@ import streamlit as st
 from ui_components import render_markdown
 
 import growthcurve_app
-from growthcurve_app.styling import green_gradient, green_navbar, red_buttons
+from growthcurve_app.styling import (
+    card_containers,
+    green_gradient,
+    green_navbar,
+    red_buttons,
+)
 
 # set the default plotly chart config to export as svg
 if not getattr(st.plotly_chart, "_svg_default", False):
@@ -93,8 +98,7 @@ def render_about():
 raw_data = st.Page("0_upload_data.py", title="Upload Data")
 data_dashboard = st.Page("0_data_dashboard.py", title="Data Dashboard")
 select_data = st.Page("0_select_data.py", title="Select / Exclude Data")
-batch_analysis = st.Page("1_batch_analysis.py", title="Batch Growth Analysis")
-turbistat_modus = st.Page("2_turbiostat.py", title="Turbidostat Growth Analysis")
+growth_analysis = st.Page("1_growth_analysis.py", title="Growth Analysis")
 comparative_plots = st.Page("3_comparative_plots.py", title="Comparative Plots")
 downloads_page = st.Page("0_downloads.py", title="Downloads")
 about_page = st.Page(render_about, title="About")
@@ -107,7 +111,7 @@ with st.sidebar:
         st.markdown(
             "1. Upload and preprocess data\n"
             "2. Review data dashboard\n"
-            "3. Run batch or turbidostat analysis\n"
+            "3. Run the growth analysis\n"
             "4. Compare metrics across groups\n"
             "5. Export downloads"
         )
@@ -130,8 +134,7 @@ pg = st.navigation(
         raw_data,
         data_dashboard,
         select_data,
-        batch_analysis,
-        turbistat_modus,
+        growth_analysis,
         comparative_plots,
         downloads_page,
         about_page,
@@ -142,5 +145,6 @@ pg = st.navigation(
 red_buttons()
 green_gradient()
 green_navbar()
+card_containers()
 
 pg.run()

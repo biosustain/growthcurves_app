@@ -1,7 +1,7 @@
 import plotly.express as px
 import streamlit as st
 from buttons import create_download_button
-from plots import create_figure_bytes_to_download, plot_growth_data_w_mask
+from legacy_plots import create_figure_bytes_to_download, plot_growth_data_w_mask
 from ui_components import page_header_with_help, show_warning_to_upload_data
 
 import growthcurve_app
