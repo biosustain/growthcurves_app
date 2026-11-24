@@ -12,17 +12,14 @@ import numpy as np
 import pandas as pd
 from streamlit.testing.v1 import AppTest
 
-from growthcurve_app.analyze import fit_single_series
-from growthcurve_app.turbistat import detect_peaks
+from growthcurve_app.dilutions import detect
+from growthcurve_app.pipeline import fit_curve
 
 app = AppTest.from_file(str(root / "AutoGrowth/app.py")).run(timeout=90)
 assert not app.exception, [e.message for e in app.exception]
 print("Upload page rendered with bundled example data and assets")
 for page in (
-    "0_data_dashboard.py",
-    "0_select_data.py",
-    "1_batch_analysis.py",
-    "2_turbiostat.py",
+    "1_growth_analysis.py",
     "3_comparative_plots.py",
     "0_downloads.py",
 ):
@@ -31,23 +28,27 @@ for page in (
 print("All file-based pages rendered without exceptions")
 t = np.linspace(0, 24, 100)
 n = 0.02 * np.exp(0.2 * t)
-result, stats = fit_single_series(
+result, stats = fit_curve(
     t,
     n,
     {
         "selected_model": "sliding_window",
-        "n_fits": 1,
         "window_points": 10,
-        "spline_smoothing_value": 0.1,
         "lag_cutoff": 0.1,
         "exp_cutoff": 0.5,
         "phase_boundary_method": "threshold",
+        "min_data_points": 5,
+        "min_signal_to_noise": 1.0,
+        "min_od_increase": 0.05,
+        "min_growth_rate": 0.0,
     },
 )
 assert result is not None and stats, stats
-peaks = detect_peaks(pd.Series([0.1, 1.0, 0.1, 1.1, 0.1]), distance=1)
-assert len(peaks) == 2
-print("Turbidostat peak detection passed")
+hours = np.arange(0, 10, 1 / 60)
+od = np.where(hours % 5 < 4.9, 0.2 * np.exp(0.3 * (hours % 5)), 0.2)
+drops = detect(pd.Series(od, index=hours))
+assert drops and abs(drops[0][0] - 4.9) < 0.1, drops
+print("Turbidostat dilution detection passed")
 frame = pd.DataFrame({"time": t, "od": n})
 buffer = io.BytesIO()
 frame.to_excel(buffer, index=False)

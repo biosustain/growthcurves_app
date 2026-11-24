@@ -96,8 +96,6 @@ def render_about():
 
 # Navigation
 raw_data = st.Page("0_upload_data.py", title="Upload Data")
-data_dashboard = st.Page("0_data_dashboard.py", title="Data Dashboard")
-select_data = st.Page("0_select_data.py", title="Select / Exclude Data")
 growth_analysis = st.Page("1_growth_analysis.py", title="Growth Analysis")
 comparative_plots = st.Page("3_comparative_plots.py", title="Comparative Plots")
 downloads_page = st.Page("0_downloads.py", title="Downloads")
@@ -109,11 +107,10 @@ with st.sidebar:
     with st.container(border=True):
         st.markdown("#### Workflow")
         st.markdown(
-            "1. Upload and preprocess data\n"
-            "2. Review data dashboard\n"
-            "3. Run the growth analysis\n"
-            "4. Compare metrics across groups\n"
-            "5. Export downloads"
+            "1. Upload, process and review data\n"
+            "2. Run the growth analysis\n"
+            "3. Compare metrics across groups\n"
+            "4. Export downloads"
         )
     st.caption(f"AutoGrowth app v{APP_VERSION}")
 
@@ -132,8 +129,6 @@ with st.sidebar:
 pg = st.navigation(
     [
         raw_data,
-        data_dashboard,
-        select_data,
         growth_analysis,
         comparative_plots,
         downloads_page,
