@@ -19,4 +19,3 @@ def create_download_button(
         icon=":material/download:",
         width="stretch",
     )
-
