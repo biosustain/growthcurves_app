@@ -864,8 +864,20 @@ def _plots(cid, well, t, y, log_scale, show):
         if not show[f"{metric}_plot"]:
             continue
         with st.container(border=True, key=f"card_analysis_{metric}"):
+            mu_method = "savgol"
+            if metric == "mu":
+                mu_method = st.radio(
+                    "μ from the data (pink line), as the slope of ln(OD)",
+                    list(check_fit_plots.MU_METHODS),
+                    format_func=lambda m: check_fit_plots.MU_METHODS[m][0],
+                    captions=[t for _, t in check_fit_plots.MU_METHODS.values()],
+                    horizontal=True,
+                    key="analysis_mu_method",
+                )
             st.plotly_chart(
-                plot_derivative_metric(plate, well, metric=metric, gs=gs),
+                plot_derivative_metric(
+                    plate, well, metric=metric, gs=gs, mu_method=mu_method
+                ),
                 width="stretch",
             )
 

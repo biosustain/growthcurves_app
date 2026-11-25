@@ -6,6 +6,10 @@ style_info_axes, _finite_sorted_xy, _add_lasso_selected_points, plot_well_curve,
 plot_derivative_metric) and MicroGrowth/src/functions/check_growth_fits.py
 (_match_selected_times). Only the imports differ. Keep them in sync.
 
+Exception: ``plot_derivative_metric`` has diverged on purpose. It drops the raw
+(unsmoothed) trace and computes μ as the slope of ln(OD) via ``mu_from_log_od``
+(Savitzky-Golay or sliding window, chosen in the app) instead of (dN/dt) / N.
+
 The functions take a MicroGrowth-style ``plate`` dict; see ``as_plate``.
 """
 
@@ -26,6 +30,7 @@ from growthcurves.models import (
     log_to_linear,
     spline_from_params,
 )
+from scipy.signal import savgol_filter
 
 # Savitzky-Golay defaults of the MicroGrowth app (src/functions/constants.py)
 DEFAULT_PARAMS = {
@@ -309,6 +314,44 @@ def plot_well_curve(
     )
 
 
+MU_METHODS = {
+    "savgol": (
+        "Savitzky–Golay",
+        "Fits a small polynomial to ln(OD) around each read and takes its slope, "
+        "smoothing and differentiating in one step. Fast and smooth, but assumes "
+        "evenly spaced reads: gaps (lasso selections, dilution cuts) distort it.",
+    ),
+    "sliding_window": (
+        "Sliding window",
+        "Fits a straight line to ln(OD) over a window of reads around each read and "
+        "takes its slope. Uses the actual read times, so it copes with uneven "
+        "spacing and gaps, but it is slower and a little less smooth.",
+    ),
+}
+
+
+def mu_from_log_od(t, N, method="savgol", window=15, poly=2):
+    """Specific growth rate μ = d ln N / dt from positive OD reads.
+
+    ``"savgol"``: Savitzky-Golay first derivative of ln N (``window`` reads,
+    order ``poly``), with the median time step as the spacing. ``"sliding_window"``:
+    least-squares slope of ln N over ``window`` reads around each read.
+    """
+    t = np.asarray(t, dtype=float)
+    N = np.asarray(N, dtype=float)
+    if method == "sliding_window":
+        return compute_sliding_window_growth_rate(t, N, window_points=int(window))
+    if method != "savgol":
+        raise ValueError(f"method must be 'savgol' or 'sliding_window', got {method!r}")
+    n = len(t)
+    w = min(int(window) | 1, n if n % 2 else n - 1)  # odd, at most n
+    if w < 3:
+        return t, np.full_like(t, np.nan)
+    p = min(int(poly), w - 1)
+    dt = float(np.median(np.diff(t)))
+    return t, savgol_filter(np.log(N), w, p, deriv=1, delta=dt)
+
+
 def plot_derivative_metric(
     plate: dict,
     well: str,
@@ -316,20 +359,22 @@ def plot_derivative_metric(
     sg_window=DEFAULT_PARAMS["sg_window"],
     sg_poly=DEFAULT_PARAMS["sg_poly"],
     gs: dict | None = None,
+    mu_method: str = "savgol",
 ):
     """Plot either dN/dt or μ (specific growth rate) for a well.
 
-    This function generates three traces:
-    1. Raw data metric (light grey)
-    2. Smoothed data metric (main trace)
-    3. Model fit metric (solid blue line)
+    This function generates two traces:
+    1. Data metric (pink): dN/dt of the smoothed OD, or μ as the smoothed slope
+       of ln(OD) (see ``mu_from_log_od``)
+    2. Model fit metric (solid blue line)
 
     Args:
         plate: Plate dictionary containing processed_data and fit_parameters
         well: Well identifier
         metric: Either "dndt" for dN/dt or "mu" for μ
-        sg_window: Savitzky-Golay window size
+        sg_window: Savitzky-Golay window size (also the sliding window, in points)
         sg_poly: Savitzky-Golay polynomial order
+        mu_method: How μ is taken from the data, "savgol" or "sliding_window"
         gs: Growth statistics dictionary (optional). If provided with _used_fit_times,
             only the lasso-selected data points will be used for calculation.
     """
@@ -368,42 +413,25 @@ def plot_derivative_metric(
     if len(t_raw) < 3:
         return go.Figure()
 
-    # Step 1: Calculate metric on raw data
+    # Smoothed OD: the dN/dt trace, and the sliding-window model's dN/dt below
+    y_smooth = smooth(y_raw, sg_window, sg_poly)
+
     if metric == "dndt":
-        t_metric_raw, metric_raw = compute_first_derivative(t_raw, y_raw)
         metric_label = "dN/dt"
         y_axis_title = "dN/dt"
         plot_title = f"dN/dt – {well}"
+        t_metric_smooth, metric_smooth = compute_first_derivative(t_raw, y_smooth)
     else:  # mu
-        t_metric_raw, metric_raw = compute_instantaneous_mu(t_raw, y_raw)
         metric_label = "μ"
         y_axis_title = "μ (h⁻¹)"
         plot_title = f"Specific growth rate – {well}"
-
-    # Step 2: Smooth the data
-    y_smooth = smooth(y_raw, sg_window, sg_poly)
-
-    # Step 3: Calculate metric on smoothed data
-    if metric == "dndt":
-        t_metric_smooth, metric_smooth = compute_first_derivative(t_raw, y_smooth)
-    else:  # mu
-        t_metric_smooth, metric_smooth = compute_instantaneous_mu(t_raw, y_smooth)
+        # μ = d ln N / dt, the slope of ln(OD): no division by a small N
+        t_metric_smooth, metric_smooth = mu_from_log_od(
+            t_raw, y_raw, method=mu_method, window=sg_window, poly=sg_poly
+        )
 
     # Create figure
     fig = go.Figure()
-
-    # Plot raw metric (light grey)
-    fig.add_trace(
-        go.Scatter(
-            x=t_metric_raw,
-            y=metric_raw,
-            mode="lines",
-            line=dict(width=5, color="lightgrey"),
-            hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} hours<br>{metric_label} (raw)=%{{y:.4f}}<extra></extra>",
-            showlegend=False,
-            name="Raw",
-        )
-    )
 
     # Plot smoothed metric (lighter red)
     fig.add_trace(
