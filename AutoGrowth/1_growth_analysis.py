@@ -692,6 +692,8 @@ def review_and_results(df: pd.DataFrame):
                             ("baseline_od", "Baseline OD", True),
                             ("tangent", "Tangent line at max growth", False),
                             ("fitted_model", "Fitted model curve", True),
+                            ("dndt_plot", "dN/dt plot", False),
+                            ("mu_plot", "Specific growth rate (μ) plot", False),
                         ]
                     }
                 log_scale = log_col.toggle("Log scale", key="analysis_log_scale")
@@ -859,6 +861,8 @@ def _plots(cid, well, t, y, log_scale, show):
         )
 
     for metric in ("dndt", "mu"):
+        if not show[f"{metric}_plot"]:
+            continue
         with st.container(border=True, key=f"card_analysis_{metric}"):
             st.plotly_chart(
                 plot_derivative_metric(plate, well, metric=metric, gs=gs),
