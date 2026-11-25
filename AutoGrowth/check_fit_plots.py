@@ -357,6 +357,14 @@ def plot_derivative_metric(
         t_raw = t_raw[used_mask]
         y_raw = y_raw[used_mask]
 
+    # Drop non-finite reads; μ = (dN/dt) / N also needs N > 0, as a baseline-
+    # corrected OD at or below zero flips its sign or blows it up
+    keep = np.isfinite(t_raw) & np.isfinite(y_raw)
+    if metric == "mu":
+        keep &= y_raw > 0
+    t_raw = t_raw[keep]
+    y_raw = y_raw[keep]
+
     if len(t_raw) < 3:
         return go.Figure()
 
