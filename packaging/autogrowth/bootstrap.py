@@ -66,11 +66,14 @@ def check():
     import xlrd
 
     import growthcurve_app.analyze
+    from growthcurves_options import INFO_PLOTS_DIR
 
-    assert (
-        "Method notes file not found"
-        not in growthcurve_app.analyze.load_method_notes_markdown()
-    )
+    # Help assets are read from disk at runtime; build.py must copy each of them.
+    assets = [Path("AutoGrowth") / name for name in ("VERSION", "logo.svg")]
+    assets.append(Path("AutoGrowth/markdowns/about.md"))
+    assets += [INFO_PLOTS_DIR / f"{m}.png" for m in growthcurves.get_all_models()]
+    missing = [str(path) for path in assets if not path.is_file()]
+    assert not missing, f"Missing bundled help assets: {missing}"
     print("Bundled imports and help assets OK", sys.executable)
 
 
