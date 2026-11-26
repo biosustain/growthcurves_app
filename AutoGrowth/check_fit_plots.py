@@ -314,6 +314,8 @@ def plot_well_curve(
     )
 
 
+DATA_METRIC_COLOR = "#FF6692"  # pink: dN/dt or μ computed from the data
+
 MU_METHODS = {
     "savgol": (
         "Savitzky–Golay",
@@ -360,21 +362,24 @@ def plot_derivative_metric(
     sg_poly=DEFAULT_PARAMS["sg_poly"],
     gs: dict | None = None,
     mu_method: str = "savgol",
+    window_h: float | None = 1.0,
 ):
     """Plot either dN/dt or μ (specific growth rate) for a well.
 
-    This function generates two traces:
+    This function generates two traces, with a legend:
     1. Data metric (pink): dN/dt of the smoothed OD, or μ as the smoothed slope
        of ln(OD) (see ``mu_from_log_od``)
-    2. Model fit metric (solid blue line)
+    2. Model fit metric (blue)
 
     Args:
         plate: Plate dictionary containing processed_data and fit_parameters
         well: Well identifier
         metric: Either "dndt" for dN/dt or "mu" for μ
-        sg_window: Savitzky-Golay window size (also the sliding window, in points)
+        sg_window: Window in reads, used only when ``window_h`` is None
         sg_poly: Savitzky-Golay polynomial order
         mu_method: How μ is taken from the data, "savgol" or "sliding_window"
+        window_h: Smoothing / slope window in hours, converted to reads with the
+            median read spacing (at least 5 reads). None uses ``sg_window`` reads.
         gs: Growth statistics dictionary (optional). If provided with _used_fit_times,
             only the lasso-selected data points will be used for calculation.
     """
@@ -413,8 +418,19 @@ def plot_derivative_metric(
     if len(t_raw) < 3:
         return go.Figure()
 
+    # Window in reads: from window_h hours at the median read spacing, so dense
+    # reads (Pioreactor: one every ~30 s) still get a window long enough to average
+    # out the noise. Odd and at least 5 reads.
+    if window_h is not None:
+        dt = float(np.median(np.diff(t_raw)))
+        w = max(5, int(round(window_h / dt)) | 1) if dt > 0 else 5
+        window_label = f"{window_h:g} h window, {w} reads"
+    else:
+        w = int(sg_window)
+        window_label = f"{w}-read window"
+
     # Smoothed OD: the dN/dt trace, and the sliding-window model's dN/dt below
-    y_smooth = smooth(y_raw, sg_window, sg_poly)
+    y_smooth = smooth(y_raw, w, sg_poly)
 
     if metric == "dndt":
         metric_label = "dN/dt"
@@ -427,7 +443,7 @@ def plot_derivative_metric(
         plot_title = f"Specific growth rate – {well}"
         # μ = d ln N / dt, the slope of ln(OD): no division by a small N
         t_metric_smooth, metric_smooth = mu_from_log_od(
-            t_raw, y_raw, method=mu_method, window=sg_window, poly=sg_poly
+            t_raw, y_raw, method=mu_method, window=w, poly=sg_poly
         )
 
     # Create figure
@@ -571,14 +587,15 @@ def plot_derivative_metric(
     fig.update_layout(
         title=plot_title,
         height=400,
-        showlegend=False,
         plot_bgcolor="white",
         paper_bgcolor="white",
         margin=dict(l=40, r=20, t=60, b=40),
     )
     fig.update_xaxes(showgrid=False, title="Time (hours)", range=x_range)
-    # y range from the smoothed curve, so raw-derivative spikes don't flatten it
-    finite = np.asarray(metric_smooth, dtype=float)
+    # y range from the data and model lines, so both stay in view
+    finite = np.concatenate(
+        [np.asarray(tr.y, dtype=float) for tr in fig.data if tr.mode == "lines"]
+    )
     finite = finite[np.isfinite(finite)]
     y_range = None
     if finite.size:
@@ -586,4 +603,16 @@ def plot_derivative_metric(
         pad = 0.05 * (hi - lo) or 0.05 * abs(hi) or 0.05
         y_range = [lo - pad, hi + pad]
     fig.update_yaxes(showgrid=False, title=y_axis_title, range=y_range)
-    return style_like_info_plots(fig)
+    fig = style_like_info_plots(fig)
+    # Data line in pink (style_like_info_plots greys it), and a legend naming both
+    legend_names = {"Smoothed": f"Data ({window_label})", "Fitted": "Fitted model"}
+    for tr in fig.data:
+        if tr.name in legend_names:
+            if tr.name == "Smoothed":
+                tr.line.color = DATA_METRIC_COLOR
+            tr.update(name=legend_names[tr.name], showlegend=True)
+    fig.update_layout(
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1),
+    )
+    return fig

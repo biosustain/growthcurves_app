@@ -696,6 +696,18 @@ def review_and_results(df: pd.DataFrame):
                             ("mu_plot", "Specific growth rate (μ) plot", False),
                         ]
                     }
+                    show["window_h"] = st.number_input(
+                        "Window for dN/dt and μ plots (hours)",
+                        min_value=0.05,
+                        value=1.0,
+                        step=0.25,
+                        key="analysis_derivative_window_h",
+                        help=(
+                            "Time span of reads averaged for each point of the pink "
+                            "data line. Longer is smoother but flattens and lowers "
+                            "the peak. Only changes the plots, not μmax."
+                        ),
+                    )
                 log_scale = log_col.toggle("Log scale", key="analysis_log_scale")
             with phase_col:
                 _review_controls(cid, t, y)
@@ -876,7 +888,12 @@ def _plots(cid, well, t, y, log_scale, show):
                 )
             st.plotly_chart(
                 plot_derivative_metric(
-                    plate, well, metric=metric, gs=gs, mu_method=mu_method
+                    plate,
+                    well,
+                    metric=metric,
+                    gs=gs,
+                    mu_method=mu_method,
+                    window_h=show["window_h"],
                 ),
                 width="stretch",
             )
